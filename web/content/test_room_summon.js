@@ -11060,8 +11060,8 @@ function applyRoomMirror(snapshot) {
   syncArousalOffChatTimer();
   if ($("summon-status")) {
     $("summon-status").textContent = snapshot.present === true
-      ? `${girl.name}在房間裡（跟手機一樣）。長按她繼續聊。`
-      : `${girl.name}已經離開房間（跟手機一樣）。`;
+      ? `${girl.name}在房間裡（跟另一台同步）。長按她繼續聊。`
+      : `${girl.name}已經離開房間（跟另一台同步）。`;
   }
   try { renderCard(); } catch { /* ignore */ }
   try { renderWorld(); } catch { /* ignore */ }
@@ -13022,6 +13022,8 @@ window.RoomCompanion = {
   summonFromRoster: summonRosterGirlIntoRoom,
   reloadRoster: loadRosterGirlsForSummon,
   sync: () => girl && syncProgressToGame(girl),
+  /** 正在聊、正在召喚／召回：這時不要拿別台的房間蓋過來（app.js 等下一次再同步）。 */
+  busy: () => !!(sheetOpen() || summoning || summonBackBusy || pending || !($("room-summon-ritual")?.hidden ?? true)),
   flush() {
     if (!girl) return loadRoomSave();
     rememberChat();
@@ -13041,7 +13043,7 @@ window.RoomCompanion = {
     window.RoomActor?.setPresent(false);
     try { renderCard(); } catch { /* ignore */ }
     try { renderWorld(); } catch { /* ignore */ }
-    if ($("summon-status")) $("summon-status").textContent = "房間是空的（跟手機一樣）。";
+    if ($("summon-status")) $("summon-status").textContent = "房間是空的（跟另一台同步）。";
   },
   applyMirror: applyRoomMirror,
   isShip: isShipMode,

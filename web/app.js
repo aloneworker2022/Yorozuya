@@ -1168,9 +1168,12 @@ function forgetRoomGirl(id) {
     try { localStorage.removeItem(ROOM_PROGRESS_KEY); } catch { /* */ }
   }
   if (mirror && mirrorId === id) {
+    const at = Date.now();
+    setRoomSyncMark({ local: at, pub: 0 });
     state.roomMirror = {
       from: mirror.from || "phone",
-      savedAt: Date.now(),
+      dev: roomDeviceId(),
+      savedAt: at,
       girlId: "",
       present: false,
       girl: null,
@@ -1581,7 +1584,7 @@ async function load() {
     // 舊存檔精液量已經在 −7 以下：只在房間的主人那台（手機，或沒有手機房間時的這台）檢查一次。
     // 跟著手機鏡像的電腦不檢查，免得同一筆被兩台各收一次。
     try {
-      if (isPhoneClient() || state.roomMirror?.from !== "phone") window.RoomCompanion?.kidneyCheck?.("load");
+      if (roomOwnerHere()) window.RoomCompanion?.kidneyCheck?.("load");
     } catch { /* ignore */ }
   }
 }
@@ -1620,9 +1623,7 @@ document.addEventListener("visibilitychange", async () => {
       for (const g of state.succubi || []) if (repairGirl(g)) migrated = true;
       if (migrated) scheduleSave();
     }
-    if (!isPhoneClient() && !dirty && state.roomMirror?.from === "phone") {
-      applyServerRoomMirror();
-    }
+    if (!dirty) mergeRoomProgressSync();
     document.getElementById("set-srv").textContent = "OK";
   } catch { }
   settleOffline();
@@ -1632,6 +1633,21 @@ document.addEventListener("visibilitychange", async () => {
   scheduleKanbanNotice("resume");
   drainQuestInbox();
 });
+
+// 兩台同時開著（例如平板和電腦）：畫面亮著時每 30 秒看一次伺服器，別台改過房間就換過來。
+// 這台有沒存的改動、正在聊天／召喚時不換（關對話時 yoro-room-sheet-close 會再合併一次）。
+setInterval(async () => {
+  if (document.visibilityState !== "visible" || !state || bootFailed || dirty || saveInFlight || chatSession) return;
+  try {
+    const j = await fetchSave();
+    if (!(j.version > version) || dirty || saveInFlight) return;
+    version = j.version;
+    state = fillSaveDefaults(j.data);
+    cacheLocal();
+    mergeRoomProgressSync();
+    renderAll();
+  } catch { /* 伺服器連不上：下一輪再看 */ }
+}, 30000);
 
 function scheduleSave() {
   if (bootFailed) return;   // 存檔載入失敗的臨時狀態:絕不寫回,保住伺服器上的舊檔
@@ -1664,9 +1680,7 @@ async function saveNow(keepalive = false) {
       let migrated = retireExpansionAxes();
       for (const g of state.succubi || []) if (repairGirl(g)) migrated = true;
       if (migrated) scheduleSave();
-      if (!isPhoneClient() && state.roomMirror?.from === "phone") {
-        try { applyServerRoomMirror(); } catch { /* ignore */ }
-      }
+      try { mergeRoomProgressSync(); } catch { /* ignore */ }
       toast("存檔衝突:已載入伺服器上較新的進度", "bad");
       renderAll();
       return;
@@ -8100,16 +8114,6 @@ function roomSummonCost() {
 }
 
 /** 手機網頁才是房間進度的來源。電腦只跟，不把本地房間蓋回去。 */
-/** 手機或平板＝房間的主人（自己寫房間、上傳鏡像）；只有電腦跟手機鏡像。
- *  平板（2026-11-15 使用者：平板網頁召喚出來就消失）：Android 平板 UA 沒有 "Mobile"、userAgentData.mobile 是 false，
- *  iPadOS 的 Safari 還裝成 Macintosh——以前都被當成電腦，一直套用手機鏡像把剛召喚的人清掉。 */
-function isPhoneClient() {
-  const ua = navigator.userAgent || "";
-  if (/Android|iPhone|iPad|iPod|Windows Phone|Mobile|Silk|Kindle/i.test(ua)) return true;
-  if (/Macintosh/i.test(ua) && (navigator.maxTouchPoints || 0) > 1) return true;   // iPadOS 桌面模式
-  return !!(navigator.userAgentData && navigator.userAgentData.mobile === true);
-}
-
 function cloneJson(v) {
   try { return JSON.parse(JSON.stringify(v)); } catch { return v; }
 }
@@ -8132,44 +8136,88 @@ function readLocalRoomBundle() {
   };
 }
 
-/** 把這一台（手機）的房間原樣寫進存檔，含人在不在房間、身體、住所。 */
-function publishPhoneRoom() {
-  if (!state || !isPhoneClient()) return false;
+/* ── 房間跨裝置同步（2026-11-15 使用者：網頁版召喚手機沒有、手機召喚網頁沒有）──
+ * 手機、平板、電腦都一樣：誰最後改房間，存檔裡的 roomMirror 就是誰的（dev＝那台的裝置碼，savedAt＝那台房間存檔時間）。
+ * 每台在 localStorage 記 ROOM_SYNC_KEY：
+ *   seen＝看過（換過來）的別台鏡像時間；local＝這台房間上次上傳／換過來時的存檔時間；pub＝這台上傳過、還要確認有留在伺服器的時間。
+ *   - 鏡像是別台寫的、時間跟 seen 不同 → 別台改過 → 這台換成鏡像（正在聊／召喚中先不換，下次再換）。
+ *   - 不然，這台房間比 local 新，或上傳的那份沒留在伺服器（存檔衝突被沖掉）→ 上傳。
+ * 不比兩台的時鐘（平板手機時間可能不準），只看「鏡像有沒有被別台換過」。 */
+const ROOM_DEV_KEY = "yoro_device_id";
+const ROOM_SYNC_KEY = "yoro_room_sync";
+function roomDeviceId() {
+  try {
+    let id = localStorage.getItem(ROOM_DEV_KEY);
+    if (!id) {
+      id = `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+      localStorage.setItem(ROOM_DEV_KEY, id);
+    }
+    return id;
+  } catch { return "d-nostore"; }
+}
+function roomSyncMark() {
+  try {
+    const m = JSON.parse(localStorage.getItem(ROOM_SYNC_KEY) || "null");
+    return { seen: Number(m?.seen) || 0, local: Number(m?.local) || 0, pub: Number(m?.pub) || 0 };
+  } catch { return { seen: 0, local: 0, pub: 0 }; }
+}
+function setRoomSyncMark(patch) {
+  try { localStorage.setItem(ROOM_SYNC_KEY, JSON.stringify({ ...roomSyncMark(), ...patch })); } catch { /* ignore */ }
+}
+/** 房間目前歸這台管（收工回房、腎虧檢查這種只能一台做的事）。舊鏡像沒有 dev：每台都算。 */
+function roomOwnerHere() {
+  const dev = state?.roomMirror?.dev;
+  return !dev || dev === roomDeviceId();
+}
+function roomBusyHere() {
+  try { return !!window.RoomCompanion?.busy?.() || !!roomSummoningId; } catch { return false; }
+}
+/** 鏡像是別台在這台上次看過之後寫的。 */
+function roomMirrorFromOther() {
+  const m = state?.roomMirror;
+  if (!m || typeof m !== "object") return false;
+  if (m.dev && m.dev === roomDeviceId()) return false;
+  return (Number(m.savedAt) || 0) !== roomSyncMark().seen;
+}
+
+/** 把這一台的房間原樣寫進存檔，含人在不在房間、身體、住所。 */
+function publishLocalRoom({ force = false } = {}) {
+  if (!state) return false;
   const session = readLocalRoomBundle().session;
-  let next;
-  if (!session?.girl?.id) {
-    next = {
-      from: "phone",
-      savedAt: state.roomMirror?.from === "phone" && !state.roomMirror?.girl ? (state.roomMirror.savedAt || Date.now()) : Date.now(),
-      girlId: "",
-      present: false,
-      girl: null,
-      player: null,
-    };
-  } else {
-    const girl = cloneJson(session.girl);
-    girl.chatLines = [];
-    girl.topicHint = "";
-    next = {
-      from: "phone",
-      savedAt: session.savedAt || Date.now(),
-      girlId: session.girl.gameGirlId || session.girl.id,
-      present: session.present === true,
-      player: session.player ? cloneJson(session.player) : null,
-      girl,
-    };
-  }
+  if (!session?.girl?.id) return false;   // 這台沒房間：不拿空房蓋掉別台的
+  const at = Number(session.savedAt) || Date.now();
+  const mark = roomSyncMark();
+  const m = state.roomMirror;
+  const mineThere = !!m && m.dev === roomDeviceId() && Number(m.savedAt) === at;
+  const lost = mark.pub === at && !mineThere;
+  if (!force && !(at > mark.local) && !lost) return false;
+  const girl = cloneJson(session.girl);
+  girl.chatLines = [];
+  girl.topicHint = "";
+  const next = {
+    from: "phone",   // 舊欄位（舊版網頁看這個）；誰寫的看 dev
+    dev: roomDeviceId(),
+    savedAt: at,
+    girlId: session.girl.gameGirlId || session.girl.id,
+    present: session.present === true,
+    player: session.player ? cloneJson(session.player) : null,
+    girl,
+  };
+  setRoomSyncMark({ local: at, pub: at });
   if (JSON.stringify(state.roomMirror || null) === JSON.stringify(next)) return false;
   state.roomMirror = next;
   return true;
 }
 
-/** 電腦改跟手機上傳的房間。不在房裡就請她離開畫面。 */
+/** 這台改用存檔裡（別台上傳）的房間。不在房裡就請她離開畫面。 */
 function applyServerRoomMirror() {
   const mirror = state?.roomMirror;
-  if (!mirror || mirror.from !== "phone") return false;
+  if (!mirror || typeof mirror !== "object") return false;
+  const at = Number(mirror.savedAt) || 0;
+  setRoomSyncMark({ seen: at, local: at, pub: 0 });
   if (!mirror.girl?.id) {
     try { window.RoomCompanion?.clear?.(); } catch { /* ignore */ }
+    try { localStorage.removeItem(ROOM_SAVE_KEY_MAIN); } catch { /* ignore */ }
     return true;
   }
   const snapshot = {
@@ -8191,23 +8239,26 @@ function applyServerRoomMirror() {
 }
 
 /**
- * 手機：把本地房間（含離開）寫上存檔。
- * 電腦：只套用手機上傳的那份，絕不用電腦本地房間蓋回去。
+ * 每次讀到存檔、關掉房間對話、切回前景都跑：別台改過 → 改用鏡像；不然這台有新改動 → 上傳。
+ * 正在聊／召喚中：先都不動，等下一次。回傳 "pulled"｜"pushed"｜""。
  */
 function mergeRoomProgressSync() {
-  if (!state) return;
+  if (!state) return "";
   try {
-    if (!isPhoneClient()) {
-      if (state.roomMirror?.from === "phone") applyServerRoomMirror();
-      return;
+    if (roomMirrorFromOther()) {
+      if (roomBusyHere()) return "";
+      applyServerRoomMirror();
+      return "pulled";
     }
     const bundle = readLocalRoomBundle();
     if (bundle.progress?.id) applyRoomProgressData(bundle.progress);
-    if (publishPhoneRoom()) {
+    if (publishLocalRoom()) {
       dirty = true;
       scheduleSave();
+      return "pushed";
     }
   } catch { /* ignore */ }
+  return "";
 }
 
 function mapGameStageToRoom(stage) {
@@ -8460,8 +8511,8 @@ function enterEmbeddedRoomCompanion(payload) {
 
 /** 房間進度即時合併進名冊（同 id）；也可吃 localStorage 橋） */
 function applyRoomProgressData(data) {
-  // 電腦的房間事件不能寫回名冊，否則人還在電腦房間裡會蓋掉手機已離開的狀態
-  if (!isPhoneClient()) return false;
+  // 別台改過房間、這台還沒換過來：這台的舊房間不能寫回名冊
+  if (roomMirrorFromOther()) return false;
   if (!data?.id || !state?.succubi) return false;
   const s = state.succubi.find(x => x.id === data.id);
   if (!s) return false;
@@ -8589,7 +8640,7 @@ function applyRoomProgressData(data) {
     s.undress = roomUndressState(data.undress);
     changed = true;
   }
-  const published = publishPhoneRoom();
+  const published = publishLocalRoom();
   if (changed || published) {
     dirty = true;
     scheduleSave();
@@ -8739,7 +8790,7 @@ function escortSettle() {
   if (changed) { dirty = true; scheduleSave(); try { renderHud(); } catch { /* */ } }
   try { pregSettle(); } catch (err) { console.warn("[preg]", err?.message || err); }
   // 收工回來：手機（房間的主人）才帶她回房；房裡有別人就等（12 小時內）
-  if (!(isPhoneClient() || state.roomMirror?.from !== "phone")) return;
+  if (!roomOwnerHere()) return;
   for (const s of state.succubi) {
     const due = returnDue(s);
     if (!due) continue;
@@ -19176,7 +19227,6 @@ function renderSettings() {
   $("#set-rating").value = state.settings.rating || "nsfw";
   applyLlmProviderUi();
   $("#set-ver").textContent = version ? "v" + version : "(尚未寫入)";
-  paintSyncButton();
 
   $("#set-theme").innerHTML = THEMES.map(([k, label]) =>
     `<option value="${k}" ${(state.settings.theme || "aqua") === k ? "selected" : ""}>${label}</option>`).join("");
@@ -19635,52 +19685,41 @@ async function putAuthoritativeSave() {
   return { version: j.version };
 }
 
-function phoneRoomNote(mirror, uploaded) {
+function roomSyncNote(mirror, how) {
   const name = mirror?.girl?.name || "她";
-  if (!mirror?.girl?.id) {
-    return uploaded
-      ? "已上傳手機進度（房間裡目前沒有人）。電腦按「改跟手機」"
-      : "已改跟手機（房間裡沒有人）";
-  }
-  const where = mirror.present === true ? `${name}在房間裡` : `${name}已經離開房間`;
-  return uploaded
-    ? `已上傳手機進度。${where}。電腦按「改跟手機」`
-    : `已改跟手機。${where}`;
+  const where = !mirror?.girl?.id ? "房間裡沒有人" : (mirror.present === true ? `${name}在房間裡` : `${name}已經離開房間`);
+  return how === "pulled" ? `已換成另一台的房間：${where}` : `已把這台的房間傳上去：${where}。其他台打開或切回來就會一樣`;
 }
 
-/** 手機整份覆蓋伺服器，妹子在不在房間一起帶上。 */
-async function uploadPhoneState() {
+/** 「立即同步」：拿伺服器最新的；別台改過就換過來，不然把這台的房間傳上去（蓋掉）。 */
+async function syncRoomNow() {
   try { window.RoomCompanion?.flush?.(); } catch { /* 房間模組還沒起來 */ }
+  const fetched = await fetchSave();
+  if (fetched?.data) {
+    state = fillSaveDefaults(fetched.data);
+    version = fetched.version || 0;
+    dirty = false;
+  }
+  if (roomMirrorFromOther()) {
+    applyServerRoomMirror();
+    cacheLocal();
+    return roomSyncNote(state.roomMirror, "pulled");
+  }
   const bundle = readLocalRoomBundle();
   if (bundle.progress?.id) applyRoomProgressData(bundle.progress);
-  publishPhoneRoom();
+  publishLocalRoom({ force: true });
   dirty = true;
-  const fetched = await fetchSave();
-  version = fetched.version || 0;
   let put = await putAuthoritativeSave();
   if (put.conflict) {
     const again = await fetchSave();
+    state = fillSaveDefaults(again.data);
     version = again.version || 0;
-    publishPhoneRoom();
+    publishLocalRoom({ force: true });
     dirty = true;
     put = await putAuthoritativeSave();
     if (put.conflict) throw new Error("conflict");
   }
-  return phoneRoomNote(state.roomMirror, true);
-}
-
-/** 電腦丟掉本地房間，改成手機上傳的那份。 */
-async function followPhoneState() {
-  const fetched = await fetchSave();
-  if (!fetched?.data || fetched.data.roomMirror?.from !== "phone") {
-    return "手機還沒上傳。請先在手機按「上傳手機進度」";
-  }
-  state = fillSaveDefaults(fetched.data);
-  version = fetched.version || 0;
-  dirty = false;
-  applyServerRoomMirror();
-  cacheLocal();
-  return phoneRoomNote(state.roomMirror, false);
+  return roomSyncNote(state.roomMirror, "pushed");
 }
 
 async function syncProgressNow() {
@@ -19691,8 +19730,8 @@ async function syncProgressNow() {
   const btn = document.getElementById("btn-sync-progress");
   if (btn) btn.disabled = true;
   try {
-    const note = isPhoneClient() ? await uploadPhoneState() : await followPhoneState();
-    toast(note, note.startsWith("手機還沒上傳") ? "bad" : "good");
+    const note = await syncRoomNow();
+    toast(note, "good");
     try { renderAll(); } catch { /* ignore */ }
     const ver = document.getElementById("set-ver");
     if (ver) ver.textContent = version ? "v" + version : "(尚未寫入)";
@@ -19710,12 +19749,6 @@ async function syncProgressNow() {
   }
 }
 
-function paintSyncButton() {
-  const btn = document.getElementById("btn-sync-progress");
-  if (!btn) return;
-  btn.textContent = isPhoneClient() ? "上傳手機進度" : "改跟手機";
-}
-paintSyncButton();
 
 on("btn-sync-progress", "click", () => { syncProgressNow(); });
 
