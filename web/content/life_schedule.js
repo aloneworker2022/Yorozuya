@@ -47,9 +47,9 @@ export function rollStayHours(isWife, random = Math.random) {
   return 2 + Math.floor(n * 3);
 }
 
-/** 房間召喚黏著價，3～5 金。 */
+/** 房間召喚黏著價，1～2 金。 */
 export function rollSummonCost(random = Math.random) {
-  return 3 + Math.floor(Number(random()) * 3);
+  return 1 + Math.floor(Number(random()) * 2);
 }
 
 /** 打工固定 4 小時；發呆／在家上網／吃飯固定 30 分；整理房間 30 或 60 分；溜達 30 分鐘或 1 小時。 */

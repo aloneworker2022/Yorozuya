@@ -329,7 +329,7 @@ import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_actio
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
-import { neglectMs, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=12";
+import { neglectMs, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=13";
 import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit, wornOutfitOf } from "./outfit_pick.js?v=2";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";

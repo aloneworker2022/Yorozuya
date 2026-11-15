@@ -19,10 +19,10 @@ t("妻子停留是 8～16 小時", () => {
   assert.equal(S.rollStayHours(true, () => 0.999), 16);
 });
 
-t("召喚價是 3～5", () => {
-  assert.equal(S.rollSummonCost(() => 0), 3);
-  assert.equal(S.rollSummonCost(() => 0.34), 4);
-  assert.equal(S.rollSummonCost(() => 0.999), 5);
+t("召喚價是 1～2", () => {
+  assert.equal(S.rollSummonCost(() => 0), 1);
+  assert.equal(S.rollSummonCost(() => 0.49), 1);
+  assert.equal(S.rollSummonCost(() => 0.999), 2);
 });
 
 t("打工 4 小時、發呆／在家上網／吃飯固定 30 分、整理 30 或 60 分、溜達 30 或 60 分鐘", () => {

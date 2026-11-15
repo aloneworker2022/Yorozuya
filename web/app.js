@@ -62,7 +62,7 @@ import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, 
 import { openPeek } from "./content/escort_peek.js?v=19";
 import * as Preg from "./content/pregnancy.js?v=1"; // 懷孕（2026-10-10）
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
-import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=12";
+import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=13";
 import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, scrubHusband, isWifeStage, isDatingPlus } from "./content/girl_voice.js?v=1";
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
@@ -999,7 +999,7 @@ function defaultState() {
     cardsLive: { packId: null, epoch: 0 },
     bubbleAff: { day: null, byGirl: {} }, // M2 氣泡情感日 cap { day, byGirl: { id: used } }
     senseHour: { key: 0, count: 0 }, // 感應時段額度 {key=floor(now/HOUR), count}
-    roomSummonOffer: null, // 房間召喚黏著報價 { cost: 3～5 }；用過才重擲
+    roomSummonOffer: null, // 房間召喚黏著報價 { cost: 1～2 }；用過才重擲
     playerProfile: {
       name: "", body: "", look: "", habit: "",
       prefs: [], quiz: {},
@@ -8092,13 +8092,13 @@ const ROOM_PROGRESS_KEY = "yoro_room_progress_sync";
 const ROOM_SAVE_KEY_MAIN = "yoro_test_room_session";
 
 function rollRoomSummonCost() {
-  return rollSummonCost(); // 3～5
+  return rollSummonCost(); // 1～2
 }
 
 function ensureRoomSummonOffer() {
   const o = state.roomSummonOffer;
   const c = o && (o.cost | 0);
-  if (!(c >= 3 && c <= 5)) {
+  if (!(c >= 1 && c <= 2)) {
     state.roomSummonOffer = { cost: rollRoomSummonCost() };
   }
   return state.roomSummonOffer;
@@ -8382,7 +8382,7 @@ function buildRoomGirlFromSuccubus(s) {
 }
 
 /**
- * 名冊「召喚」：付黏著價 3～5 金 → 帶進房間陪伴。
+ * 名冊「召喚」：付黏著價 1～2 金 → 帶進房間陪伴。
  * 成功扣費後才重擲下一個報價。
  */
 function beginRoomCompanionSummon(girlId, opts = {}) {
@@ -18996,7 +18996,7 @@ function renderDetail(s, root) {
   const roomCost = roomSummonCost();
   const summonHint = takenAway
     ? `付 ${roomCost} 金帶她進房間陪伴（被帶走中仍可嘗試；報價用過才重擲）`
-    : `付 ${roomCost} 金帶她進房間陪伴聊天（報價用過才重擲 3～5）`;
+    : `付 ${roomCost} 金帶她進房間陪伴聊天（報價用過才重擲 1～2）`;
   const peekHint = "她正被帶走，可以窺視（1/5 接通）";
   // 約會入口已退役；僅保留被帶走時的窺視
   const showDetailPeek = showPeek;
