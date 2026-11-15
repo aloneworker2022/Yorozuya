@@ -22,6 +22,9 @@ import life_data as D
 import life_friends as LF
 import escort as ES
 import pregnancy as PG
+import story_cards as SC
+import story_decks as SD
+import story_deck_first as SDF
 
 _TOKYO = ZoneInfo("Asia/Tokyo")
 _WEEKDAYS = "一二三四五六日"
@@ -1011,6 +1014,54 @@ def person_label(p: dict | None) -> str:
     return p["name"] if p.get("named") else f"一位{p.get('role') or '路人'}"
 
 
+# 故事卡（2026-11-15 使用者：故事太少、每個妹子遇到一樣的）：溜達沒碰上 SCP／色情劇本時，有機會改抽一件起承轉合。
+STORY_DECK = SDF.FIRST_DECK + SD.DECK
+STORY_BY_ID = {c["id"]: c for c in STORY_DECK}
+STORY_CHANCE = 0.45          # 溜達沒碰上劇本事件時，抽故事卡的機率
+STORY_FIRST_SHARE = 0.5      # 抽故事卡時先試「第一次」牌的比例（她剛來，什麼都是第一次）
+STORY_ERO_SHARE = 0.18       # 再乘性慾等級（LIBIDO_ERO）
+
+
+def roll_story(rec: dict, place_id: str, tone: str, mood: str, now_ms: int, rnd) -> dict | None:
+    if not float(rnd()) < STORY_CHANCE:
+        return None
+    if tone == "horror":
+        order = ["horror"]
+    elif float(rnd()) < STORY_ERO_SHARE * LIBIDO_ERO.get(libido_grade(rec), 0.8):
+        order = ["erotic"]
+    elif float(rnd()) < STORY_FIRST_SHARE:
+        order = ["first", "daily"]
+    else:
+        order = ["daily", "first"]
+    for deck in order:
+        got = SC.draw_story(rec, STORY_DECK, deck, now_ms, place=place_id, mood=mood, rnd=rnd)
+        if got:
+            return {"deck": deck, "ids": [c["id"] for c in got["cards"]], "lines": [c["text"] for c in got["cards"]],
+                    "learn": dict(got["cards"][-1].get("learn") or {}), "ctx": dict(got["ctx"]), "at": now_ms}
+    return None
+
+
+def commit_story_ev(rec: dict, story: dict, at: int) -> dict | None:
+    cards = [STORY_BY_ID[i] for i in story.get("ids") or [] if i in STORY_BY_ID]
+    if len(cards) != len(story.get("ids") or []) or not cards:
+        return None  # 牌組改過、牌不見了：這趟照樣寫，只是不進人生經歷
+    return SC.commit_story(rec, {"deck": story["deck"], "cards": cards, "ctx": story.get("ctx") or {}, "at": at})
+
+
+def story_lines_for(story: dict) -> list[str]:
+    zh = ("起", "承", "轉", "合")
+    out = ["這一趟照下面的骨架寫成一段自然的經過（不要提到骨架、卡片或起承轉合，不准加骨架外的大事）："]
+    out += [f"{z}：{t}" for z, t in zip(zh, story.get("lines") or [])]
+    learn = (story.get("learn") or {}).get("text")
+    if learn:
+        out.append(f"最後要讓人看得出我記住了：{learn}。我剛來這個世界不久，這是我第一次弄懂的事之一。")
+    if story.get("deck") == "erotic":
+        out.append(ERO_RULE)
+    if story.get("deck") == "horror":
+        out.append("不要寫血腥或傷害過程，恐怖靠氣氛。")
+    return out
+
+
 def roll_event(rec: dict, kind: str, now_ms: int, rnd=None) -> dict:
     """結算時擲這一趟發生什麼。結果存在 agenda.event，模型重試也用同一份。"""
     roll = rnd if rnd is not None else random.random
@@ -1065,6 +1116,14 @@ def roll_event(rec: dict, kind: str, now_ms: int, rnd=None) -> dict:
             ev["act"] = ero["title"]
             ev["actId"] = "ero"
             has_person = False
+        story = None if (scp or ero) else roll_story(rec, place["id"], tone, mood, now_ms, roll)
+        if story:
+            ev["story"] = story
+            ev["tone"] = tone  # 調性照原本擲的（詭異→只抽恐怖牌），比例不變
+            ev["toneName"] = {"first": "第一次", "horror": "詭異", "erotic": "色情變態奇遇", "daily": "日常"}[story["deck"]]
+            ev["act"] = story["lines"][0]
+            ev["actId"] = "story"
+            has_person = False
         else:
             ev["tone"] = tone
             ev["toneName"] = next(t["name"] for t in D.STROLL_TONES if t["id"] == tone)
@@ -1117,6 +1176,16 @@ def _outcome(ev: dict, rec: dict, rnd) -> dict:
     ero = ev.get("ero")
     if ero:
         return {"mood": "臉紅心跳", "level": 25 + 8 * int(ero.get("step") or 0), "why": f"在{where}撞見讓人臉紅的事"}
+    story = ev.get("story")
+    if story:
+        deck = story.get("deck")
+        if deck == "horror":
+            return {"mood": "不安", "level": 40 + int(float(rnd()) * 16), "why": f"在{where}碰到詭異的事"}
+        if deck == "erotic":
+            return {"mood": "臉紅心跳", "level": 30 + int(float(rnd()) * 11), "why": f"在{where}撞見讓人臉紅的事"}
+        if deck == "first":
+            return {"mood": "愉快", "level": 28, "why": f"在{where}第一次弄懂一件事"}
+        return {"mood": "愉快", "level": 22, "why": f"在{where}碰到一件小事"}
     naked = ev.get("naked")
     if naked:
         n = int(naked.get("count") or 1)
@@ -1275,6 +1344,9 @@ def event_prompt(action: dict) -> tuple[str, str]:
     elif ev.get("ero"):
         body = [ero_brief(ev["ero"])]
         system = "你只寫她自己一個人路過、看見的經過。她只是旁觀。"
+    elif ev.get("story"):
+        body = story_lines_for(ev["story"])
+        system = "你只寫她自己在那個地方的經過，照骨架走。" + ("她只是旁觀。" if ev["story"].get("deck") == "erotic" else "")
     elif kind == "stroll":
         body.insert(0, D.STROLL_TONE_RULE.get(ev.get("tone") or "daily", ""))
     bond = ev.get("bond")
@@ -1295,7 +1367,7 @@ def accept_text(action: dict, raw: str) -> str:
     p = ev.get("person")
     if p and not (_PERSON_RE.search(text) or (p.get("named") and p.get("name") in text)):
         return ""
-    if ev.get("ero") and ERO_BAN_RE.search(text):
+    if (ev.get("ero") or (ev.get("story") or {}).get("deck") == "erotic") and ERO_BAN_RE.search(text):
         return ""  # 碰到禁區字眼就重寫／用範本
     if (ev.get("naked") or (ev.get("bond") or {}).get("sex") or (ev.get("bond") or {}).get("to") == "flirt") and CONSENT_BAN.search(text):
         return ""  # 一定要是她自己願意／半推半就
@@ -1331,6 +1403,10 @@ def fallback_text(action: dict) -> str:
         return f"我在{where}看見{scp['title']}，有什麼地方不對勁。我沒有再靠近。"
     if ev.get("ero"):
         return ero_fallback(ev)
+    story = ev.get("story")
+    if story:
+        learn = (story.get("learn") or {}).get("text") or ""
+        return clip_text(f"我在{ev.get('place') or '外面'}溜達。{(story.get('lines') or [''])[0]}" + (f"後來我記住了：{learn}。" if learn else ""))
     if ev.get("naked"):
         return naked_fallback(ev)
     bond = ev.get("bond")
@@ -2053,6 +2129,9 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
         rec["eroNextAt"] = at + ERO_GAP_MS + int(float(roll()) * ERO_GAP_SPREAD_MS)
         # 飢渴的真相在手機：這裡只累計「給了多少」，手機用 bodyState.hunger.lifeTaken 記收過多少，差額才加（不會重複加）
         hunger_shift(rec, int(ero.get("hunger") or 0), at)
+    story = ev.get("story")
+    if story:
+        commit_story_ev(rec, story, at)
     extra = {
         "place": ev.get("place") or (rec.get("homeName") if kind in HOME_KINDS or kind == "sleep" else "") or "",
         "person": person_label(p),
@@ -2067,7 +2146,7 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
         "scpStep": (int(scp["step"]) + 1) if scp else "",
         "ero": (ero or {}).get("title") or "",
         "eroStep": (int(ero["step"]) + 1) if ero else "",
-        "private": "ero" if ero else ("affair" if naked or (bond and (bond.get("sex") or bond.get("to") == "flirt")) else ""),
+        "private": "ero" if ero or (story or {}).get("deck") == "erotic" else ("affair" if naked or (bond and (bond.get("sex") or bond.get("to") == "flirt")) else ""),
         "bond": (bond or {}).get("to") or ("physical" if naked else ""),
         "bondFrom": (bond or {}).get("from") or "",
         "naked": int(naked.get("count") or 0) if naked else "",
@@ -2200,6 +2279,7 @@ def view_of(rec: dict) -> dict:
         "pregnancy": rec.get("pregnancy") or None,
         "memories": list(rec.get("memories") or []),
         "growth": [dict(g) for g in rec.get("growth") or [] if isinstance(g, dict)],
+        "lifeStory": [dict(x) for x in (rec.get("lifeStory") or [])[-40:] if isinstance(x, dict)],  # 故事卡寫下的永久人生經歷
         "note": rec.get("note") or "",
     }
 
@@ -2291,6 +2371,8 @@ def _paint_world(girl: dict, row: dict) -> None:
     if isinstance(row.get("growth"), list):
         # 每晚沉澱（RP5 是真相）：整份蓋過去，淡掉的也跟著拿掉
         world["growth"] = row["growth"]
+    if isinstance(row.get("lifeStory"), list):
+        world["lifeStory"] = row["lifeStory"]  # 故事卡的永久人生經歷（RP5 是真相）
     world.pop("settlingHome", None)
     for item in row.get("memories") or []:
         if isinstance(item, dict) and item.get("id") and item.get("text"):
