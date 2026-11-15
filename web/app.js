@@ -8100,12 +8100,14 @@ function roomSummonCost() {
 }
 
 /** 手機網頁才是房間進度的來源。電腦只跟，不把本地房間蓋回去。 */
+/** 手機或平板＝房間的主人（自己寫房間、上傳鏡像）；只有電腦跟手機鏡像。
+ *  平板（2026-11-15 使用者：平板網頁召喚出來就消失）：Android 平板 UA 沒有 "Mobile"、userAgentData.mobile 是 false，
+ *  iPadOS 的 Safari 還裝成 Macintosh——以前都被當成電腦，一直套用手機鏡像把剛召喚的人清掉。 */
 function isPhoneClient() {
-  if (navigator.userAgentData && typeof navigator.userAgentData.mobile === "boolean") {
-    return navigator.userAgentData.mobile;
-  }
   const ua = navigator.userAgent || "";
-  return /Android.+Mobile|iPhone|iPod|Windows Phone|Mobile/i.test(ua);
+  if (/Android|iPhone|iPad|iPod|Windows Phone|Mobile|Silk|Kindle/i.test(ua)) return true;
+  if (/Macintosh/i.test(ua) && (navigator.maxTouchPoints || 0) > 1) return true;   // iPadOS 桌面模式
+  return !!(navigator.userAgentData && navigator.userAgentData.mobile === true);
 }
 
 function cloneJson(v) {
