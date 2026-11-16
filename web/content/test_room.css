@@ -798,3 +798,8 @@ body.room-home #portrait-sheet.sex-pix{--talk-box-h:clamp(72px,12svh,100px)}
 body.room-home #portrait-sheet.sex-pix #talk-box{bottom:calc(var(--pix-top) - 12px);z-index:23}
 body.room-home #portrait-sheet.sex-pix .talk-acts{bottom:calc(var(--pix-top) + var(--talk-box-h) + 2px)}
 body.room-ship #portrait-sheet.sex-pix #talk-panel{padding-bottom:var(--pix-top)}
+
+/* 2026-11-16 使用者：鍵盤會擋住她的回應 → 鍵盤出現時對話框往上移到鍵盤上面（--kb 由 watchKeyboardInset 寫入） */
+body.room-home.kb-open #talk-box { bottom: calc(var(--talk-bottom) + var(--kb, 0px)); }
+body.room-ship.kb-open #talk-panel { padding-bottom: calc(8px + var(--kb, 0px)); }
+body.room-home.kb-open #talk-acts { display: none; }

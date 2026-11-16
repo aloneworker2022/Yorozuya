@@ -10149,6 +10149,27 @@ async function deliverUserTalk(text, opts = {}) {
 }
 
 
+/** 2026-11-16 使用者：聊天時鍵盤跳出來，她的對話框被擋住 → 鍵盤出現時對話框跟著往上移。
+ *  鍵盤蓋住的高度（visualViewport 比畫面矮多少）寫進 body 的 --kb，CSS 用它把對話框墊高；鍵盤收起就回 0。
+ *  App 殼若是 adjustResize，畫面本身就變矮，--kb 量出來是 0，不會墊兩次。 */
+(function watchKeyboardInset() {
+  if (typeof window === "undefined" || !window.visualViewport || !document.body) return;
+  const vv = window.visualViewport;
+  let last = -1;
+  const sync = () => {
+    const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    const px = kb > 80 ? kb : 0;   // 小於 80px 是網址列伸縮，不算鍵盤
+    if (px === last) return;
+    last = px;
+    document.body.style.setProperty("--kb", `${px}px`);
+    document.body.classList.toggle("kb-open", px > 0);
+  };
+  vv.addEventListener("resize", sync);
+  vv.addEventListener("scroll", sync);
+  window.addEventListener("focusout", () => setTimeout(sync, 250));
+  sync();
+})();
+
 async function sendTalk(event) {
   event.preventDefault();
   if (!girl) return;
