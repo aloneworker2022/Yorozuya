@@ -62,6 +62,7 @@ function draw(kB,kC,kD){
 }
   if(process.env.BROW!=='0'){require('./brow.cjs')(put,(x,y)=>face[y*N+x],([x,y,z])=>[CX+x,y,1],{CY,R,EAR});
    if(G)for(const s of[1,-1])for(let a=0;a<6.28;a+=.02){const x=Math.round(CX+s*33+17*Math.cos(a)),y=Math.round(EAR+10*Math.sin(a));if(Math.round(a/.02)%5<3)dot(x,y,SH)}}   // 眼睛位置（虛線橢圓）
+ if(process.env.EYE!=='0')require('./eye.cjs')(put,(x,y)=>face[y*N+x],{CX,EAR});
  if(process.env.MOUTH!=='0')require('./mouth.cjs')(put,(x,y)=>face[y*N+x],([x,y,z])=>[CX+x,y,1],{MOUTH,zc:55});
  px.face=face;return px;
 }
