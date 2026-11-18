@@ -89,7 +89,8 @@ def eye_px():
         if ch:o[(xx,yy)]=(EPAL[ch],0)
   return o
 NOSE=nose_px()
-LAYERS=[brow_px(),eye_px(),NOSE,mouth_px()]
+EYES=eye_px()
+LAYERS=[brow_px(),EYES,NOSE,mouth_px()]
 def isface(img,X,Yp):
   return 0<=X<N and 0<=Yp<N and tuple(img[Yp,X])!=(255,255,255) and tuple(img[Yp,X])!=DK
 def paint_front(img):
@@ -100,6 +101,7 @@ def paint_turn(img,deg,cx):
   a=math.radians(deg);ca,sa=math.cos(a),math.sin(a);zbuf={}
   for L in LAYERS:
     if L is NOSE:continue          # 轉過去的鼻子另外畫（正面那條線投影過去會被壓扁）
+    if L is EYES and deg>=90:continue   # 側臉的眼睛另外畫（三角形）
     for (X,Yp),(c,dz) in L.items():
       for i in range(4):
         for j in range(4):
@@ -117,6 +119,7 @@ def paint_turn(img,deg,cx):
   for (PX,PY),(d,c) in zbuf.items():
     if isface(img,PX,PY):img[PY,PX]=c
   if 0<deg<90:nose_turn(img,sa,cx)
+  if deg>=90:side_eye(img,cx)
 def nose_turn(img,sa,cx):
   # 45° 鼻子（使用者：山根要畫出來、要立體）：沿著側臉中線（x＝0、z＝zp）投影出鼻樑線——
   # 從眉頭下面（山根，先往內凹）一路到鼻頭；鼻樑右邊（背光那面，光從左上）一條淡影；鼻頭深色、鼻底往右一小段影子
@@ -135,6 +138,50 @@ def nose_turn(img,sa,cx):
       if y>=556:put(max(xs)+2,Yp,LT)
   # 鼻頭：深色尖角朝左（翹頭尖鼻），底下往右一小段鼻底影子
   for dx,dy,c in[(1,-2,SH),(0,-1,DK),(-1,0,DK),(0,0,DK),(0,1,DK),(1,1,DK),(2,1,DK),(3,1,SH),(4,0,SH),(2,2,LT),(3,2,LT)]:put(tipX+dx,tipY+dy,c)
+
+# ── 側臉的眼睛（使用者給的教學：臉是圓的，側面看眼睛是三角形）──
+# 上眼線厚、橫的、眼尾往後收成一個尖角（下面一小撇）；前緣斜斜往後下到底下的尖；黑眼珠是窄窄的直橢圓、貼在前緣；
+# 前面幾根睫毛往前刺出去（トゲトゲ）；雙眼皮線往前淡掉；眼睛前緣離鼻樑往後縮
+def side_eye_at(u,v):
+  # u 往後（往右）、v 往下，單位＝格（再乘 ES）；原點＝上眼線前端
+  def lb(u):return .5-1.4*math.sin(math.pi*max(0,min(u,20))/22)     # 上眼線的下緣（＝眼睛開口上緣）
+  def th(u):return 1.8+1.4*math.sin(math.pi*min(max(u,0),18)/20)    # 上眼線粗細
+  # 雙眼皮線（往前淡掉）
+  if 6<=u<=18 and abs(v-(lb(u)-th(u)-2.4))<.5:return 'c'
+  # 上眼線＋眼尾尖角
+  if 0<=u<=18 and lb(u)-th(u)<=v<lb(u):return 'K'
+  if 18<u<=23:
+    f=(u-18)/5;top=lb(18)-th(18)+f*.6;bot=lb(18)-f*(th(18)-.6)
+    if top<=v<bot:return 'K' if f<.7 else 'k'
+  # 眼尾下面一小撇
+  if 16.5<=u<=18.5 and lb(u)<=v<lb(u)+2.8 and abs(u-(16.8+(v-lb(u))*.55))<.6:return 'K'
+  # 前面的睫毛（往前刺）
+  for (ex,ey) in((-3.6,-2.8),(-4.2,-.8),(-3.2,1.1)):
+    t=(u*ex+(v-(lb(0)-1))*ey)/(ex*ex+ey*ey)
+    if 0<t<1 and math.hypot(u-t*ex,v-(lb(0)-1)-t*ey)<.45:return 'K' if t<.5 else 'k'
+  v0=lb(0);AX,AY=6.5,10.5
+  if v<=lb(u) or v>AY:return None
+  uf=(v-v0)/(AY-v0)*AX                             # 前緣
+  ub=AX+11*((AY-v)/(AY-1.2))**.75                    # 後緣（下眼瞼）
+  if u<uf-.6 or u>ub:return None
+  if u<uf:return 'k'                                 # 前緣細線
+  if v>AY-1.2 or (u>ub-.9 and v>AY-4.5):return 'L'   # 下眼瞼（只在底下那一段）
+  dx=(u-5.4)/3.4;dy=(v-4.8)/5.0;r=math.hypot(dx,dy)
+  if r<1:
+    if math.hypot((u-4.2)/1.1,(v-2.5)/1.3)<1:return 'H'
+    if math.hypot((u-6.6)/.6,(v-7.6)/.6)<1:return 'H'
+    if math.hypot((u-5.6)/1.0,(v-5.0)/3.0)<1:return 'P'
+    if r>.82:return 'I'
+    w=(v-lb(u))/(AY-lb(u));return 'I' if w<.38 else 'i' if w<.7 else 'j'
+  return 'w' if v<lb(u)+1.8 else 'W'
+def side_eye(img,cx):
+  from shape3d import zp
+  X0=cx-zp(545)*S+7;Y0=Y(541)               # 眼睛前端：鼻樑往後 7 格、眼線上面一點
+  for Yp in range(math.floor(Y0-8*ES),math.ceil(Y0+13*ES)):
+    for X in range(math.floor(X0-6*ES),math.ceil(X0+25*ES)):
+      ch=side_eye_at((X+.5-X0)/ES,(Yp+.5-Y0)/ES)
+      if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
+
 out=os.environ.get('OUT',D)
 f=np.array(Image.open(f'{D}/front.png').convert('RGB'));paint_front(f);Image.fromarray(f).save(f'{out}/front_f.png')
 t=np.array(Image.open(f'{D}/turn45.png').convert('RGB'));paint_turn(t,45,126);Image.fromarray(t).save(f'{out}/turn45_f.png')
