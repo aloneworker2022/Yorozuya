@@ -3,6 +3,7 @@
 玩家把委託放到她桌上（聊天交給她，或委託板長按往上滑）→ 排成一列，她坐在書桌前就照順序一件一件做（2026-11-02：
 一次可以放很多件）。伺服器背景叫 agent 去跑，過程全部記成事件，房間和工作日誌照事件畫。做完一件、報告疊在桌上，
 她接著做下一件；玩家有空再一份份看：完成委託／延伸（委託先完成、接著做後續）／退回重做（附意見）——後兩者插隊。
+報告本文是工作成果；她自己的想法另存在 desk_runs.thoughts（做完後用房間聊天模型寫，不掺進做事的 prompt）。
 
 agent：DESK_AGENT=mock（假的，照劇本吐事件）｜hermes（RP5 上的 Hermes，server/desk_hermes.py）。事件格式：
 
@@ -131,7 +132,9 @@ def init(conn: sqlite3.Connection) -> None:
                  # shelved：報告收進書櫃的時間（0＝還在桌上）
                  "ALTER TABLE desk_runs ADD COLUMN shelved INTEGER NOT NULL DEFAULT 0",
                  # schedule_id：定期工作放上來的（同一個定期工作上一件還沒做完就不再放）
-                 "ALTER TABLE desk_runs ADD COLUMN schedule_id INTEGER NOT NULL DEFAULT 0"):
+                 "ALTER TABLE desk_runs ADD COLUMN schedule_id INTEGER NOT NULL DEFAULT 0",
+                 # thoughts：報告交了之後另寫的、她自己的想法（不改報告本文）
+                 "ALTER TABLE desk_runs ADD COLUMN thoughts TEXT NOT NULL DEFAULT ''"):
         try:
             conn.execute(stmt)
         except sqlite3.OperationalError:
@@ -183,11 +186,11 @@ def _row(r) -> dict | None:
     if not r:
         return None
     keys = ("id", "questId", "title", "girlId", "girlName", "status", "agent", "created", "started", "finished",
-            "report", "feedback", "rounds", "session", "note", "ask", "mode", "prio", "shelved")
+            "report", "feedback", "rounds", "session", "note", "ask", "mode", "prio", "shelved", "thoughts")
     return dict(zip(keys, r))
 
 
-_RUN_COLS = "id, quest_id, title, girl_id, girl_name, status, agent, created, started, finished, report, feedback, rounds, agent_session, note, ask, mode, prio, shelved"
+_RUN_COLS = "id, quest_id, title, girl_id, girl_name, status, agent, created, started, finished, report, feedback, rounds, agent_session, note, ask, mode, prio, shelved, thoughts"
 
 
 def _in(statuses) -> str:
@@ -261,7 +264,7 @@ def add_event(conn: sqlite3.Connection, run_id: int, actor: str, kind: str, text
 def _set(conn: sqlite3.Connection, run_id: int, **cols) -> None:
     names = {"status": "status", "started": "started", "finished": "finished", "report": "report",
              "feedback": "feedback", "rounds": "rounds", "agent": "agent", "session": "agent_session", "ask": "ask",
-             "mode": "mode", "quest_id": "quest_id", "prio": "prio", "shelved": "shelved"}
+             "mode": "mode", "quest_id": "quest_id", "prio": "prio", "shelved": "shelved", "thoughts": "thoughts"}
     sets = ", ".join(f"{names[k]}=?" for k in cols)
     conn.execute(f"UPDATE desk_runs SET {sets} WHERE id=?", (*cols.values(), run_id))
     conn.commit()
@@ -490,6 +493,175 @@ def make_agent():
     return None
 
 
+# ───────────────────────────── 報告旁邊她自己的想法
+# 做事的 agent prompt 不掺人設。報告交了之後另寫 2～4 句「我」的想法（意見＋感受）。
+# WRITE_THOUGHTS：main.py 註冊（房間聊天模型）；失敗或沒註冊就留空（mock 例外，用下面的範本）。
+THOUGHTS_MAX = 400
+THOUGHTS_REPORT_CAP = 4000
+WRITE_THOUGHTS = None  # (run, report) -> str｜awaitable[str]
+STAGE_ZH = {
+    "stranger": "陌生", "acquaintance": "認識", "friend": "朋友", "close_friend": "親密好友",
+    "girlfriend": "女友", "passionate": "熱戀", "lover": "愛人",
+    "wife": "妻子", "devoted_wife": "貼心妻子", "obedient_wife": "順從妻子", "pathological_wife": "病態妻子",
+}
+
+
+def _names(items, cap: int = 6) -> list[str]:
+    out = []
+    for x in items or []:
+        if isinstance(x, dict):
+            t = str(x.get("name") or x.get("text") or "").strip()
+        else:
+            t = str(x or "").strip()
+        if t and t not in out:
+            out.append(t)
+        if len(out) >= cap:
+            break
+    return out
+
+
+def persona_from(*, girl=None, rec=None, name="") -> dict:
+    """從存檔的妹子／生活表 rec 抽出寫想法要用的人設（都沒有就只留名字）。"""
+    girl = girl if isinstance(girl, dict) else {}
+    rec = rec if isinstance(rec, dict) else {}
+    world = girl.get("world") if isinstance(girl.get("world"), dict) else {}
+    def pick(key, default=""):
+        return str(girl.get(key) or rec.get(key) or default or "").strip()
+    growth = world.get("growth") if isinstance(world.get("growth"), list) else rec.get("growth")
+    story = world.get("lifeStory") if isinstance(world.get("lifeStory"), list) else rec.get("lifeStory")
+    stage = pick("roomStage") or pick("stage") or "stranger"
+    return {
+        "name": pick("name") or str(name or "").strip() or "她",
+        "archetype": pick("archetype"),
+        "tone": pick("tone")[:80],
+        "hobbies": _names(girl.get("hobbies") or rec.get("hobbies") or [], 4),
+        "likes": _names(girl.get("likes") or rec.get("likes") or [], 6),
+        "dislikes": _names(girl.get("dislikes") or rec.get("dislikes") or [], 6),
+        "stage": stage,
+        "stageZh": STAGE_ZH.get(stage, stage if stage != "stranger" else ""),
+        "growth": [g for g in (growth or []) if isinstance(g, dict) and g.get("text")][:2],
+        "lifeStory": [s for s in (story or []) if isinstance(s, dict) and s.get("text")][-2:],
+    }
+
+
+def thoughts_prompt(run: dict, report: str, persona: dict | None = None) -> tuple[str, str]:
+    """寫想法用的 system／user。不給做事的 Hermes。"""
+    p = persona if isinstance(persona, dict) else {}
+    name = str(p.get("name") or run.get("girlName") or "她")
+    system = (
+        f"你是{name}，住在召喚者房間裡的魅魔。用「我」寫 2 到 4 句話，對你剛做完的這份工作報告說自己的想法。"
+        "必須同時有：你對成果的意見或建議，以及你做完這件事的心情或感受。"
+        "口吻符合你的個性。不要標題，不要列點，不要改寫或重複報告本文，不要提到遊戲、模型或提示詞。"
+        "用台灣繁體中文。"
+    )
+    lines = [f"你是{name}。"]
+    bits = [x for x in [p.get("archetype") or "", p.get("tone") or ""] if x]
+    if bits:
+        lines.append(f"個性：{'、'.join(bits)}。")
+    if p.get("stageZh"):
+        lines.append(f"你跟召喚者的關係：{p['stageZh']}。")
+    for key, label in (("hobbies", "興趣"), ("likes", "喜歡"), ("dislikes", "討厭")):
+        if p.get(key):
+            lines.append(f"{label}：{'、'.join(p[key])}。")
+    growth = p.get("growth") or []
+    if growth:
+        lines.append("最近的你：" + "；".join(str(g.get("text") or "") for g in growth if g.get("text")) + "。")
+    story = p.get("lifeStory") or []
+    if story:
+        lines.append("你記得的經歷：" + "；".join(str(s.get("text") or "") for s in story if s.get("text")) + "。")
+    lines.append(f"委託：「{run.get('title') or ''}」。")
+    if run.get("note"):
+        lines.append(f"他附的說明：{run['note']}")
+    if run.get("mode") == "extend" and run.get("feedback"):
+        lines.append(f"這次是他收下後要你做的後續：{run['feedback']}")
+    elif run.get("mode") == "redo" and run.get("feedback"):
+        lines.append(f"這次是他退回來要你改的：{run['feedback']}")
+    body = " ".join(str(report or "").split())
+    if len(body) > THOUGHTS_REPORT_CAP:
+        body = body[:THOUGHTS_REPORT_CAP].rstrip() + "…"
+    lines.append("報告：")
+    lines.append(body or "（報告是空的）")
+    return system, "\n".join(lines)
+
+
+def accept_thoughts(raw: str) -> str:
+    """合格的想法才收下：用「我」、不要標題、長度合適。"""
+    text = "\n".join(line for line in str(raw or "").splitlines() if not re.match(r"\s*#{1,4}\s", line))
+    text = re.sub(r"\s+", " ", text).strip().strip("「」\"'")
+    if "我" not in text or len(text) < 8:
+        return ""
+    # 最多留四句
+    parts, buf = [], ""
+    for ch in text:
+        buf += ch
+        if ch in "。！？":
+            parts.append(buf.strip())
+            buf = ""
+    if buf.strip():
+        parts.append(buf.strip())
+    text = "".join(parts[:4]) if parts else text
+    return text[:THOUGHTS_MAX]
+
+
+def mock_thoughts(run: dict, report: str = "") -> str:
+    title = run.get("title") or "這件工作"
+    if run.get("mode") == "redo":
+        return (f"「{title}」我照你說的改過了，這版我覺得比較乾淨，結論也可以直接看。"
+                "改的時候有點悶，不過改完比較踏實，希望這次能收下。")
+    if run.get("mode") == "extend":
+        return (f"後續我也做完了，接在「{title}」後面，我覺得方向是連得上的，給老闆看應該夠用。"
+                "接著做的時候還算順，做完鬆了一口氣，你看看行不行。")
+    return (f"「{title}」我整理好了，重點和結論我覺得可以直接用，方向應該沒跑掉。"
+            "中間有兩筆資料對不上，換關鍵字查完比較放心，希望你看了也覺得可以。")
+
+
+async def _write_thoughts(connect, run_id: int, report: str, finished: int) -> None:
+    """報告已經交了才寫想法；失敗就留空，不改報告。"""
+    text = ""
+    try:
+        conn = connect()
+        try:
+            run = get(conn, run_id)
+        finally:
+            conn.close()
+        if not run or int(run.get("finished") or 0) != int(finished):
+            return
+        if WRITE_THOUGHTS:
+            out = WRITE_THOUGHTS(run, report)
+            if asyncio.iscoroutine(out):
+                out = await out
+            text = accept_thoughts(out)
+        elif agent_name() == "mock":
+            text = accept_thoughts(mock_thoughts(run, report))
+    except Exception as e:  # noqa: BLE001 — 想法寫不成不能影響報告
+        print(f"[桌上工作] 想法沒寫成：{e}", flush=True)
+        text = ""
+    if not text:
+        return
+    conn = connect()
+    try:
+        run = get(conn, run_id)
+        if not run or int(run.get("finished") or 0) != int(finished):
+            return
+        if (run.get("report") or "") != (report or "") or run.get("thoughts"):
+            return
+        _set(conn, run_id, thoughts=text)
+        add_event(conn, run_id, "main", "note", "在報告旁邊寫了自己的想法。", "")
+    except Exception as e:  # noqa: BLE001
+        print(f"[桌上工作] 想法存不進去：{e}", flush=True)
+    finally:
+        conn.close()
+
+
+def _kick_thoughts(connect, run_id: int, report: str, finished: int) -> None:
+    """不擋報告：有事件迴圈就丟到背景；沒有就直接略過（不在主流程裡等模型）。"""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    loop.create_task(_write_thoughts(connect, run_id, report, finished))
+
+
 # ───────────────────────────── 背景執行
 
 _tasks: dict[int, asyncio.Task] = {}
@@ -541,7 +713,15 @@ async def drive(connect: Callable[[], sqlite3.Connection], run_id: int, resume: 
         if (get(conn, run_id) or {}).get("status") != "running":
             return
         add_event(conn, run_id, "main", "report", "報告寫好了，放在桌上。", "ok")
-        _set(conn, run_id, status="done", finished=now_ms(), report=str(report or "")[:60000], ask="", shelved=0)
+        report = str(report or "")[:60000]
+        finished_at = now_ms()
+        # 先交報告（想法失敗或還沒寫都不能擋）。mock 沒接模型時當場寫示範想法。
+        thoughts = accept_thoughts(mock_thoughts(run, report)) if (WRITE_THOUGHTS is None and agent_name() == "mock") else ""
+        _set(conn, run_id, status="done", finished=finished_at, report=report, thoughts=thoughts, ask="", shelved=0)
+        if thoughts:
+            add_event(conn, run_id, "main", "note", "在報告旁邊寫了自己的想法。", "")
+        elif report.strip():
+            _kick_thoughts(connect, run_id, report, finished_at)
         _propose_reflections(conn, run, report)
         for hook in ON_DONE:   # 例：room_frames 你請她寫的網頁 → 她自己掛上牆
             try:
@@ -1042,6 +1222,8 @@ def _brief(run: dict) -> dict:
     out = {k: run[k] for k in ("id", "questId", "title", "girlName", "status", "note", "finished", "mode", "feedback", "prio", "shelved")}
     if run["status"] in ("done", "accepted", "failed"):
         out["nfiles"] = len(list_files(run["id"]))
+    if run["status"] in ("done", "accepted") and run.get("thoughts"):
+        out["thoughts"] = run["thoughts"]
     return out
 
 

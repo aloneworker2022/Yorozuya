@@ -63,6 +63,8 @@ async def main():
     D.start(connect, c)   # 重複叫沒事
     run = await wait_status("done")
     assert "寫 季報" in run["report"]
+    assert "我" in (run.get("thoughts") or "") and "放心" in run["thoughts"], run.get("thoughts")
+    assert "## 摘要" in run["report"] and "我整理好了" not in run["report"]
     v = D.detail(c, rid)
     kinds = {(e["actor"], e["kind"]) for e in v["events"]}
     for want in [("main", "plan"), ("main", "tool"), ("main", "trouble"), ("sub:1", "spawn"), ("sub:2", "done"),
@@ -75,6 +77,7 @@ async def main():
     assert s["subs"][0]["goal"].startswith("整理") and s["exts"][0]["id"] == "ext:claude"
     assert s["trouble"] is None, "卡住後來解決了"
     assert v["run"]["report"], "交上來才帶報告"
+    assert v["run"]["thoughts"] == run["thoughts"]
     # 做完：不再是她正在做的，報告疊在桌上
     vv = D.view(c)
     assert vv["run"] is None and [r["id"] for r in vv["reports"]] == [rid]
@@ -90,6 +93,7 @@ async def main():
     D.start(connect, c)
     run = await wait_status("done")
     assert run["rounds"] == 2 and "結論寫短一點" in run["report"]
+    assert "改過了" in (run.get("thoughts") or ""), run.get("thoughts")
     assert any(e["kind"] == "note" for e in ev(c))
 
     # 收下 → 桌上清空，可以放下一件
@@ -164,6 +168,7 @@ async def main():
     D.start(connect, c)
     run = await wait_status("done")
     assert "延伸" in run["report"] and "一頁摘要" in run["report"] and run["rounds"] == 2
+    assert "後續" in (run.get("thoughts") or ""), run.get("thoughts")
     assert any("委託完成，接著做後續" in e["text"] for e in ev(c))
 
     # 補充指示：做到一半插一句 → 記在日誌、報告照著寫；沒在做時不行
@@ -403,6 +408,79 @@ async def main():
     for r in D.queue(c):
         D.cancel(c, r["id"])
     os.environ["DESK_MOCK_STEP_S"] = "0.01"
+
+    # 想法：人設只進 thoughts_prompt，不進做事的 prompt；報告交了才寫；失敗不改報告
+    import desk_hermes as H
+    sysm, user = D.thoughts_prompt(
+        {"title": "寫季報", "girlName": "小夜", "note": "只要重點"},
+        "## 摘要\n- 寫好了",
+        D.persona_from(girl={
+            "name": "小夜", "archetype": "傲嬌", "tone": "刺一下又黏回來",
+            "hobbies": ["看電影"], "likes": ["甜食"], "dislikes": ["早起"],
+            "roomStage": "wife",
+            "world": {"growth": [{"text": "最近迷上深夜咖啡"}],
+                      "lifeStory": [{"text": "第一次自己買食券"}]},
+        }, name="小夜"),
+    )
+    assert "傲嬌" in user and "興趣：看電影" in user and "妻子" in user
+    assert "深夜咖啡" in user and "食券" in user and "只要重點" in user
+    assert "用「我」寫" in sysm and "意見或建議" in sysm and "心情或感受" in sysm
+    fp = H.first_prompt({"title": "寫季報", "note": "只要重點"})
+    for ban in ("個性：", "興趣：", "傲嬌", "用「我」寫 2", "心情或感受", "最近的你"):
+        assert ban not in fp, ban
+    assert D.accept_thoughts("") == "" and D.accept_thoughts("好了") == ""
+    assert D.accept_thoughts("## 標題\n我覺得這份可以用，做完挺踏實的。").startswith("我覺得")
+
+    c2 = sqlite3.connect(Path(tempfile.mkdtemp()) / "old.db")
+    c2.execute("CREATE TABLE desk_runs (id INTEGER PRIMARY KEY, title TEXT NOT NULL, status TEXT NOT NULL)")
+    D.init(c2)
+    cols = {r[1] for r in c2.execute("PRAGMA table_info(desk_runs)")}
+    assert "thoughts" in cols
+    c2.close()
+
+    seen = {}
+
+    def after(run, report):
+        seen["status"] = run["status"]
+        seen["had_report"] = bool(run.get("report"))
+        seen["report"] = report
+        return "我看了結論，方向對，建議把數字再核一次。做完還挺踏實的，你看看。"
+
+    D.WRITE_THOUGHTS = after
+    for r in D.listed(c, "done"):
+        D.accept(c, r["id"])
+    D.put(c, title="核對數字", girl_name="小夜")
+    D.start(connect, c)
+    run = await wait_status("done")
+    report_txt = run["report"]
+    assert "## 摘要" in report_txt
+    thoughts = ""
+    for _ in range(400):
+        c = connect()
+        row = D.get(c, run["id"])
+        if row.get("thoughts"):
+            thoughts = row["thoughts"]
+            break
+        await asyncio.sleep(0.01)
+    assert seen.get("status") == "done" and seen.get("had_report"), seen
+    assert thoughts.startswith("我") and "踏實" in thoughts
+    assert D.get(c, run["id"])["report"] == report_txt
+
+    def boom(run, report):
+        seen["fail_report"] = report
+        raise RuntimeError("模型沒回")
+
+    D.WRITE_THOUGHTS = boom
+    D.accept(c, run["id"])
+    D.put(c, title="會失敗的想法", girl_name="小夜")
+    D.start(connect, c)
+    run = await wait_status("done")
+    assert run["report"] and not run.get("thoughts")
+    await asyncio.sleep(0.15)
+    c = connect()
+    run = D.get(c, run["id"])
+    assert run["report"] and not run.get("thoughts")
+    D.WRITE_THOUGHTS = None
     c.close()
     print("desk_agent: ok")
 

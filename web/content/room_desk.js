@@ -48,6 +48,10 @@
     shelfDone = j.shelf?.done || [];
     shelfTotal = j.shelf?.doneTotal || shelfDone.length;
     notesPending = j.notesPending || 0;
+    if (sel && sel.run) {
+      const b = [...reports, ...shelfPending, ...shelfDone].find(x => x.id === sel.run.id);
+      if (b && b.thoughts && b.thoughts !== sel.run.thoughts) sel.run.thoughts = b.thoughts;
+    }
     scheds = j.schedules || [];
   }
   async function pull() {
@@ -357,6 +361,9 @@
 #desk-card .report h3{font-size:16px;margin:10px 0 6px}#desk-card .report h4{font-size:14px;margin:10px 0 4px}
 #desk-card .report blockquote{margin:6px 0;padding:4px 10px;border-left:3px solid #d8c7ad;color:#6d6252;background:#faf5ec}
 #desk-card .report ul,#desk-card .report ol{padding-left:1.3em;margin:4px 0}
+#desk-card .said{margin:10px 0 4px;padding:10px 12px;border-radius:8px;background:#faf5ec;border:1px solid #e1d6c3}
+#desk-card .said b{display:block;font-size:12px;color:#7a6c5a;margin-bottom:4px;letter-spacing:.05em;font-weight:600}
+#desk-card .said blockquote{margin:0;padding:0;border:0;background:none;color:#3b3328;font-size:14px;line-height:1.55;white-space:pre-wrap}
 #desk-card .msg{margin-top:8px;font-size:12px;color:#8a3a31}
 #desk-card .ask{margin:8px 0;padding:10px 12px;border-radius:8px;background:#fff4d6;border:1px solid #ecd49a;font-size:13px}
 #desk-card .ask b{display:block;font-size:12px;color:#7a5a17;margin-bottom:2px}
@@ -404,6 +411,19 @@
     try { sel = await api(`/api/desk/run?id=${id}`); mode = view; msg = ''; }
     catch (e) { msg = e.message; }
     paint(true);
+  }
+  function thoughtsOf(r) {
+    const id = r?.id;
+    if (!id) return r?.thoughts || '';
+    if (sel?.run?.id === id && sel.run.thoughts) return sel.run.thoughts;
+    const b = [...reports, ...shelfPending, ...shelfDone].find(x => x.id === id);
+    return (b && b.thoughts) || r?.thoughts || '';
+  }
+  function thoughtsBlock(r) {
+    const t = thoughtsOf(r);
+    if (!t) return '';
+    const who = r.girlName || '她';
+    return `<div class="said"><b>${esc(who)}說</b><blockquote>${esc(t)}</blockquote></div>`;
   }
   function itemRow(r, buttons, sub = '') {
     if (r.nfiles) sub = `${sub ? sub + '・' : ''}📎 ${r.nfiles}`;
@@ -630,6 +650,7 @@
       body = `<div class="title">${esc(r.title)}</div><div><span class="chip done">完成了</span><span class="mini">${r.finished ? day(r.finished) + ' 交的' : ''}</span></div>
         ${r.note ? `<p class="mini">說明：${esc(r.note)}</p>` : ''}
         <div class="report">${r.report ? md(r.report) : '<p class="mini">（沒有報告內容）</p>'}</div>
+        ${thoughtsBlock(r)}
         ${filesBlock(r)}
         ${learnedBlock()}
         ${shelfButtons(r)}
@@ -637,6 +658,7 @@
     }
     else if (mode === 'report') {
       body = `<div class="title">${esc(r.title)}</div><div class="report">${md(r.report)}</div>
+        ${thoughtsBlock(r)}
         ${filesBlock(r)}
         ${learnedBlock()}
         <div class="row"><button type="button" class="main" data-a="accept">完成委託</button><button type="button" data-a="extend-open">延伸</button><button type="button" data-a="redo-open">退回重做</button></div>

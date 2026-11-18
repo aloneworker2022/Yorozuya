@@ -83,6 +83,13 @@ def agent(fake, **kw):
 
 
 async def main():
+    # 做事的 prompt 不掺人設／她的想法（想法是報告交了之後另寫）
+    for raw in (H.first_prompt({"title": "寫季報", "note": "只要重點"}),
+                H.CONTINUE_PROMPT, H.NUDGE_PROMPT, H.RESUME_PROMPT,
+                H.extend_prompt("再寫摘要"), H.redo_prompt("寫短一點")):
+        for ban in ("個性：", "興趣：", "用「我」寫 2", "心情或感受", "最近的你"):
+            assert ban not in raw, ban
+
     # 1) 使魔在背景跑 → 等回來 → 叫她繼續 → 交報告
     fake = FakeHermes([
         {"events": [

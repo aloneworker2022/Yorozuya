@@ -5886,6 +5886,81 @@ async def _start_gen_worker():
 
 # ───────────── 她桌上的工作（agent office，server/desk_agent.py）─────────────
 # 一次一件：聊天交給她 → put；她坐到書桌前 → start；做完 → 報告；你看完 → accept 或 redo。
+# 報告交了之後另用房間聊天模型寫她自己的想法（desk_runs.thoughts）；做事的 Hermes prompt 不掺人設。
+def _desk_find_girl(data: dict, girl_id: str, girl_name: str) -> dict | None:
+    girls = [g for g in (data.get("succubi") or []) if isinstance(g, dict)]
+    gid, name = str(girl_id or "").strip(), str(girl_name or "").strip()
+    if gid:
+        for g in girls:
+            if gid in (str(g.get("id") or ""), str(g.get("gameGirlId") or "")):
+                return g
+    if name:
+        for g in girls:
+            if str(g.get("name") or "") == name:
+                return g
+    return None
+
+
+def _desk_find_rec(store: dict, girl_id: str, girl_name: str, girl: dict | None) -> dict | None:
+    recs = (store or {}).get("girls") if isinstance((store or {}).get("girls"), dict) else {}
+    gid, name = str(girl_id or "").strip(), str(girl_name or "").strip()
+    if girl:
+        for key in (girl.get("id"), girl.get("gameGirlId")):
+            rec = recs.get(str(key or ""))
+            if rec:
+                return rec
+    if gid and recs.get(gid):
+        return recs[gid]
+    if name:
+        for rec in recs.values():
+            if isinstance(rec, dict) and str(rec.get("name") or "") == name:
+                return rec
+    return None
+
+
+def _desk_save_data() -> dict:
+    """只讀存檔（不走 get_save，避免吸進生活表）。失敗回空字典。"""
+    try:
+        with db() as conn:
+            row = conn.execute("SELECT data FROM save WHERE id = 1").fetchone()
+        data = json.loads(row[0]) if row else {}
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _desk_persona(girl_id: str = "", girl_name: str = "") -> dict:
+    data = _desk_save_data()
+    store: dict = {}
+    try:
+        store = _life_read()
+        copy = {"succubi": []}
+        for g in data.get("succubi") or []:
+            if not isinstance(g, dict):
+                continue
+            g = dict(g)
+            if isinstance(g.get("world"), dict):
+                g["world"] = dict(g["world"])
+            copy["succubi"].append(g)
+        life_agent.overlay(copy, store, int(time.time() * 1000))
+        data = {**data, "succubi": copy["succubi"]}
+    except Exception as e:
+        print(f"[桌上工作] 讀生活表失敗：{e}", flush=True)
+    girl = _desk_find_girl(data, girl_id, girl_name)
+    rec = _desk_find_rec(store, girl_id, girl_name, girl)
+    return desk_agent.persona_from(girl=girl, rec=rec, name=girl_name)
+
+
+async def _desk_write_thoughts(run: dict, report: str) -> str:
+    """房間聊天同一條模型路徑（_life_say）。失敗回空字串。"""
+    persona = _desk_persona(run.get("girlId") or "", run.get("girlName") or "")
+    system, user = desk_agent.thoughts_prompt(run, report, persona)
+    return await _life_say(_desk_save_data(), system, user)
+
+
+desk_agent.WRITE_THOUGHTS = _desk_write_thoughts
+
+
 def _desk(fn, *args):
     conn = db()
     try:
