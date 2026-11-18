@@ -1857,6 +1857,28 @@ function deskPromptLines() {
   if (girl && girlInRoom()) out.push(...(window.RoomFrames?.promptLines?.() || []));   // 牆上相框（她寫的網頁）
   return out;
 }
+// ---------------------------------------------------------------- 相框作業時間：走到框前用看板（room_frames.js，2026-11-18）
+// 伺服器到點會排書桌更新（頁面沒開也會排）。她在房間且不忙時，走到那幅前面用一會兒；這一窗最多走一次，閘門沒過就等一下再試。
+function maybeStartFrameUse() {
+  if (!girl || !girlInRoom()) return;
+  const F = window.RoomFrames;
+  if (!F?.dueWalks) return;
+  const due = F.dueWalks();
+  if (!due.length) return;
+  const b = talkBusyFlags();
+  if (b.notInRoom || b.hidden || b.roomHidden || b.sheetOpen || b.talkBusy || b.scene || b.sex || b.undress || b.editor || b.summoning || b.errand || b.asleep) return;
+  if (window.RoomDesk?.busy?.() || window.RoomDesk?.tooTired?.()) return;
+  const a = window.RoomActor?.activity?.();
+  if (a && (a.id === "frame_use" || a.id === "desk_ask" || a.id === "approach_talk" || a.id === "hunger_beg")) return;
+  const item = due[0];
+  const wid = F.windowId?.(item.mode || {}, Date.now());
+  const ok = window.RoomActor?.startActivity?.("frame_use", { slot: item.slot });
+  if (!ok) return;
+  if (wid) F.markWalked?.(item.fid, wid);
+  pushDebug(`相框：作業時間到，走到「${item.title}」前面用`);
+  try { window.RoomActor?.tip?.(`${girl.name}走到相框前，開始用「${item.title}」。`, 4000); } catch { /* */ }
+}
+setInterval(() => { try { maybeStartFrameUse(); } catch { /* */ } }, 10000);
 /** 她回完那句 → 停一下讓你看完 → 收起對話（你又開始打字就不收，等你自己關）。 */
 function closeAfterOrderReply(ask) {
   setTimeout(() => {

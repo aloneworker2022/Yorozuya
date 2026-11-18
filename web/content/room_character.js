@@ -265,11 +265,25 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
     // ------------------------------------------------------------ activities
     const isFree=(u,v)=>valid(u,v);
     /** Where to do it: {cell,pos:{u,v},facing,cells,path} or null. */
-    function findSpot(spec){
+    function findSpot(spec,opts={}){
       const reach=reachable(),here=reach[0];
       const pickOne=list=>list.length?list[Math.floor(random()*list.length)]:null;
       const away=list=>{const far=list.filter(c=>c.path.length);return far.length?far:list;};
       const at=(c,du,dv,facing,cells)=>({cell:c,pos:{u:c.u+.5+du,v:c.v+.5+dv},facing,cells:cells||[{u:c.u,v:c.v}],path:c.path});
+      if(spec.spot==='frame'){
+        // 左牆 0、1（u=0，中心 v≈1.3／3），後牆 2、3（v=0，中心 u≈1／3）。站在框前、面向牆。
+        const slot=Math.max(0,Math.min(3,Number(opts.slot??spec.slot??0)||0));
+        const want=slot<2?{u:0,v:slot?3:1,facing:'back-left'}:{u:slot===2?1:3,v:0,facing:'back-right'};
+        const score=c=>Math.abs(c.u-want.u)+Math.abs(c.v-want.v);
+        const wall=reach.filter(c=>slot<2?c.u===0:c.v===0);
+        const pool=wall.length?wall:reach;
+        let best=null,bestS=1e9;
+        for(const c of pool){const s=score(c)+(c.path?c.path.length*0.01:0);if(s<bestS){best=c;bestS=s;}}
+        if(!best)return null;
+        const onU=best.u===0&&(best.v!==0||slot<2);
+        const off=-.16;
+        return onU?at(best,off,0,'back-left'):at(best,0,off,'back-right');
+      }
       if(spec.spot==='front'){
         const best=Math.max(...reach.map(c=>c.u+c.v)),c=pickOne(reach.filter(c=>c.u+c.v===best));
         return c&&at(c,.12,.12,'front');
@@ -463,8 +477,8 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
           act=prev;return false;
         }
         if(seat)return false;
-        const spot=findSpot(spec);if(!spot)return false;
-        act={spec,dur:dur(),phase:'go',spot,ordered};
+        const spot=findSpot(spec,opts);if(!spot)return false;
+        act={spec,dur:dur(),phase:'go',spot,ordered,slot:opts.slot};
         route=alignRoute(spot.path);route.push({u:spot.cell.u,v:spot.cell.v,x:spot.pos.u,y:spot.pos.v});
         next=null;state.mode='walking';
         prefetchPose(look,spec.pose,VIEW[spot.facing]);if(spec.lie)poseFrame(look,'hug_knees',0,VIEW[spot.facing],null,true);

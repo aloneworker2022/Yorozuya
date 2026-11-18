@@ -4,11 +4,11 @@
    - 點空的：請她寫一個網頁掛這裡（放一件上她的桌，做完她自己掛），或從書櫃挑她做過的網頁掛上去。
    - 四個都掛滿了不能再掛，要先拿下一幅（伺服器也擋，409）。
    - 書桌附件裡的 .html 也可以直接「掛牆上」（room_desk.js 叫 hangFile）。
-   - 使用者模式（2026-11-12）：相框外層（不是她寫的網頁）由你設定 誰來用（她／Hermes／她跟 Hermes）、
-     誰可以看（你／她／Hermes）、查看時間（每天幾點到幾點＋可選日期，台北時間）。存在伺服器（跟著那份網頁）。
-     預設只有你看得到；她要你勾了、而且在時間內才知道這幅（promptLines 只講她看得到的）。
-     你不在名單或不在時間內：打開只看到外層（可以改設定），網頁內容藏起來。
-   window.RoomFrames = {slots, key, open, hangFile, promptLines, pull, canView, inWindow} */
+   - 使用者模式（2026-11-12／18）：相框外層由你設定 誰來用、誰可以看、查看／作業時間（每天幾點到幾點＋可選日期，台北時間）。
+     時間有填：那段也是去作業的時間——伺服器到點排書桌更新（頁面沒開也會排）；誰來用是她／一起，她會走到相框前用一會兒。
+     誰來用是她／一起：她不必勾「誰可以看：她」也會知道這幅給她用（promptLines）。只有 Hermes：只排書桌、不走路。
+     預設只有你看得到。你不在名單或不在時間內：打開只看到外層（可以改設定），網頁內容藏起來。
+   window.RoomFrames = {slots, key, open, hangFile, promptLines, pull, canView, inWindow, windowId, sheKnows, dueWalks} */
 (() => {
   'use strict';
   const POLL_MS = 8000, SLOTS = 4;
@@ -26,7 +26,7 @@
     const d = new Date((nowMs ?? Date.now()) + 8 * 3600e3), p = n => String(n).padStart(2, '0');
     return { day: `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`, hm: `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}` };
   }
-  /** 現在在不在查看時間裡（沒設＝一直都在；22:00–02:00 這種跨午夜也行） */
+  /** 現在在不在查看／作業時間裡（沒設＝一直都在，但不自動作業；22:00–02:00 這種跨午夜也行） */
   function inWindow(mode, nowMs) {
     const m = { ...DEF_MODE, ...(mode || {}) }, t = tpe(nowMs);
     if (m.dateFrom && t.day < m.dateFrom) return false;
@@ -34,10 +34,60 @@
     if (!m.start || !m.end) return true;
     return m.start < m.end ? (t.hm >= m.start && t.hm < m.end) : (t.hm >= m.start || t.hm < m.end);
   }
+  /** 現在這個作業視窗的代號（開始那天＋開始時刻）。沒設時間或不在窗內 → ''（不自動作業）。 */
+  function windowId(mode, nowMs) {
+    const m = { ...DEF_MODE, ...(mode || {}) };
+    if (!m.start || !m.end || !inWindow(m, nowMs)) return '';
+    const t = tpe(nowMs);
+    let day = t.day;
+    if (!(m.start < m.end) && t.hm < m.start) {
+      const [y, mo, d] = t.day.split('-').map(Number);
+      const dt = new Date(Date.UTC(y, mo - 1, d - 1));
+      const p = n => String(n).padStart(2, '0');
+      day = `${dt.getUTCFullYear()}-${p(dt.getUTCMonth() + 1)}-${p(dt.getUTCDate())}`;
+    }
+    return `${day}T${m.start}`;
+  }
   /** who（you／her／hermes）現在看得到這幅網頁嗎 */
   const canView = (f, who, nowMs) => !!f && modeOf(f).viewers.includes(who) && inWindow(modeOf(f), nowMs);
+  /** 聊天時她知不知道這幅。誰來用是她／一起：只要在時間內就知道，不必勾「誰可以看：她」。 */
+  function sheKnows(f, nowMs) {
+    if (!f) return false;
+    const m = modeOf(f);
+    if (m.operator === 'her' || m.operator === 'both') return inWindow(m, nowMs);
+    return canView(f, 'her', nowMs);
+  }
+  const WALK_KEY = 'yoro_frame_walked';
+  let walkMem = {};
+  function walkedMap() {
+    try {
+      if (typeof localStorage === 'undefined') return { ...walkMem };
+      const raw = JSON.parse(localStorage.getItem(WALK_KEY) || '{}');
+      return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : { ...walkMem };
+    } catch { return { ...walkMem }; }
+  }
+  function wasWalked(fid, wid) { return !!fid && !!wid && walkedMap()[String(fid)] === String(wid); }
+  function markWalked(fid, wid) {
+    if (!fid || !wid) return;
+    const m = walkedMap();
+    m[String(fid)] = String(wid);
+    const keys = Object.keys(m);
+    if (keys.length > 80) keys.slice(0, keys.length - 80).forEach(k => { delete m[k]; });
+    walkMem = m;
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem(WALK_KEY, JSON.stringify(m)); } catch { /* quota */ }
+  }
+  /** 現在該走到相框前用的那幾幅（誰來用是她／一起、在作業窗內、這一窗還沒走過）。 */
+  function dueWalks(nowMs) {
+    return frames.filter(f => {
+      if (!f) return false;
+      const m = modeOf(f);
+      if (m.operator !== 'her' && m.operator !== 'both') return false;
+      const wid = windowId(m, nowMs);
+      return !!wid && !wasWalked(f.fid, wid);
+    });
+  }
   function modeText(m) {
-    const time = m.start && m.end ? `每天 ${m.start}–${m.end}` : '不限時間';
+    const time = m.start && m.end ? `每天 ${m.start}–${m.end} 作業／查看` : '不限時間（不會自動作業）';
     const days = m.dateFrom || m.dateTo ? `（${m.dateFrom || '…'} ～ ${m.dateTo || '…'}）` : '';
     return `誰來用：${OPS[m.operator] || '還沒選'}・誰可以看：${m.viewers.map(v => WHO[v]).join('、') || '沒有人'}・${time}${days}`;
   }
@@ -91,10 +141,10 @@
     } catch (e) { tip(e.message); return false; }
   }
 
-  /** 聊天 prompt（你＝她、他＝玩家）：只講她現在看得到的那幾幅（他勾了她、而且在查看時間內）；
-      看不到的一個字都不提，她不會知道。誰來用決定她能不能自己操作、能不能請 Hermes 一起。 */
+  /** 聊天 prompt（你＝她、他＝玩家）：只講她現在知道的那幾幅（誰來用是她／一起且在時間內，或勾了她且在時間內）；
+      不知道的一個字都不提。誰來用決定她能不能自己操作、能不能請 Hermes 一起。 */
   function promptLines(nowMs) {
-    const mine = frames.filter(f => canView(f, 'her', nowMs));
+    const mine = frames.filter(f => sheKnows(f, nowMs));
     if (!mine.length) return [];
     const out = ['【牆上的相框】'];
     for (const f of mine) {
@@ -181,15 +231,15 @@
         <div class="body">
         <div class="sec">誰來用</div>
         <div class="usr">${radio('', '還沒選')}${radio('her', '她')}${radio('hermes', 'Hermes')}${radio('both', '她跟 Hermes 一起')}
-          <div class="mini">選「她」或「她跟 Hermes 一起」，她才會知道這幅是給她用的。</div></div>
+          <div class="mini">選「她」或「一起」：到了作業時間她會走到相框前面用，並自動排書桌工作更新內容（她一定會知道這幅給她用，不必再勾下面的「她」）。選「Hermes」或「一起」：到點只由 Hermes 在書桌更新；只有 Hermes 時她不會走過來。</div></div>
         <div class="sec">誰可以看</div>
         <div class="usr">${box('you')}${box('her')}${box('hermes')}
-          <div class="mini">沒勾她，她就不會知道牆上有這幅。不勾你自己也行：你還是打得開這裡改設定，只是看不到網頁內容。</div></div>
-        <div class="sec">查看時間（台北時間，空著＝不限）</div>
+          <div class="mini">打開相框時誰能看到網頁內容。不勾你自己也行：你還是打得開這裡改設定，只是看不到網頁。誰來用已經是她／一起時，不用再勾「她」她也會知道這幅。</div></div>
+        <div class="sec">查看／作業時間（台北時間）</div>
         <div class="usr">
           <label>每天 <input type="time" id="frame-start" value="${esc(m.start)}"></label><label>到 <input type="time" id="frame-end" value="${esc(m.end)}"></label><br>
           <label>從 <input type="date" id="frame-d0" value="${esc(m.dateFrom)}"></label><label>到 <input type="date" id="frame-d1" value="${esc(m.dateTo)}"></label>
-          <div class="mini">例如每天 18:00 到 22:00；結束比開始早＝跨過午夜（22:00 到 02:00）。日期可以只填一邊。</div></div>
+          <div class="mini">填了開始和結束，這段也是去作業的時間：到了開始時間會自動排更新、她（誰來用是她／一起時）會走到相框前。例如每天 18:00 到 22:00；結束比開始早＝跨過午夜（22:00 到 02:00）。空著＝隨時都看得到，但不會自動去作業。日期可以只填一邊。</div></div>
         </div>
         <div class="hd" style="margin:8px 0 0"><span style="flex:1"></span>
           <button type="button" data-a="mode-cancel">取消</button><button type="button" class="go" data-a="mode-save">儲存</button></div>`;
@@ -284,7 +334,7 @@
   }
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && ov && !ov.hidden) close(); });
 
-  window.RoomFrames = { slots, key, open, close, hangFile, promptLines, pull, canView, inWindow, state: () => ({ frames: frames.slice(), wants: wants.slice(), offline }) };
+  window.RoomFrames = { slots, key, open, close, hangFile, promptLines, pull, canView, inWindow, windowId, sheKnows, dueWalks, markWalked, wasWalked, state: () => ({ frames: frames.slice(), wants: wants.slice(), offline }) };
   void pull();
   setTimeout(loop, POLL_MS);
 })();

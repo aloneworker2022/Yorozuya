@@ -6034,13 +6034,15 @@ def desk_notes_update(body: dict):
 
 
 async def _desk_schedule_loop():
-    """定期工作：每分鐘看一次，到時間就放一件上她的桌（她在房間就會去書桌做）。"""
+    """定期工作＋相框作業時間：每分鐘看一次。頁面沒開也會排（放上她的桌）。"""
     while True:
         try:
             conn = db()
             try:
                 for r in desk_agent.due_schedules(conn):
                     print(f"[桌上工作] 定期工作放上桌：{r['title']}（{r['girlName'] or '她'}）", flush=True)
+                for r in room_frames.due_jobs(conn):
+                    print(f"[相框] 作業時間到，更新放上桌：{r['title']}（{r['girlName'] or '她'}）", flush=True)
             finally:
                 conn.close()
         except Exception as e:

@@ -15,7 +15,12 @@
   空的＝不限。時間一律台北時間（UTC+8，沒有夏令時間）。
   設定存在 room_frame_modes，一幅（fid）一列，另記 run_id＋entry（哪一份網頁）。拿下來不刪；
   同一件同一頁再掛上去（新的 fid）就抄最近一次的設定，所以設定還在。同一頁同時掛兩格各自設定。
-  預設（沒設定過）：只有你看得到、誰來用沒選；她和 Hermes 要你打勾才看得到。
+  預設（沒設定過）：只有你看得到、誰來用沒選。
+  作業時間（2026-11-18）：查看時間有填開始／結束時，那段也是去作業的時間（台北）。
+  誰來用是她／Hermes／一起 → 視窗一到（或伺服器稍後趕上，仍在窗內）自動排一件書桌工作更新看板，
+  每幅每個視窗最多一次、桌上還有這幅沒做完的不再放。頁面沒開也會排（跟定期工作同一個迴圈）。
+  誰來用是她／一起：她在房間且不忙時會走到相框前面用一會兒（客戶端活動 frame_use）。
+  只有 Hermes：只排書桌、不走路。誰來用是她／一起時，她不必勾「誰可以看：她」也會知道這幅給她用。
 """
 from __future__ import annotations
 
@@ -103,6 +108,16 @@ def init(conn: sqlite3.Connection) -> None:
                      ("updated", "INTEGER NOT NULL DEFAULT 0")):
         if col not in have:
             conn.execute(f"ALTER TABLE room_frame_modes ADD COLUMN {col} {ddl}")
+    # 自動排的更新工作：一幅＋一個作業視窗一列，用來去重
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS room_frame_jobs (
+            fid       TEXT NOT NULL,
+            window_id TEXT NOT NULL,
+            run_id    INTEGER NOT NULL,
+            created   INTEGER NOT NULL,
+            PRIMARY KEY (fid, window_id)
+        )"""
+    )
     conn.commit()
 
 
@@ -222,6 +237,40 @@ def can_view(frame: dict, who: str, now: datetime | None = None) -> bool:
     return who in m.get("viewers", []) and in_window(m, now)
 
 
+def tpe_now(now: datetime | None = None) -> datetime:
+    """一律轉成台北時間。"""
+    t = now or datetime.now(TPE)
+    if t.tzinfo is None:
+        t = t.replace(tzinfo=TPE)
+    return t.astimezone(TPE)
+
+
+def window_id(mode: dict, now: datetime | None = None) -> str | None:
+    """現在所在的作業視窗代號（視窗開始那天＋開始時刻，例如 2026-11-18T18:00）。
+    沒設開始／結束、或不在窗內 → None（不自動作業）。跨午夜（22:00–02:00）算同一窗。"""
+    m = mode or {}
+    s, e = m.get("start") or "", m.get("end") or ""
+    if not s or not e or not in_window(m, now):
+        return None
+    t = tpe_now(now)
+    hm = t.strftime("%H:%M")
+    if s < e or hm >= s:
+        day = t.strftime("%Y-%m-%d")
+    else:
+        day = (t.date() - timedelta(days=1)).isoformat()
+    return f"{day}T{s}"
+
+
+def she_knows(frame: dict, now: datetime | None = None) -> bool:
+    """聊天時她知不知道這幅。誰來用是她／一起：只要在時間內就知道，不必勾「誰可以看：她」。"""
+    if not frame:
+        return False
+    m = frame.get("mode") or default_mode()
+    if m.get("operator") in ("her", "both"):
+        return in_window(m, now)
+    return can_view(frame, "her", now)
+
+
 def wants(conn: sqlite3.Connection) -> list[dict]:
     """還在她桌上做的（收回／丟掉的順手清掉）。"""
     rows = conn.execute("SELECT w.run_id, w.slot, w.created, r.title, r.status FROM room_frame_wants w "
@@ -329,8 +378,125 @@ def ask(conn: sqlite3.Connection, slot, what: str, girl_id: str = "", girl_name:
     return run
 
 
+UPDATE_MARK = "更新牆上的網頁看板"   # 作業時間到自動排的更新
+EXCERPT_MAX = 700
+
+
+def _excerpt(fid: str, entry: str = "index.html") -> str:
+    """現有頁面開頭，給更新委託的說明。讀不到就說一聲。"""
+    try:
+        p = file_path(fid, entry or "index.html")
+        text = " ".join(p.read_text(encoding="utf-8", errors="replace").split())
+    except (FrameError, OSError, UnicodeError):
+        return "（現有頁面讀不到。）"
+    if len(text) > EXCERPT_MAX:
+        text = text[:EXCERPT_MAX].rstrip() + "…"
+    return text or "（現有頁面是空的。）"
+
+
+def _update_note(frame: dict) -> str:
+    m = frame.get("mode") or default_mode()
+    op = {"her": "她", "hermes": "Hermes", "both": "她跟 Hermes 一起"}.get(m.get("operator") or "", "還沒選")
+    time = f"每天 {m['start']}–{m['end']}（台北時間）" if m.get("start") and m.get("end") else "不限時間"
+    where = f"{frame.get('wall') or '牆上'}第 {int(frame.get('slot') or 0) % 2 + 1} 格"
+    body = (
+        f"這是房間牆上相框裡的看板「{frame.get('title') or ''}」（編號 {frame.get('fid')}，{where}）。"
+        f"誰來用：{op}。作業／查看時間：{time}。"
+        "這一輪請更新這幅看板的內容：依它現在的用途和現有頁面，把該刷新的資料、列表、狀態、日期更新成這一輪該有的樣子，"
+        "保持同一個小 app／頁面的風格和操作方式，不要做成無關的新作品。"
+        "入口檔一定叫 index.html，放在附檔資料夾最上層；需要的 css／js／圖片也放同一個資料夾，用相對路徑引用。"
+        "會在沙盒 iframe 裡打開：不能用 localStorage、cookie，不能呼叫遊戲的接口，最好不要靠外部網路（CDN 也盡量不用）。"
+        "要在手機直式小螢幕上好看、好按。報告裡說一下你這次更新了什麼。"
+        f"\n現有頁面（{frame.get('entry') or 'index.html'}）開頭：\n{_excerpt(frame.get('fid') or '', frame.get('entry') or 'index.html')}"
+    )
+    return body[: desk_agent.NOTE_MAX]
+
+
+def _active_frame_job(conn: sqlite3.Connection, fid: str) -> int | None:
+    """這幅還在桌上、沒做完的更新工作（queued／placed／running／paused）。"""
+    row = conn.execute(
+        f"SELECT j.run_id FROM room_frame_jobs j JOIN desk_runs r ON r.id = j.run_id "
+        f"WHERE j.fid=? AND r.status IN ({desk_agent._in(desk_agent.WORKING)}) LIMIT 1",
+        (fid,),
+    ).fetchone()
+    return int(row[0]) if row else None
+
+
+def due_jobs(conn: sqlite3.Connection, now: datetime | None = None) -> list[dict]:
+    """作業時間到了：把更新看板的委託放到她桌上。每幅每個視窗最多一次；桌上還有這幅沒做完的不再放。"""
+    t = tpe_now(now)
+    out = []
+    for f in frames(conn):
+        if not f:
+            continue
+        m = f.get("mode") or default_mode()
+        if m.get("operator") not in ("her", "hermes", "both"):
+            continue
+        wid = window_id(m, t)
+        if not wid:
+            continue
+        if conn.execute("SELECT 1 FROM room_frame_jobs WHERE fid=? AND window_id=?", (f["fid"], wid)).fetchone():
+            continue
+        if _active_frame_job(conn, f["fid"]):
+            continue
+        title = f"{UPDATE_MARK}：{f.get('title') or '看板'}"[: desk_agent.TITLE_MAX]
+        qid = f"framejob:{f['fid']}:{wid}"[:80]
+        try:
+            run = desk_agent.put(
+                conn, quest_id=qid, title=title, note=_update_note(f),
+                girl_id=f.get("girlId") or "", girl_name=f.get("girlName") or "",
+            )
+        except desk_agent.DeskError as e:
+            print(f"[相框] 排更新失敗「{f.get('title') or ''}」：{e}", flush=True)
+            continue
+        conn.execute(
+            "INSERT OR IGNORE INTO room_frame_jobs (fid, window_id, run_id, created) VALUES (?,?,?,?)",
+            (f["fid"], wid, run["id"], now_ms()),
+        )
+        conn.commit()
+        out.append(run)
+    return out
+
+
+def apply_update(conn: sqlite3.Connection, run_id: int) -> dict | None:
+    """更新工作做完：用新的網頁覆蓋牆上同一幅（fid 不變，使用者模式還在）。"""
+    row = conn.execute("SELECT fid FROM room_frame_jobs WHERE run_id=?", (run_id,)).fetchone()
+    if not row:
+        return None
+    fid = row[0]
+    cur = next((f for f in frames(conn) if f and f["fid"] == fid), None)
+    if not cur:
+        desk_agent.add_event(conn, run_id, "main", "status", "牆上已經沒有這幅了，更新留在書櫃。", "")
+        return None
+    names = html_files(run_id)
+    if not names:
+        desk_agent.add_event(conn, run_id, "main", "status", "沒做出網頁（index.html），牆上那幅先保持原樣。", "fail")
+        return None
+    src = desk_agent.files_dir(run_id).resolve()
+    dst = (root() / fid).resolve()
+    tmp = (root() / f"{fid}.new").resolve()
+    bak = (root() / f"{fid}.old").resolve()
+    if tmp.exists():
+        shutil.rmtree(tmp, ignore_errors=True)
+    if bak.exists():
+        shutil.rmtree(bak, ignore_errors=True)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, tmp, ignore=shutil.ignore_patterns(".*"))
+    if dst.exists():
+        dst.rename(bak)
+    tmp.rename(dst)
+    shutil.rmtree(bak, ignore_errors=True)
+    conn.execute("UPDATE room_frames SET entry=?, run_id=? WHERE fid=?", (names[0], run_id, fid))
+    conn.commit()
+    desk_agent.add_event(conn, run_id, "main", "status", f"她更新了{cur['wall']}上的「{cur['title']}」。", "ok")
+    return next((f for f in frames(conn) if f and f["fid"] == fid), cur)
+
+
 def on_done(conn: sqlite3.Connection, run_id: int) -> dict | None:
-    """書桌那件做完（desk_agent.drive 報告交了）：是你請她寫的就她自己掛。→ 掛上的那幅或 None。"""
+    """書桌那件做完：更新看板就覆蓋原幅；是你請她寫的就她自己掛。→ 那幅或 None。"""
+    updated = apply_update(conn, run_id)
+    if updated is not None or conn.execute("SELECT 1 FROM room_frame_jobs WHERE run_id=?", (run_id,)).fetchone():
+        return updated
     w = conn.execute("SELECT slot FROM room_frame_wants WHERE run_id=?", (run_id,)).fetchone()
     if not w:
         return None

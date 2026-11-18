@@ -91,6 +91,64 @@ async def main():
     c.close()
     print("room_frames ok")
     modes(run["id"])
+    await jobs(run["id"])
+
+
+async def jobs(run_id):
+    """作業時間到自動排書桌更新：台北時區、每窗一次、不堆疊、做完覆蓋原幅。"""
+    from datetime import datetime
+    tpe = lambda s: datetime.strptime(s, "%Y-%m-%d %H:%M").replace(tzinfo=F.TPE)
+    c = connect()
+    for s in range(F.SLOTS):
+        if F.frames(c)[s]:
+            F.unhang(c, s)
+    for r in c.execute("SELECT id FROM desk_runs WHERE status IN ('queued','placed','running','paused')").fetchall():
+        D.cancel(c, r[0])
+    f = F.hang(c, run_id, "index.html", 0)
+    noon, eve, closed = tpe("2026-11-18 12:00"), tpe("2026-11-18 19:30"), tpe("2026-11-18 22:00")
+    # 沒設誰來用、沒設時間：不排
+    assert F.due_jobs(c, eve) == []
+    assert F.window_id(F.default_mode(), eve) is None
+    F.set_mode(c, 0, {"operator": "her", "viewers": ["you"]})  # 時間空＝不自動作業，但她會知道
+    assert F.window_id(F.get_mode(c, 0), eve) is None
+    assert F.due_jobs(c, eve) == []
+    assert F.she_knows(F.frames(c)[0], noon) and not F.can_view(F.frames(c)[0], "her", noon)
+    F.set_mode(c, 0, {"operator": "her", "viewers": ["you"], "start": "18:00", "end": "22:00"})
+    assert F.window_id(F.get_mode(c, 0), noon) is None
+    assert F.window_id(F.get_mode(c, 0), eve) == "2026-11-18T18:00"
+    assert F.window_id(F.get_mode(c, 0), closed) is None
+    assert F.she_knows(F.frames(c)[0], eve) and not F.she_knows(F.frames(c)[0], noon)
+    assert not F.can_view(F.frames(c)[0], "her", eve), "不必勾「她」也會知道，但不等於她打開看得到內容"
+    # 跨午夜：同一窗
+    night = {"start": "22:00", "end": "02:00"}
+    assert F.window_id(night, tpe("2026-11-18 23:10")) == "2026-11-18T22:00"
+    assert F.window_id(night, tpe("2026-11-19 01:00")) == "2026-11-18T22:00"
+    assert F.window_id(night, tpe("2026-11-19 22:05")) == "2026-11-19T22:00"
+    assert F.window_id(night, tpe("2026-11-19 03:00")) is None
+    out = F.due_jobs(c, eve)
+    assert len(out) == 1 and out[0]["title"].startswith(F.UPDATE_MARK), out
+    assert f["fid"] in (out[0].get("note") or "") and "18:00" in (out[0].get("note") or "")
+    assert F.due_jobs(c, eve) == [] and F.due_jobs(c, tpe("2026-11-18 20:10")) == []
+    rid = out[0]["id"]
+    c.close()
+    await finish(rid)
+    c = connect()
+    html = F.file_path(f["fid"], "index.html").read_text(encoding="utf-8")
+    assert F.UPDATE_MARK.split("的")[0] in html or "更新牆上" in html or F.frames(c)[0]["runId"] == rid
+    assert F.frames(c)[0]["fid"] == f["fid"] and F.frames(c)[0]["mode"]["operator"] == "her"
+    assert F.due_jobs(c, eve) == [], "同一窗做完也不再排"
+    nxt = F.due_jobs(c, tpe("2026-11-19 18:05"))
+    assert len(nxt) == 1 and nxt[0]["id"] != rid
+    # 桌上這件還沒做完：隔天視窗也不再堆
+    assert F.due_jobs(c, tpe("2026-11-20 18:05")) == []
+    D.cancel(c, nxt[0]["id"])
+    # 只有 Hermes：也排書桌（不走路是客戶端的事）
+    F.set_mode(c, 0, {"operator": "hermes", "viewers": ["you"], "start": "09:00", "end": "11:00"})
+    herm = F.due_jobs(c, tpe("2026-11-18 09:30"))
+    assert len(herm) == 1
+    D.cancel(c, herm[0]["id"])
+    c.close()
+    print("room_frames jobs ok")
 
 
 def modes(run_id):

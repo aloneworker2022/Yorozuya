@@ -29,9 +29,18 @@ await t("預設（沒設定）：只有你看得到，她不知道這幅", async
   assert.equal(R.promptLines(NOON).length, 0);
 });
 
-await t("沒勾她 → 一個字都不提", async () => {
+await t("誰來用是她：不必勾「誰可以看：她」也會知道", async () => {
   const R = await load([fr(0, "秘密看板", { operator: "her", viewers: ["you", "hermes"] }), null, null, null]);
+  const s = R.promptLines(NOON).join("\n");
+  assert.match(s, /秘密看板/);
+  assert.match(s, /給你用的看板/);
+  assert.ok(R.sheKnows(R.state().frames[0], NOON));
+  assert.ok(!R.canView(R.state().frames[0], "her", NOON));
+});
+await t("誰來用還沒選、也沒勾她 → 一個字都不提", async () => {
+  const R = await load([fr(0, "秘密看板", { operator: "", viewers: ["you", "hermes"] }), null, null, null]);
   assert.equal(R.promptLines(NOON).length, 0);
+  assert.ok(!R.sheKnows(R.state().frames[0], NOON));
 });
 
 await t("勾了她但不在查看時間內 → 不提；時間內 → 提", async () => {
@@ -72,12 +81,32 @@ await t("誰來用的措辭：她／一起／只有 Hermes／還沒選", async (
 await t("只把看得到的那幾幅講出去（混在一起）", async () => {
   const R = await load([
     fr(0, "看得到", { operator: "her", viewers: ["her"] }),
-    fr(1, "看不到", { operator: "her", viewers: ["you"] }),
+    fr(1, "看不到", { operator: "", viewers: ["you"] }),
     null, null,
   ]);
   const s = R.promptLines(NOON).join("\n");
   assert.match(s, /看得到/);
   assert.ok(!s.includes("看不到"));
+});
+
+await t("作業視窗代號：台北時間、跨午夜同一窗；沒設時間不排", async () => {
+  const R = await load([fr(0, "晚間板", { operator: "her", viewers: ["you"], start: "18:00", end: "22:00" }), null, null, null]);
+  const m = { start: "18:00", end: "22:00" };
+  assert.equal(R.windowId(m, at("2026-11-18T12:00")), "");
+  assert.equal(R.windowId(m, at("2026-11-18T19:30")), "2026-11-18T18:00");
+  assert.equal(R.windowId(m, at("2026-11-18T22:00")), "");
+  const night = { start: "22:00", end: "02:00" };
+  assert.equal(R.windowId(night, at("2026-11-18T23:10")), "2026-11-18T22:00");
+  assert.equal(R.windowId(night, at("2026-11-19T01:00")), "2026-11-18T22:00");
+  assert.equal(R.windowId(night, at("2026-11-19T22:05")), "2026-11-19T22:00");
+  assert.equal(R.windowId({}, NOON), "");
+  const due = R.dueWalks(at("2026-11-18T19:30"));
+  assert.equal(due.length, 1);
+  assert.equal(due[0].title, "晚間板");
+  assert.equal(R.dueWalks(at("2026-11-18T12:00")).length, 0);
+  const wid = R.windowId(m, at("2026-11-18T19:30"));
+  R.markWalked(due[0].fid, wid);
+  assert.equal(R.dueWalks(at("2026-11-18T19:30")).length, 0);
 });
 
 await t("UI：外層有「使用者模式」、存到 /api/frames/mode；你不在名單時藏內容", async () => {
