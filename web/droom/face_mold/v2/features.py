@@ -88,7 +88,8 @@ def eye_px():
         ch=eyeAt(s*(xx+.5-ex)/ES,(yy+.5-ey)/ES,s)
         if ch:o[(xx,yy)]=(EPAL[ch],0)
   return o
-LAYERS=[brow_px(),eye_px(),nose_px(),mouth_px()]
+NOSE=nose_px()
+LAYERS=[brow_px(),eye_px(),NOSE,mouth_px()]
 def isface(img,X,Yp):
   return 0<=X<N and 0<=Yp<N and tuple(img[Yp,X])!=(255,255,255) and tuple(img[Yp,X])!=DK
 def paint_front(img):
@@ -98,6 +99,7 @@ def paint_front(img):
 def paint_turn(img,deg,cx):
   a=math.radians(deg);ca,sa=math.cos(a),math.sin(a);zbuf={}
   for L in LAYERS:
+    if L is NOSE:continue          # 轉過去的鼻子另外畫（正面那條線投影過去會被壓扁）
     for (X,Yp),(c,dz) in L.items():
       for i in range(4):
         for j in range(4):
@@ -114,6 +116,25 @@ def paint_turn(img,deg,cx):
           if k not in zbuf or zbuf[k][0]<d:zbuf[k]=(d,c)
   for (PX,PY),(d,c) in zbuf.items():
     if isface(img,PX,PY):img[PY,PX]=c
+  if 0<deg<90:nose_turn(img,sa,cx)
+def nose_turn(img,sa,cx):
+  # 45° 鼻子（使用者：山根要畫出來、要立體）：沿著側臉中線（x＝0、z＝zp）投影出鼻樑線——
+  # 從眉頭下面（山根，先往內凹）一路到鼻頭；鼻樑右邊（背光那面，光從左上）一條淡影；鼻頭深色、鼻底往右一小段影子
+  from shape3d import zp
+  def P(y):return cx-zp(y)*sa*S,Y(y)
+  put=lambda X,Yp,c:isface(img,X,Yp) and img.__setitem__((Yp,X),c)
+  pts={}
+  for k in range(400):
+    y=528+k*(567-528)/399;X,Yp=P(y);pts.setdefault(round(Yp),[]).append(round(X))
+  tipY=round(Y(567));tipX=min(pts[tipY])
+  for Yp,xs in sorted(pts.items()):
+    y=CYR+(Yp-CY)/S
+    for X in set(xs):put(X,Yp,LT if y<538 else SH)
+    if 549<=y<565:                                         # 鼻樑右邊的影子（越往下越寬）
+      put(max(xs)+1,Yp,SH if y>=556 else LT)
+      if y>=556:put(max(xs)+2,Yp,LT)
+  # 鼻頭：深色尖角朝左（翹頭尖鼻），底下往右一小段鼻底影子
+  for dx,dy,c in[(1,-2,SH),(0,-1,DK),(-1,0,DK),(0,0,DK),(0,1,DK),(1,1,DK),(2,1,DK),(3,1,SH),(4,0,SH),(2,2,LT),(3,2,LT)]:put(tipX+dx,tipY+dy,c)
 out=os.environ.get('OUT',D)
 f=np.array(Image.open(f'{D}/front.png').convert('RGB'));paint_front(f);Image.fromarray(f).save(f'{out}/front_f.png')
 t=np.array(Image.open(f'{D}/turn45.png').convert('RGB'));paint_turn(t,45,126);Image.fromarray(t).save(f'{out}/turn45_f.png')
