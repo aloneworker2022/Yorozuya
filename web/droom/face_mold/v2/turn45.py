@@ -73,8 +73,9 @@ sh=neck&~head&np.roll(head,3,0);img[sh]=SH      # 下巴壓在脖子上：影子
 img[head]=SK
 # 近側耳朵（側臉的耳朵貼在頭的側面 x≈球半徑，轉 45° 投影）
 EAR=[(329,546),(336,540),(345,539),(352,547),(352,560),(346,572),(337,580),(327,584),(324,575),(326,560)]
+EDZ=float(os.environ.get("EDZ","20"))
 def earpt(xs,y):
-  return scr(54,y,322-xs)       # 耳朵貼在頭的側面（x＝54，比頭蓋半寬往內一點，才不會凸出後腦）
+  return scr(54,y,322-xs+EDZ)   # 耳朵貼在頭的側面（x＝54）；45° 往前移 EDZ，整個收進頭裡（使用者 2026-11-18）
 em=mask([earpt(x,y) for x,y in cr([(x,y) for x,y in EAR],True,6)])
 img[em]=SK;img[em&edge(em)]=DK
 for x,y in cr([earpt(333,547),earpt(343,545),earpt(347,553),earpt(344,566)],n=6):img[round(y),round(x)]=SH
