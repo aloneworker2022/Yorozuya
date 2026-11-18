@@ -461,7 +461,68 @@
       }
     }
     function r0(P, doll) { return cupRadius(P, doll); }
-    function cupRadius(P, doll) { const b = P.b; return (CUP_R[doll.cup] || 3.1) * b.bust ** .7 * b.frame ** .5; }
+    // 2026-11-15 試作（使用者：副乳要加；乳房朝兩邊外擴＋上胸無肉＝兩個參數；乳溝是兩顆很近才有；乳房間隔是獨立項目）
+    //   doll.gap：'close' 靠近／'apart' 分開／沒給＝原本；doll.splay：外擴角度（度，沒給＝BUST_SPLAY 預設微微朝外）；
+    //   doll.flatTop：上胸無肉（根部那一段變細、往下收）；doll.noTail：不要副乳。
+    const BUST_SPLAY = 10, BUST_SPLAY_WIDE = 24, BUST_SPLAY_CLOSE = 20;
+    function bustPost(sh, doll, s, root0, r, kn0, ks0, g) {
+      const prims = sh.prims, st = sh.areolaStamps || [], root = root0.slice();
+      const coneB = p => [p.a[0] + p.ba[0], p.a[1] + p.ba[1], p.a[2] + p.ba[2]];
+      const setCone = (p, a, b) => { p.a = a; p.ba = [b[0] - a[0], b[1] - a[1], b[2] - a[2]]; p.L2 = p.ba[0] ** 2 + p.ba[1] ** 2 + p.ba[2] ** 2 || 1e-6; p.bc = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]; p.br = Math.sqrt(p.L2) / 2 + Math.max(p.ra, p.rb); };
+      const each = (f) => {   // 對這一顆的每個點做 f
+        for (let i = kn0; i < prims.length; i++) { const p = prims[i];
+          if (p.k === 0) { p.c = f(p.c); p.bc = p.c; } else if (p.k === 1) setCone(p, f(p.a), f(coneB(p))); }
+        for (let i = ks0; i < st.length; i++) st[i].q = f(st[i].q);
+      };
+      // 上胸無肉：接胸口那一段（第一個圓錐）根部變細、往下往後收，上面只剩一條斜坡
+      if (doll.flatTop) for (let i = kn0; i < prims.length; i++) { const p = prims[i]; if (p.k !== 1 || p.nip) continue;
+        const b = coneB(p); p.ra *= .38; setCone(p, [p.a[0], p.a[1] - r * .1, p.a[2] - r * .3], b); break; }
+      // 太大一定會垂：E 以上從根部往下拉長，越大越多（半球型有撐住、只垂一點）
+      const sag = Math.max(0, r - 4.3) * (doll.braSupport ? .05 : doll.shape === 'pendulous' || doll.shape === 'heavy' || doll.shape === 'wide' ? .03 : .13);   // 木瓜本來就垂，長度寫在形狀裡，不再多拉
+      if (sag) each(q => [q[0], q[1], root[2] + (q[2] - root[2]) * (1 + sag)]);
+      // 間隔：整顆左右平移
+      // 2026-11-17（使用者）：靠近＝兩顆又圓又挺、沒穿內衣互相推擠 → 不是疊在一起變一條直線，是各自微微往兩邊轉開、乳頭朝外，只在中間碰到的那一小段有乳溝
+      const close = doll.gap === 'close';
+      const dx = doll.gap === 'apart' ? (.9 + r * .12) : 0;
+      if (dx) { each(q => [q[0] + s * dx, q[1], q[2]]); root[0] += s * dx; }
+      // 外擴：繞著根部的垂直軸往外轉（乳頭、乳暈跟著轉）
+      const deg = doll.splay == null ? (close ? BUST_SPLAY_CLOSE : BUST_SPLAY) : doll.splay === 'wide' ? BUST_SPLAY_WIDE : +doll.splay, th = deg * Math.PI / 180, c = Math.cos(th), sn = Math.sin(th);
+      if (th) each(q => { const X = q[0] - root[0], Y = q[1] - root[1]; return [root[0] + X * c + s * Y * sn, root[1] - s * X * sn + Y * c, q[2]]; });
+      if (close) {   // 轉開之後再整顆往中間推，推到兩顆在中線上互相壓進去一點點（碰到的那一段＝乳溝）
+        let o = null; for (let i = kn0; i < prims.length; i++) if (prims[i].k === 0 && !prims[i].nip) { o = prims[i]; break; }
+        if (o) { const inner = Math.abs(o.c[0]) - o.r[0], sh2 = -r * .035 - inner; each(q => [q[0] + s * sh2, q[1], q[2]]); root[0] += s * sh2; }
+      }
+      // 小起伏（平坦 B、饅頭 A／B）：隆起太矮、描不出輪廓，另外在表面畫弧線——饅頭 A 畫外側「( )」、平坦 B 畫下緣、饅頭 B 外側繞到下緣
+      const SHP = doll.shape || 'round', arc = doll.braSupport ? (doll.cup === 'B' ? [-35, 215] : null) : (SHP === 'dome' ? (doll.cup === 'A' ? [-50, 50] : doll.cup === 'B' ? [-55, 150] : null) : SHP === 'flat' && doll.cup === 'B' ? [35, 145] : null);
+      // 正側面看不到乳房外側、內側那兩段邊界（那裡是平滑的曲面，畫了會變成一條直直的黑線蓋住隆起）→ 側面只留下緣那一段
+      if (arc && Math.abs(doll._yaw || 0) >= 60) { arc[0] = Math.max(arc[0], 50); arc[1] = Math.min(arc[1], 130); }
+      if (arc && arc[1] - arc[0] < 24) arc.length = 0;
+      if (arc && arc.length) { let o = null; for (let i = kn0; i < prims.length; i++) if (prims[i].k === 0 && !prims[i].nip) { o = prims[i]; break; }
+        if (o) { const pts = []; for (let a = arc[0]; a <= arc[1]; a += 12) { const t = a * Math.PI / 180; const cr = o.capR || [o.r[0] * .97, o.r[2] * .97]; pts.push([o.c[0] + s * cr[0] * Math.cos(t), o.c[2] - cr[1] * Math.sin(t)]); }   // 角度：0＝外側、90＝正下、180＝內側
+          const c0 = sh.crease; sh.crease = 1; marks(sh, pts, .18, .2); sh.crease = c0; } }
+      // 副乳：腋下前緣往乳房外上方的一小條肉
+      if (!doll.noTail && r > 1.6 && doll.shape !== 'pendulous' && doll.shape !== 'heavy' && doll.shape !== 'wide') {   // 木瓜根部要小，不接副乳
+        const A = [s * (6.9 * g.cs + r * .06), g.yl(g.zA) + .9 * g.cs, g.zA - .5];
+        let o = null; for (let i = kn0; i < prims.length; i++) if (prims[i].k === 0 && !prims[i].nip) { o = prims[i]; break; }
+        if (o) sh.cone(0, A, [o.c[0] + s * o.r[0] * .6, o.c[1] - o.r[1] * .35, o.c[2] + o.r[2] * .35], .5 + r * .05, r * .36);
+      }
+    }
+    function bustCleave(sh, doll, r, zA, zB) {
+      if (doll._noBust || doll._press || doll.shape === 'wide') return;   // 八字：兩顆在上面碰一下就往兩邊分開，不畫直的乳溝線
+      const bp = sh.prims.filter(p => p.bust && p.mat === 0 && !p.nip), pts = [];
+      const dL = (x, y, z, sd) => { let d = 1e9; for (const p of bp) if (p.bside === sd) d = Math.min(d, primDist(p, x, y, z)); return d; };
+      for (let z = zB + r * .75; z >= zB - r * 2.6; z -= .35) {   // 上限：乳房上半中段（不要一路畫到鎖骨）   // 中線上：兩顆的表面都蓋到中線＝擠在一起
+        let y = null; for (let k = 0; k < 160; k++) { const yy = 14 - k * .1; if (dL(0, yy, z, -1) < 0 && dL(0, yy, z, 1) < 0) { y = yy; break; } }
+        if (y !== null && bodyDist(sh, 0, y + .25, z) > -.35) pts.push([0, y + .3, z]);   // 乳溝是 V 形的谷，線要浮在谷底上面一點才看得到
+      }
+      if (pts.length >= 3) { const c0 = sh.crease; sh.crease = 1; for (let i = 0; i + 1 < pts.length; i++) sh.cone(MARK, pts[i], pts[i + 1], .28, .28); sh.crease = c0; }
+    }
+    // 2026-11-16 試作：小罩杯的階梯（使用者）——A 平坦＝平的；A 饅頭＝微微腫起，跟 B 平坦差不多大；B 饅頭更明顯
+    // 凸出量要扣掉「胸口在乳房那個位置本來就比正中間往後縮」的幾格，不然正側面看不到隆起
+    const SMALL_G = { flat: { A: [1.5, 1.4, .1], B: [2.5, 2.3, 1.15] }, dome: { A: [2.5, 2.3, 1.15], B: [3.0, 2.7, 1.95] },
+      hemi: { B: [2.5, 2.5, 2.5, 1.1, .9], C: [3.2, 3.2, 3.1, 1.1, 1.0] } };   // 半球 B／C：小但是圓挺（凸出≈半徑的 3/4）；第 4 個＝球的深度倍率（小＝越接近半球）、第 5 個＝往上移   // [半寬, 半高, 往前凸]（模型格；1 格＝2×圖的 2 格）
+    const SMALL_R = { flat: { A: .55, B: 1.7 }, dome: { A: 1.7, B: 2.35 } };
+    function cupRadius(P, doll) { const b = P.b, sm = (SMALL_R[doll.shape] || {})[doll.cup]; return (sm || CUP_R[doll.cup] || 3.1) * b.bust ** .7 * b.frame ** .5; }
     function bustOuter(P, doll) { const b = P.b, r = cupRadius(P, doll); return (3.2 + r * .3) * F(b, 'chest') ** .5 + r * .95; }
     // 2026-11-01：動漫臉型（使用者參考圖；doll.face＝'anime' 才用，先做樣品）：
     //  上半＝圓頭骨（頭頂高度不變，頭髮照舊貼合）；下半＝V 字下巴：顴骨（眼睛高度）最寬，兩條下顎線從耳下斜斜往前下收到尖下巴；
@@ -652,7 +713,7 @@
           nipAt([c[0], c[1] + ry * .97, c[2]], [0, 1, 0], { c, r: R });
           sh._pressFront = [0, c[1] + ry, c[2]]; sh._pressRy = ry;
         } else
-        if (doll.braSupport) {
+        if (doll.braSupport && !SMALL_G.hemi[doll.cup]) {
           // 2026-10-30 pt78u：穿胸罩＝托高＋往中間集中＋往前挺。不管原本圓／鐘／下垂，都收成被罩杯撐住的圓挺形（下垂型變化最大）
           const zS = zB + 1.4 + r * .3 + bz * .3, c = [s * (2.5 + r * .26) * cs + bx * .35, yl(zS) + 3.5 * cs + r * .62 + by * .4, zS];
           sh.cone(BODY, [s * (2.4 + r * .2) * cs, yl(zA) + 2.4 * cs + r * .1, zA], c, r * .55, r * .82);
@@ -670,22 +731,33 @@
         } else if (SHP === 'pendulous' && hang <= .05) {
           // 下垂（v8）：根部在胸口高處，乳肉沿重力往下（−z）長長掛下來，最低點遠低於乳房下緣，底部像袋子最飽滿、乳頭朝下
           // 2026-10-31：巨乳外擴——根部靠近胸骨（兩顆果子同根），下緣／底部隨罩杯往左右拉開
-          const L = r * 1.9 + 1.5;
-          const flare = Math.max(0, (r - 3.5) * .6);   // C≈0 → D≈0.6 → G≈1.56
-          const top = [s * (2.35 + r * .1) * cs, yl(zA) + 2.0 * cs + r * .25, zA];
-          const mid = [s * (2.95 + r * .26 + flare * .5) * cs, yl(zA) + 2.4 * cs + r * .55, zA - L * .55];
-          const bot = [s * (3.2 + r * .28 + flare) * cs + bx, yl(zA) + 2.4 * cs + r * .6 + by, zA - L + bz];
-          sh.cone(BODY, top, mid, r * .5, r * .78);
-          sh.cone(BODY, mid, bot, r * .78, r * .9);
-          const pr = [r * (.98 + flare * .04), r * .8, r * .85];
-          sh.ell(BODY, [bot[0], bot[1], bot[2] + r * .1], pr);
-          {   // 2026-10-31 pt91u：朝下約 40°；乳暈畫在曲面；巨乳時指向略帶左右外開
-            const pc = [bot[0], bot[1], bot[2] + r * .1], a = 40 * Math.PI / 180, out = Math.min(.35, flare * .18);
-            const n = [s * out, Math.cos(a), -Math.sin(a)], nn = Math.hypot(...n), nu = n.map(v => v / nn);
-            const q = [pc[0] + pr[0] * nu[0], pc[1] + pr[1] * nu[1], pc[2] + pr[2] * nu[2]];
-            nipAt(q, nu, { c: pc, r: pr });
+          // 2026-11-17 試作（使用者附圖：木瓜）：根部小、越下面越大、最底是一顆大圓袋，底部往外開；乳頭在最底偏外、朝下。比原本短（原本像長條袋子）
+          // 2026-11-17 第 6 版（使用者：不要用「()」一顆球硬套在最底——球和上面那段接起來會有一個段差；上胸＝根部微微凹入、再順著弧度出來）
+          //   整顆是一條連續的曲線：沿著往下掛的軸，粗細照一條平滑的函數變化（根部細 → 先慢後快變粗＝凹進去再順出來 → 最粗在靠乳頭那端 → 圓順地收到乳頭），
+          //   用很多小段接起來，沒有另外的球。軸在最底往前彎一點，乳頭在尖端、朝前下。
+          const L = r * 1.7 + 1.4 + Math.max(0, r - 6) * 1.2;
+          const flare = Math.max(0, (r - 3.5) * .3);
+          const P0 = [s * (2.4 + r * .08) * cs, yl(zA) + 2.0 * cs + r * .14, zA - r * .1];
+          const P1 = [s * (3.2 + r * .2 + flare) * cs + bx, yl(zA) + 2.4 * cs + r * .5 + by, zA - L * .98 + bz];
+          const P2 = [P1[0] + s * r * .16, P1[1] + r * .46, P1[2] - r * .5];
+          const ax = (t) => { const a = (1 - t) * (1 - t), b = 2 * t * (1 - t), c = t * t; return [a * P0[0] + b * P1[0] + c * P2[0], a * P0[1] + b * P1[1] + c * P2[1], a * P0[2] + b * P1[2] + c * P2[2]]; };
+          // 2026-11-17（使用者）：中間太薄、根部太少 → 根部加大、中段更早變粗；接近乳頭要慢慢收尖 → 最後 36% 不是半球，是一路慢慢收細到乳頭（木瓜的尖端）
+          const RM = r * .8, R0 = r * .4, fc = .36;
+          const rad = (t) => t <= 1 - fc ? R0 + (RM - R0) * Math.pow(t / (1 - fc), 1.15) : RM * (1 - .66 * Math.pow((t - (1 - fc)) / fc, 1.5));
+          const N = 26; let pa = ax(0), ra = rad(0);
+          for (let q = 1; q <= N; q++) { const t = q / N, pb2 = ax(t), rb = Math.max(.25, rad(t)); sh.cone(BODY, pa, pb2, ra, rb); pa = pb2; ra = rb; }
+          {
+            const e0 = ax(.94), e1 = ax(1), n = [e1[0] - e0[0], e1[1] - e0[1], e1[2] - e0[2]], nn = Math.hypot(...n), nu = n.map(v => v / nn);
+            nipAt([pa[0] + nu[0] * ra * .9, pa[1] + nu[1] * ra * .9, pa[2] + nu[2] * ra * .9], nu, { c: pa, r: [ra * 1.6, ra * 1.6, ra * 1.6] });
           }
-        } else if (SHP === 'dome' && hang <= .05) {
+        } else if ((SMALL_G[doll.braSupport ? 'hemi' : SHP] || {})[doll.cup] && hang <= .05) {
+          // 2026-11-16 小起伏：直接指定「寬、高、往前凸多少」，貼在胸口表面上的一片圓帽（不是把大乳房縮小）
+          const [w, h, prot, kf = 2, up = 0] = SMALL_G[doll.braSupport ? 'hemi' : SHP][doll.cup], xc = s * (3.3 + w * .25) * cs + bx, zc = zB + .3 + up;
+          const ys = frontSurfaceY(sh, xc, zc) ?? (yl(zB) + 3.3 * cs), R1 = prot * kf + .2, k = (R1 - prot) / R1, f = 1 / Math.sqrt(1 - k * k);
+          const c = [xc, ys - R1 + prot, zc], R = [w * f, R1, h * f];
+          sh.ell(BODY, c, R); sh.prims[sh.prims.length - 1].capR = [w, h];
+          nipAt([xc, ys + prot * .98, zc - h * .08], [0, 1, 0], { c, r: R });
+        } else if ((SHP === 'dome' || SHP === 'flat') && hang <= .05) {
           // 2026-11-07 饅頭（dome）：底很寬、隆起矮、往前凸得少，像倒扣的饅頭；A 幾乎只是一片微隆。
           // 中心貼近胸口（往前推得少）、左右上下鋪開，前面那面較平；乳頭在正前方偏下一點。
           const c = [s * (3.2 + r * .28) * cs + bx, yl(zB) + 3.1 * cs + r * .1 + by, zB + r * .12];
@@ -693,6 +765,59 @@
           sh.cone(BODY, root, c, r * .45, r * .5);   // 根部接胸口；半徑要比前面那面小，不然會把饅頭撐成圓的
           sh.ell(BODY, c, R);
           nipAt([c[0], c[1] + R[1] * .97, c[2] - r * .06], [0, 1, 0], { c, r: R });
+        } else if (SHP === 'perky' && hang <= .05) {
+          // 2026-11-15 試作 挺俏上挺：位置高、比圓形小一點結實，乳頭朝前上約 20°
+          const c = [cx, cy - r * .12, zB + r * .4], R = [r * .9, r * .95, r * .84];
+          sh.cone(BODY, root, c, r * .5, r * .74);
+          sh.ell(BODY, c, R);
+          { const a = 20 * Math.PI / 180, nu = [0, Math.cos(a), Math.sin(a)]; nipAt([c[0], c[1] + R[1] * nu[1], c[2] + R[2] * nu[2]], nu, { c, r: R }); }
+        } else if (SHP === 'teardrop' && hang <= .05) {
+          // 2026-11-15 試作 水滴：上面細細從胸口斜下來、肉在下半，比圓形垂；乳頭朝前微微朝下
+          const c = [cx, cy - r * .05, zB - r * .3], R = [r * .98, r * .9, r * .9];
+          sh.cone(BODY, [root[0], root[1] - r * .05, root[2]], c, r * .34, r * .84);
+          sh.ell(BODY, c, R);
+          { const a = 12 * Math.PI / 180, nu = [0, Math.cos(a), -Math.sin(a)]; nipAt([c[0], c[1] + R[1] * nu[1], c[2] + R[2] * nu[2]], nu, { c, r: R }); }
+        } else if (SHP === 'heavy' && hang <= .05) {
+          // 2026-11-17 母乳型沉重下垂（使用者紅筆）：下胸飽滿渾圓、上胸沒什麼肉微微凹陷、乳頭上翹。
+          //   跟木瓜同一種做法（沿一條軸、粗細平滑變化、沒有另外套球），差別：比木瓜短而胖；最粗在最底、收尾是圓的（不收尖）；軸在最底往前上彎 → 乳頭朝前上、微微朝外
+          // 第 2 版：上一版軸往前彎太多，變成一顆球用細管頂在胸前。改成整包往下掛（軸幾乎直直往下、只微微往前），
+          //   乳頭不放在軸的尖端，放在最底那一包的前面偏上、朝前上外＝上翹
+          const L = r * 1.5 + 2.3, flare = Math.max(0, (r - 3.5) * .3);   // 第 3 版：E、F 也要垂（加長）；兩顆往中間靠一點（乳溝長一點）
+          const P0 = [s * (2.4 + r * .08) * cs, yl(zA) + 2.0 * cs + r * .16, zA - r * .1];
+          const P1 = [s * (2.9 + r * .17 + flare * .8) * cs + bx, yl(zA) + 2.4 * cs + r * .5 + by, zA - L * .9 + bz];
+          const P2 = [P1[0] + s * r * .08, P1[1] + r * .16, P1[2] - r * .5];
+          const ax = (t) => { const a = (1 - t) * (1 - t), b = 2 * t * (1 - t), c = t * t; return [a * P0[0] + b * P1[0] + c * P2[0], a * P0[1] + b * P1[1] + c * P2[1], a * P0[2] + b * P1[2] + c * P2[2]]; };
+          const RM = r * .9, R0 = r * .44, fc = .34;                      // 根部粗一點、變粗得平均一點 → 外緣是順的弧，不是一條直斜線
+          const rad = (t) => t <= 1 - fc ? R0 + (RM - R0) * Math.pow(t / (1 - fc), 1.3) : RM * Math.sqrt(Math.max(0, 1 - Math.pow((t - (1 - fc)) / fc, 2)));
+          const N = 26; let pa = ax(0), ra = rad(0);
+          for (let q = 1; q <= N; q++) { const t = q / N * .97, pb2 = ax(t), rb = Math.max(.3, rad(t)); sh.cone(BODY, pa, pb2, ra, rb); pa = pb2; ra = rb; }
+          {
+            const cc = ax(1 - fc * .68), n = [s * .2, .9, .27], nn = Math.hypot(...n), nu = n.map(v => v / nn);   // 乳頭：往下、往中間收一點（上一版正面看偏高偏外），還是微微上翹
+            nipAt([cc[0] + nu[0] * RM * .97, cc[1] + nu[1] * RM * .97, cc[2] + nu[2] * RM * .97], nu, { c: cc, r: [RM, RM, RM] });
+          }
+        } else if (SHP === 'wide' && hang <= .05) {
+          // 2026-11-17 外擴／八字 第 4 版（使用者：跟木瓜有點像，只是乳頭是翹的、上胸無肉）：
+          //   跟木瓜同一種做法（沿一條軸、粗細平滑變化、沒有另外套球）；差別：軸從胸骨旁往「外、前、下」撇（八字），
+          //   根部很細（上胸無肉、側面是一條長直斜坡），越往下越粗，最粗在靠尾端，尾端是圓的（不收尖）；乳頭在尾端前面、朝前上外翹。
+          // 第 5 版（使用者紅筆：①上胸無肉 ②下胸渾圓但不翹、下垂貼著皮膚 ③正面看是往下掛的 U）：
+          //   軸貼著胸口往下、往外撇（中心只比皮膚前面一點點，一半埋在身體裡＝貼著皮膚、不往前頂），根部很細，下面渾圓；乳頭在下面朝前下外。
+          // 第 6 版：照使用者在底稿上畫的 D（量座標換成模型格）：
+          //   上面從腋下高度、離中線約 5.5 格開始，很細（上胸無肉）；往下往外撇，到乳頭那一段整顆變很大很圓；
+          //   兩顆的內緣在上面靠到胸口中間（八字的頂）、往下分開，底部離中線約 4 格；最底大約在 z 63（D）；
+          //   乳頭在外側（離中線約 12 格、比最底高 5 格），朝外、微微朝前；側面往前凸約 6 格、下緣平平接回身體。
+          const surf = (x, z) => (frontSurfaceY(sh, Math.sign(x) * Math.min(Math.abs(x), 4.5), z) ?? 4);
+          const pt = (X, z, f) => [s * X * cs + bx * (f || 0), surf(X, z) + 1.3 + by * (f || 0), z + bz * (f || 0)];
+          const P0 = pt(3 + r * .6, zA - (2 + r * .6), 0), P1 = pt(2.2 + r * .9, zA - (4 + r * 1.7), .5), P2 = pt(3.5 + r * 1.38, zA - (6.5 + r * 2.65), 1);
+          P0[1] -= 1.2;   // 根部貼著胸口
+          const ax = (t) => { const a = (1 - t) * (1 - t), b = 2 * t * (1 - t), c = t * t; return [a * P0[0] + b * P1[0] + c * P2[0], a * P0[1] + b * P1[1] + c * P2[1], a * P0[2] + b * P1[2] + c * P2[2]]; };
+          const RM = 1.6 + r * .9, R0 = r * .22 + .3, fc = .32;
+          const rad = (t) => t <= 1 - fc ? R0 + (RM - R0) * Math.pow(t / (1 - fc), 1.15) : RM * Math.sqrt(Math.max(0, 1 - Math.pow((t - (1 - fc)) / fc, 2)));
+          const N = 28; let pa = ax(0), ra = rad(0);
+          for (let q = 1; q <= N; q++) { const t = q / N * .97, pb2 = ax(t), rb = Math.max(.3, rad(t)); sh.cone(BODY, pa, pb2, ra, rb); pa = pb2; ra = rb; }
+          {
+            const cc = ax(1 - fc * .95), n = [s * .66, .7, -.08], nn = Math.hypot(...n), nu = n.map(v => v / nn);
+            nipAt([cc[0] + nu[0] * RM * .97, cc[1] + nu[1] * RM * .97, cc[2] + nu[2] * RM * .97], nu, { c: cc, r: [RM, RM, RM] });
+          }
         } else if (SHP === 'round' && hang <= .05) {
           // 圓形：上下一樣飽滿的球
           sh.cone(BODY, root, [cx, cy, zB + r * .15], r * .55, r * .8);
@@ -719,8 +844,10 @@
           sh.cone(BODY, root, [cx, cy, zB], r * .45, r * .82);
           sh.ell(BODY, [cx, cy - r * .1 - r * sy * .3, zB], [r * .95 * (1 + sy * .35), r * .86 * (1 - sy), r * .86 * (1 - sq)]);
         }
+        bustPost(sh, doll, s, root, r, kn0, ks0, { cx, cy, zA, zB, cs, yl });   // 2026-11-15 試作：間隔／外擴／上胸無肉／副乳
         if (doll.knead && doll.knead.side === s) kneadTag(sh, doll.knead, s, root, r, kn0, ks0, [cx, cy + r, zB]);
       }
+      bustCleave(sh, doll, r, zA, zB);   // 兩顆靠在一起才有乳溝線
       sh.bust = false; sh.bside = 0;
       return { zc, S, C, T, zW, zB, cupr: r, yl };
     }
