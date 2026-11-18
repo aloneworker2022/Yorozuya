@@ -6,7 +6,7 @@ const LV={短:.8,中:1,長:1.2};
 function draw(kB,kC,kD){
  const px=new Uint8ClampedArray(N*N*4);for(let i=0;i<N*N;i++)px.set([255,255,255,255],i*4);
  const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(x>=0&&y>=0&&x<N&&y<N)px.set([...c,255],(y*N+x)*4)};
- const CY=94+(+process.env.SY||26),R=70,EAR=CY+18,T=88*2/9;
+ const CY=94+(+process.env.SY||26),R=70,AF=+(process.env.AF||.6),TOT=88/.6,EAR=CY-R+TOT*AF,T=TOT*(1-AF)/3;
  const NOSE=EAR+T*kB,MOUTH=NOSE+T*kC,CHIN=MOUTH+T*kD;
  const TURNX=61,MW=43;
  function mask(poly){const m=new Uint8Array(N*N);for(let y=0;y<N;y++)for(let x=0;x<N;x++){const X=x+.5,Y=y+.5;let ins=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const[xi,yi]=poly[i],[xj,yj]=poly[j];if((yi>Y)!=(yj>Y)&&X<(xj-xi)*(Y-yi)/(yj-yi)+xi)ins=!ins}if(ins)m[y*N+x]=1}return m}

@@ -3,7 +3,7 @@
 const L=require('./lib.cjs');const N=256,CX=128;
 const SKIN=[242,204,177],SH=[216,166,140],DK=[184,124,104],RED=[220,60,60];
 const kB=+(process.env.B||1),kC=+(process.env.C||1),kD=+(process.env.D||1);
-const CY=94+(+process.env.SY||26),R=70,EAR=CY+18,T=88*2/9,NOSE=EAR+T*kB,MOUTH=NOSE+T*kC,CHIN=MOUTH+T*kD;
+const CY=94+(+process.env.SY||26),R=70,AF=+(process.env.AF||.6),TOT=88/.6,EAR=CY-R+TOT*AF,T=TOT*(1-AF)/3,NOSE=EAR+T*kB,MOUTH=NOSE+T*kC,CHIN=MOUTH+T*kD;
 const px=new Uint8ClampedArray(N*N*4);for(let i=0;i<N*N;i++)px.set([255,255,255,255],i*4);
 const put=(x,y,c)=>{x=Math.round(x);y=Math.round(y);if(x>=0&&y>=0&&x<N&&y<N)px.set([...c,255],(y*N+x)*4)};
 function spline(p,closed,n=12){const o=[],m=p.length,Q=i=>closed?p[(i+m)%m]:p[Math.max(0,Math.min(m-1,i))];for(let i=0;i<(closed?m:m-1);i++){const a=Q(i-1),b=Q(i),c=Q(i+1),d=Q(i+2);for(let k=0;k<n;k++){const t=k/n,t2=t*t,t3=t2*t;o.push([0,1].map(j=>.5*(2*b[j]+(-a[j]+c[j])*t+(2*a[j]-5*b[j]+4*c[j]-d[j])*t2+(-a[j]+3*b[j]-3*c[j]+d[j])*t3)))}}if(!closed)o.push(p[m-1]);return o}

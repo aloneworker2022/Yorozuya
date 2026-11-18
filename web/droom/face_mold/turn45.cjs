@@ -3,7 +3,7 @@
 const L=require('./lib.cjs'),draw=require('./mold6.cjs');const N=256,CX=128;
 const SKIN=[242,204,177],SH=[216,166,140],DK=[184,124,104],RED=[220,60,60];
 const kB=+(process.env.B||1),kC=+(process.env.C||1),kD=+(process.env.D||1),DEG=+(process.env.DEG||45);
-const CY=94+(+process.env.SY||26),R=70,EAR=CY+18,T=88*2/9,NOSE=EAR+T*kB,MOUTH=NOSE+T*kC,CHIN=MOUTH+T*kD;
+const CY=94+(+process.env.SY||26),R=70,AF=+(process.env.AF||.6),TOT=88/.6,EAR=CY-R+TOT*AF,T=TOT*(1-AF)/3,NOSE=EAR+T*kB,MOUTH=NOSE+T*kC,CHIN=MOUTH+T*kD;
 const c=Math.cos(DEG*Math.PI/180),s=Math.sin(DEG*Math.PI/180);
 const P=([x,y,z])=>[CX+x*c-z*s,y];                       // 往左轉：臉的正前方跑到畫面左邊
 // 正面臉模每一列的半寬
