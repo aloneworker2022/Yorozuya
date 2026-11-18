@@ -7,28 +7,10 @@ import numpy as np
 from PIL import Image
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
 from outline import N,SK,SH,DK,GL,R,CY,S,G,Y,LINES,cr,mask,edge
-RR=75.5;CYR=499.5;BACK=1.08
 DEG=float(os.environ.get('DEG','45'));A=math.radians(DEG);CA,SA=math.cos(A),math.sin(A)
 CX=126
 out=sys.argv[1] if len(sys.argv)>1 else '.'
-def lerp_tab(tab,y):
-  if y<=tab[0][0]:return tab[0][1]
-  for (y0,v0),(y1,v1) in zip(tab,tab[1:]):
-    if y0<=y<=y1:return v0+(v1-v0)*(y-y0)/(y1-y0)
-  return tab[-1][1]
-# 正面：下半臉的半寬（和 outline.py 同一張表）
-JAW=[(505,75.3),(530,72.5),(545,68),(560,61),(572,54),(582,47),(595,33),(607,17),(613,6),(614.5,1)]
-# 側臉中線（z＝322－x）：有鼻子的那條、和把鼻子拉平的那條（臉頰用）
-PROF=[(520,250),(532,253),(545,256),(554,250),(562,242),(567,238),(573,243),(577,246),(582,244),(588,249),(593,249),(598,254),(604,256),(610,258),(613,264),(614.5,270)]
-FLAT=[(520,250),(532,253),(545,256),(577,250),(582,247),(588,250),(593,251),(598,254),(604,256),(610,258),(613,264),(614.5,270)]
-zp=lambda y:322-lerp_tab(PROF,y)
-zc=lambda y:322-lerp_tab(FLAT,y)
-# 下顎底（側臉：下巴底 → 下顎角）：這幾列的切面後緣
-JAWB=[(593,4),(594,4),(601,12),(609,32),(612,46),(613,58),(614.5,52)]
-def zb(y):return lerp_tab(JAWB,y) if y>=593 else 2
-# 最寬處的深度：眼線以上在圓心，鼻線以下往前收（V 臉在 45° 才會從耳下斜到下巴）
-ZW=[(545,0),(560,6),(577,16),(595,30),(607,44),(613,56),(614.5,60)]
-zw=lambda y:lerp_tab(ZW,y)
+from shape3d import *
 def rowpts(y):
   P=[]
   dy=y-CYR
