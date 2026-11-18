@@ -8,6 +8,7 @@
    她坐到書桌前（desk_work 定下來）而該做的那件還沒開工／停著 → 自動 start。
    書櫃（2026-11-02 Al）：報告交了、她離開書桌（不在書桌前 5 秒）→ 報告收進書櫃（/api/desk/shelve）；
    收下的（完成的委託）也在書櫃。點書櫃（test_room.js）→ openShelf：等你看的報告＋完成的委託，點進去看報告書。
+   2026-11-18：看報告第一次（想法已寫好、她在房且不忙）關掉報告書、立刻開對話用聊天口吻唸想法；不在／忙才用「她說」引用塊。
    window.RoomDesk = {give, start, pause, answer, busy, working, prop, icon, poseWeights, promptLines, openLog, openShelf, questIds, state} */
 (() => {
   'use strict';
@@ -406,8 +407,47 @@
     void pull();
   }
   function closeLog() { if (card) card.hidden = true; }
+  // 這份報告已經當面講過（localStorage，重整也不再唸）
+  const SAID_KEY = 'yoro_desk_thoughts_said';
+  function saidSet() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(SAID_KEY) || '[]');
+      return new Set((Array.isArray(raw) ? raw : []).map(String));
+    } catch { return new Set(); }
+  }
+  function thoughtsSaid(id) { return !!id && saidSet().has(String(id)); }
+  function markThoughtsSaid(id) {
+    if (!id) return;
+    const arr = [...saidSet(), String(id)];
+    const uniq = [...new Set(arr)];
+    const keep = uniq.length > 200 ? uniq.slice(-200) : uniq;
+    try { localStorage.setItem(SAID_KEY, JSON.stringify(keep)); } catch { /* quota */ }
+  }
+  let thoughtToastFor = '';   // 這次打開這份、她沒辦法開口時只 toast 一次
+  function thoughtsItem(r) {
+    return r ? { id: r.id, title: r.title, report: r.report || '', note: r.note || '',
+      thoughts: thoughtsOf(r), girlId: r.girlId || '', girlName: r.girlName || '',
+      accepted: r.status === 'accepted' } : null;
+  }
+  function maybeDeliverThoughts() {
+    if (!card || card.hidden) return;
+    if (mode !== 'report' && mode !== 'archive') return;
+    const r = sel && sel.run;
+    if (!r || thoughtsSaid(r.id)) return;
+    const t = thoughtsOf(r);
+    if (!t) return;
+    const fn = window.RoomDesk && window.RoomDesk.onReportThoughts;
+    if (!fn) return;
+    const res = fn(thoughtsItem(r));
+    if (res && res.ok) { closeLog(); return; }
+    if (res && res.error && thoughtToastFor !== String(r.id)) {
+      thoughtToastFor = String(r.id);
+      toastRoom(res.error);
+    }
+  }
   async function openItem(id, view) {
     preview = null;
+    thoughtToastFor = '';
     try { sel = await api(`/api/desk/run?id=${id}`); mode = view; msg = ''; }
     catch (e) { msg = e.message; }
     paint(true);
@@ -421,7 +461,7 @@
   }
   function thoughtsBlock(r) {
     const t = thoughtsOf(r);
-    if (!t) return '';
+    if (!t || thoughtsSaid(r?.id)) return '';
     const who = r.girlName || '她';
     return `<div class="said"><b>${esc(who)}說</b><blockquote>${esc(t)}</blockquote></div>`;
   }
@@ -682,6 +722,7 @@
     }
     box.innerHTML = head + body + (msg ? `<div class="msg">${esc(msg)}</div>` : '');
     box.querySelectorAll('[data-a]').forEach(b => b.onclick = () => act(b.dataset.a, b.dataset.id ? Number(b.dataset.id) : null, b.dataset.f));
+    maybeDeliverThoughts();
   }
   async function act(a, id, fname) {
     msg = '';
@@ -830,7 +871,8 @@
   }
 
   window.RoomDesk = { flushForget, give, start, pause, answer, pendingAsk, busy, working, prop, icon, poseWeights, promptLines, openLog, openShelf, closeLog,
-    questIds, state: () => ({ run, events: events.slice(), summary, agent, offline, queue, reports, failed, shelfPending, shelfDone }), pull };
+    questIds, state: () => ({ run, events: events.slice(), summary, agent, offline, queue, reports, failed, shelfPending, shelfDone }), pull,
+    markThoughtsSaid, thoughtsSaid };
   void pull();
   loop();
 })();

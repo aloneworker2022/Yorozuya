@@ -539,20 +539,46 @@ def persona_from(*, girl=None, rec=None, name="") -> dict:
         "dislikes": _names(girl.get("dislikes") or rec.get("dislikes") or [], 6),
         "stage": stage,
         "stageZh": STAGE_ZH.get(stage, stage if stage != "stranger" else ""),
+        "playerName": pick("playerName"),
+        "playerPet": pick("playerPet"),
         "growth": [g for g in (growth or []) if isinstance(g, dict) and g.get("text")][:2],
         "lifeStory": [s for s in (story or []) if isinstance(s, dict) and s.get("text")][-2:],
     }
 
 
+def _address_lines(p: dict) -> list[str]:
+    """跟房間聊天同一套稱呼：老公只在妻子以上；有小名就可用；否則用「你」或名字。"""
+    stage = str(p.get("stage") or "stranger")
+    pet = str(p.get("playerPet") or "").strip()
+    pname = str(p.get("playerName") or "").strip()
+    wife = stage in ("wife", "devoted_wife", "obedient_wife", "pathological_wife")
+    out = []
+    if wife:
+        if pet:
+            out.append(f"【稱呼】叫他老公；已確認的小名「{pet}」可與老公並用。")
+        else:
+            out.append("【稱呼】叫他老公。")
+    else:
+        out.append("【稱呼】未婚不要叫「老公」。")
+        if pet:
+            out.append(f"已確認的小名是「{pet}」，可自然用。")
+        elif pname:
+            out.append(f"他叫{pname}。用「你」或這個名字，不要用綽號。")
+        else:
+            out.append("用「你」叫他。")
+    return out
+
+
 def thoughts_prompt(run: dict, report: str, persona: dict | None = None) -> tuple[str, str]:
-    """寫想法用的 system／user。不給做事的 Hermes。"""
+    """寫想法用的 system／user。不給做事的 Hermes。口氣是當面對他講，不是寫在紙上。"""
     p = persona if isinstance(persona, dict) else {}
     name = str(p.get("name") or run.get("girlName") or "她")
     system = (
-        f"你是{name}，住在召喚者房間裡的魅魔。用「我」寫 2 到 4 句話，對你剛做完的這份工作報告說自己的想法。"
-        "必須同時有：你對成果的意見或建議，以及你做完這件事的心情或感受。"
+        f"你是{name}，住在召喚者房間裡的魅魔。他等一下會打開你交的工作報告，你要當面對他口頭報告你的想法，"
+        "像平常跟他聊天那樣自然、口語，不是寫在紙上的評語。"
+        "用「我」講 2 到 4 句話。必須同時有：你對成果的意見或建議，以及你做完這件事的心情或感受。"
         "口吻符合你的個性。不要標題，不要列點，不要改寫或重複報告本文，不要提到遊戲、模型或提示詞。"
-        "用台灣繁體中文。"
+        "用台灣繁體中文。只寫說出口的話。"
     )
     lines = [f"你是{name}。"]
     bits = [x for x in [p.get("archetype") or "", p.get("tone") or ""] if x]
@@ -560,6 +586,7 @@ def thoughts_prompt(run: dict, report: str, persona: dict | None = None) -> tupl
         lines.append(f"個性：{'、'.join(bits)}。")
     if p.get("stageZh"):
         lines.append(f"你跟召喚者的關係：{p['stageZh']}。")
+    lines.extend(_address_lines(p))
     for key, label in (("hobbies", "興趣"), ("likes", "喜歡"), ("dislikes", "討厭")):
         if p.get(key):
             lines.append(f"{label}：{'、'.join(p[key])}。")
@@ -607,12 +634,12 @@ def mock_thoughts(run: dict, report: str = "") -> str:
     title = run.get("title") or "這件工作"
     if run.get("mode") == "redo":
         return (f"「{title}」我照你說的改過了，這版我覺得比較乾淨，結論也可以直接看。"
-                "改的時候有點悶，不過改完比較踏實，希望這次能收下。")
+                "改的時候有點悶，不過改完比較踏實，你看看這次能不能收下。")
     if run.get("mode") == "extend":
         return (f"後續我也做完了，接在「{title}」後面，我覺得方向是連得上的，給老闆看應該夠用。"
                 "接著做的時候還算順，做完鬆了一口氣，你看看行不行。")
     return (f"「{title}」我整理好了，重點和結論我覺得可以直接用，方向應該沒跑掉。"
-            "中間有兩筆資料對不上，換關鍵字查完比較放心，希望你看了也覺得可以。")
+            "中間有兩筆資料對不上，換關鍵字查完比較放心，你看一下覺得可以嗎？")
 
 
 async def _write_thoughts(connect, run_id: int, report: str, finished: int) -> None:

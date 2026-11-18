@@ -417,17 +417,29 @@ async def main():
         D.persona_from(girl={
             "name": "小夜", "archetype": "傲嬌", "tone": "刺一下又黏回來",
             "hobbies": ["看電影"], "likes": ["甜食"], "dislikes": ["早起"],
-            "roomStage": "wife",
+            "roomStage": "wife", "playerName": "阿哲", "playerPet": "哲哲",
             "world": {"growth": [{"text": "最近迷上深夜咖啡"}],
                       "lifeStory": [{"text": "第一次自己買食券"}]},
         }, name="小夜"),
     )
     assert "傲嬌" in user and "興趣：看電影" in user and "妻子" in user
     assert "深夜咖啡" in user and "食券" in user and "只要重點" in user
-    assert "用「我」寫" in sysm and "意見或建議" in sysm and "心情或感受" in sysm
+    assert "叫他老公" in user and "哲哲" in user
+    assert "只寫說出口的話" in sysm and "聊天" in sysm and "意見或建議" in sysm and "心情或感受" in sysm
+    assert "用「我」講" in sysm and "寫在紙上" in sysm
     fp = H.first_prompt({"title": "寫季報", "note": "只要重點"})
-    for ban in ("個性：", "興趣：", "傲嬌", "用「我」寫 2", "心情或感受", "最近的你"):
+    for ban in ("個性：", "興趣：", "傲嬌", "用「我」講 2", "用「我」寫 2", "心情或感受", "最近的你", "叫他老公"):
         assert ban not in fp, ban
+    # 未婚：不要叫老公；有小名就用小名
+    _, user2 = D.thoughts_prompt(
+        {"title": "寫季報", "girlName": "小夜"},
+        "摘要",
+        D.persona_from(girl={"name": "小夜", "roomStage": "girlfriend", "playerPet": "笨蛋"}, name="小夜"),
+    )
+    assert "未婚不要叫「老公」" in user2 and "笨蛋" in user2 and "叫他老公" not in user2
+    mock = D.mock_thoughts({"title": "寫 季報"})
+    assert "我整理好了" in mock and "你看一下" in mock and "放心" in mock
+    assert "你看看這次能不能收下" in D.mock_thoughts({"title": "寫 季報", "mode": "redo"})
     assert D.accept_thoughts("") == "" and D.accept_thoughts("好了") == ""
     assert D.accept_thoughts("## 標題\n我覺得這份可以用，做完挺踏實的。").startswith("我覺得")
 

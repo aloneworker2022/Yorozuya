@@ -1729,6 +1729,83 @@ ${rep}` : "（報告沒有內容。）",
     "跟他聊這份：說你的心得、哪裡得意、哪裡不滿意、還能怎麼延伸；他問細節就照報告內容答，報告沒寫的不要編。不要整段念報告。",
   ].filter(Boolean);
 }
+// ---------------------------------------------------------------- 看報告：她立刻開口唸已寫好的想法（room_desk.js，2026-11-18）
+// 第一次打開這份（想法已到、她在房且不忙）→ 關掉報告書、打開對話、用打字機把存好的想法分 2～3 段講出來（不再打模型）。
+// 「請她看看、說說心得」仍走上面 onDiscuss，不改。
+let deskReport = null;   // {item:{id,title,report,note,thoughts,girlId,girlName,accepted}, girlId, fresh}
+if (window.RoomDesk) window.RoomDesk.onReportThoughts = (item) => {
+  if (!item || !String(item.thoughts || "").trim()) return { error: "想法還沒寫好。" };
+  if (!girl || !girlInRoom()) return { error: "她不在房間，想法寫在報告下面。" };
+  const b = talkBusyFlags();
+  if (b.errand) return { error: `${girl.name}出門了，還沒回來。想法寫在報告下面。` };
+  if (b.asleep) return { error: "她在睡覺，想法寫在報告下面。" };
+  if (b.talkBusy || b.scene || b.sex || b.undress || b.summoning) return { error: "她現在沒空，想法寫在報告下面。" };
+  const open = b.sheetOpen;
+  deskReport = { item, girlId: girl.id, fresh: !open };
+  pushDebug(`書桌：看報告「${item.title}」→ ${open ? "對話開著：當面唸想法" : "打開對話、她先報告想法"}`);
+  if (open) void sayDeskReportThoughts(item);
+  else showSheet();
+  return { ok: true };
+};
+/** 把已存的想法拆成 1～3 段，給打字機一句一句唸。 */
+function splitThoughtsSay(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return [];
+  const parts = [];
+  let buf = "";
+  for (const ch of raw) {
+    buf += ch;
+    if ("。！？".includes(ch)) {
+      if (buf.trim()) parts.push(buf.trim());
+      buf = "";
+    }
+  }
+  if (buf.trim()) parts.push(buf.trim());
+  if (parts.length <= 3) return parts.length ? parts : [raw];
+  if (parts.length === 4) return [parts[0] + parts[1], parts[2] + parts[3]];
+  const size = Math.ceil(parts.length / 3);
+  const out = [];
+  for (let i = 0; i < parts.length; i += size) out.push(parts.slice(i, i + size).join(""));
+  return out;
+}
+async function sayDeskReportThoughts(item) {
+  if (!girl || !item) return;
+  const thoughts = String(item.thoughts || "").trim();
+  if (!thoughts) return;
+  const segs = splitThoughtsSay(thoughts);
+  if (!segs.length) return;
+  lines.push({ role: "user", content: herView(`（他打開了你交的「${item.title}」報告書，你當面對他說你的想法。）`) });
+  lines.push({ role: "assistant", content: thoughts });
+  rememberChat();
+  persistRoom();
+  try { window.RoomDesk?.markThoughtsSaid?.(item.id); } catch { /* */ }
+  talkBusy = true;
+  setTalkEnabled(false);
+  setTyping(false);
+  try {
+    for (const seg of segs) {
+      if (!sheetOpen() || !girl) return;
+      await typeLine(girl.name, seg);
+    }
+  } finally {
+    talkBusy = false;
+    if (sheetOpen() && talkFor === girl.id) setTalkEnabled(true);
+  }
+}
+function deskReportLines() {
+  const d = deskReport;
+  if (!d || !girl || d.girlId !== girl.id) return [];
+  const it = d.item;
+  let rep = String(it.report || "").trim();
+  if (rep.length > DISCUSS_REPORT_MAX) rep = rep.slice(0, DISCUSS_REPORT_MAX) + "…（後面省略）";
+  return [
+    `【你剛當面跟他報告了你交的工作】「${it.title}」是你做完交給他的。你已經用聊天的口氣把想法跟他說過了。`,
+    it.note ? `他當初附的說明：${it.note}` : "",
+    rep ? `報告內容：
+${rep}` : "（報告沒有內容。）",
+    "他若接著聊這份：照報告內容答，報告沒寫的不要編。不要整段念報告。已經說過的想法不必再完整重複，但他問細節就答。",
+  ].filter(Boolean);
+}
 // ---------------------------------------------------------------- 工作會累、被收下開心、被退回沮喪（desk_feel.js，2026-11-02）
 // 在書桌前做工作會累（關係越好越不累）；累壞了 → 去床上躺、不回書桌（RoomDesk.tooTired），休息夠了才回去。
 let deskFeelSavedAt = 0;
@@ -1772,7 +1849,7 @@ if (window.RoomDesk) {
 }
 function deskPromptLines() {
   const A = roomActs(), D = window.RoomDesk, ask = deskGiveAsk;
-  const out = [...deskDiscussLines(), ...(girl && girlInRoom() ? deskFeelLines(deskFeelTick()) : [])];
+  const out = [...deskDiscussLines(), ...deskReportLines(), ...(girl && girlInRoom() ? deskFeelLines(deskFeelTick()) : [])];
   const ans = deskAnswerLine();
   if (ans) out.push(ans);
   else if (A?.givePromptLine && ask && girl && ask.girlId === girl.id) out.push(A.givePromptLine(ask.r));
@@ -9267,6 +9344,17 @@ async function openTalk() {
     // 書櫃裡請她看看：開場就是她的心得
     const deskTalk = !deskAsk && !proOpen && deskDiscuss?.fresh && deskDiscuss.girlId === girl.id ? deskDiscuss.item : null;
     if (deskDiscuss) deskDiscuss.fresh = false;
+    // 看報告：開場直接唸已寫好的想法（不再打模型）
+    const deskRep = !deskAsk && !proOpen && !deskTalk && deskReport?.fresh && deskReport.girlId === girl.id ? deskReport.item : null;
+    if (deskReport) deskReport.fresh = false;
+    if (deskRep && String(deskRep.thoughts || "").trim()) {
+      setTyping(false);
+      await sayDeskReportThoughts(deskRep);
+      if (girl?.world) girl.world.justBack = false;
+      talkBusy = false;
+      if (sheetOpen() && talkFor === girl.id) setTalkEnabled(true);
+      return;
+    }
     const deskAskFb = deskAsk ? `那個……工作上有件事${deskAsk.kind === "clarify" ? "要問你" : "要你決定"}：${deskAsk.text}`
       : deskTalk ? `「${deskTalk.title}」啊……嗯，我想想看怎麼說。` : "";
     if (deskTalk) {
@@ -11454,6 +11542,7 @@ function loadRoomSave() {
 
 function hideSheet() {
   deskDiscuss = null;   // 書櫃那份報告：關掉對話就收起來
+  deskReport = null;    // 看報告當面唸的想法：關掉對話就收起來
   // 老婆要出門接客：關掉對話框＝目送她出門（不能阻止）
   if (escortDialog && girl) { const who = girl; escortDialog.phase = "done"; setTimeout(() => { if (girl === who && girlInRoom()) escortLeave(who); }, 0); }
   // 求的對話框：關掉＝不理她（求的窗口照 hungerChatClose 收）
