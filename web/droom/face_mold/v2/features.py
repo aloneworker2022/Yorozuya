@@ -78,13 +78,14 @@ def mouth_px():
     for c,ch in enumerate(row):
       if ch!='.':o[(CXF+c-SC,y0+r-LINE)]=(PAL[ch],DZ[r])
   return o
+ES=float(os.environ.get('ES','1.35'))   # 眼睛放大倍率（使用者：眼睛大一點）
 def eye_px():
   o={}
   for s in(1,-1):
     ex=CXF+s*30;ey=Y(545)
-    for yy in range(math.floor(ey-16),math.ceil(ey+10)):
-      for xx in range(math.floor(ex-20),math.ceil(ex+20)):
-        ch=eyeAt(s*(xx+.5-ex),yy+.5-ey,s)
+    for yy in range(math.floor(ey-16*ES),math.ceil(ey+10*ES)):
+      for xx in range(math.floor(ex-20*ES),math.ceil(ex+20*ES)):
+        ch=eyeAt(s*(xx+.5-ex)/ES,(yy+.5-ey)/ES,s)
         if ch:o[(xx,yy)]=(EPAL[ch],0)
   return o
 LAYERS=[brow_px(),eye_px(),nose_px(),mouth_px()]
