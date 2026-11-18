@@ -104,6 +104,7 @@ def guides(img,m,cx,front_):
       x,y=cx+R*math.cos(a),CY+R*math.sin(a)
       xi,yi=round(x),round(y)
       if 0<=xi<N and 0<=yi<N:img[yi,xi]=GL if m[yi,xi] else (225,180,160)
-fi,fm,fc=front();guides(fi,fm,fc,True)
-si,sm,sc=side();guides(si,sm,sc,False)
-Image.fromarray(fi).save(f'{out}/front.png');Image.fromarray(si).save(f'{out}/side.png')
+if __name__=='__main__':
+ fi,fm,fc=front();guides(fi,fm,fc,True)
+ si,sm,sc=side();guides(si,sm,sc,False)
+ Image.fromarray(fi).save(f'{out}/front.png');Image.fromarray(si).save(f'{out}/side.png')
