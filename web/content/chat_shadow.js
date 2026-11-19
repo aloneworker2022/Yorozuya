@@ -275,7 +275,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   }
 
   // 2026-11-19 使用者：聊天先出現黑影；長按黑影的頭 → 半身立繪；長按立繪 → 回到黑影。每次打開聊天都從黑影開始。
-  let portraitMode = false, wasOpen = false;
+  let portraitMode = false, wasOpen = false, fadeT = 0;
   function sync() {
     const sheet = document.getElementById('portrait-sheet');
     if (!ensureEl()) return;
@@ -285,15 +285,18 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const s = wanted(sheet);
     const on = !!(s && prepare(s)) && !portraitMode;
     sheet?.classList.toggle('portrait-mode', open && portraitMode);
-    if (on && wrap.hidden) {
-      canvas.dataset.f = '';
+    if (on && (wrap.hidden || wrap.classList.contains('cs-out'))) {
+      clearTimeout(fadeT); fadeT = 0;
+      if (wrap.hidden) canvas.dataset.f = '';
       wrap.hidden = false;
-      wrap.classList.remove('cs-in');
+      wrap.classList.remove('cs-in', 'cs-out');
       void wrap.offsetWidth;
       requestAnimationFrame(() => wrap.classList.add('cs-in'));
-    } else if (!on && !wrap.hidden) {
-      wrap.hidden = true;
-      wrap.classList.remove('cs-in');
+    } else if (!on && !wrap.hidden && !fadeT) {
+      if (open && portraitMode) {   // 換成立繪：黑影淡出（立繪同時在中間淡入，CSS）
+        wrap.classList.remove('cs-in'); wrap.classList.add('cs-out');
+        fadeT = setTimeout(() => { fadeT = 0; if (wrap.classList.contains('cs-out')) { wrap.hidden = true; wrap.classList.remove('cs-out'); } }, 420);
+      } else { wrap.hidden = true; wrap.classList.remove('cs-in', 'cs-out'); }
     }
     if (on) play(); else stop();
     sheet?.classList.toggle('has-shadow', on);
@@ -306,10 +309,10 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (!el) { el = document.createElement('div'); el.id = 'chat-shadow-tip'; el.setAttribute('role', 'status'); document.getElementById('portrait-sheet')?.appendChild(el); }
     el.textContent = text; el.hidden = false; clearTimeout(tip.t); tip.t = setTimeout(() => { el.hidden = true; }, 1800);
   }
-  /** 畫面座標 → 黑影畫布的像素（canvas 是 object-fit: contain、靠右下）。 */
+  /** 畫面座標 → 黑影畫布的像素（canvas 是 object-fit: contain、靠下置中）。 */
   function toCanvas(ev) {
     const r = canvas.getBoundingClientRect(), k = Math.min(r.width / canvas.width, r.height / canvas.height);
-    return [(ev.clientX - (r.right - canvas.width * k)) / k, (ev.clientY - (r.bottom - canvas.height * k)) / k];
+    return [(ev.clientX - (r.left + (r.width - canvas.width * k) / 2)) / k, (ev.clientY - (r.bottom - canvas.height * k)) / k];   // object-position: bottom center
   }
   /** 按在她的頭上嗎：畫布最上面有東西的那一列往下約 16% 身高、附近有像素。 */
   function onHead(x, y) {
@@ -336,6 +339,14 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     });
     const img = document.getElementById('portrait-img');
     if (img) longPress(img, () => portraitMode, () => { portraitMode = false; sync(); });
+    // 黑影畫布蓋住畫面中間：點到她旁邊透明的地方＝點背景（關掉聊天，跟原本一樣）
+    canvas.addEventListener('click', (ev) => {
+      const [x, y] = toCanvas(ev), f = cur && cur.sets[mode] && (cur.sets[mode].find(Boolean));
+      if (!f) return;
+      const xi = Math.round(x), yi = Math.round(y);
+      const solid = xi >= 0 && yi >= 0 && xi < f.width && yi < f.height && f.data[(yi * f.width + xi) * 4 + 3] > 0;
+      if (!solid) document.getElementById('portrait-backdrop')?.click();
+    });
   }
 
   /** 她的字一個一個出來 → 說話動作；停下來 0.9 秒後回到呼吸。 */
