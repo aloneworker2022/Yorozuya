@@ -86,6 +86,10 @@ def mouth_px():
   if MT=='open' and os.environ.get('MS','小')!='大':
     SP=[h+h[:9][::-1] for h in ["........UU",".....uuUUU","...uuUUUUU","..LLLLUUUU","CLTTTTLbbH","..LTTTTTLL","..LMMMMMMM","...lPPPHHH","....DPPPHH",".....DDPPP","......DDDD"]]
     DZ=[0,0,0,0,-.4,-1.6,-3.6,-1.8,-2.4,-3,-3.6]
+  # 小、中嘴閉嘴也換成同一種唇珠（使用者 2026-11-19），嘴角不往下勾
+  if MT!='open' and os.environ.get('MS','小')!='大':
+    SP=[h+h[:9][::-1] for h in ["........UU",".....uuUUU","...uuUUUUU","CLLLLLLLLL","..lPPPPPPP","..lPPHHHHH","...DPPPHHH","....DDPPPP","......DDDD"]]
+    DZ=[0,0,0,-.6,-1.6,-2.2,-2.8,-3.2,-3.6]
   # 大嘴（MS=大）：使用者改的那張（嘴角不勾、唇珠在上唇中間往上鼓）；左半 16 格鏡射
   if os.environ.get('MS','小')=='大':
     mir=lambda rows:[h+h[:15][::-1] for h in rows]
@@ -107,8 +111,12 @@ def mouth_px():
   sx,sy={'小':(1,1),'中':(1.32,1.15),'大':(1,1)}[os.environ.get('MS','小')]   # 大＝上面手點的，不再放大
   if sx!=1 or sy!=1:
     W0,H0=len(SP[0]),len(SP);W2=round(W0*sx)|1;H2=round(H0*sy)
-    SP=[''.join(SP[min(H0-1,int((r+.5)/sy))][min(W0-1,int((c+.5)*W0/W2))] for c in range(W2)) for r in range(H2)]
-    DZ=[DZ[min(H0-1,int((r+.5)/sy))] for r in range(H2)]
+    rm=[min(H0-1,int((r+.5)/sy)) for r in range(H2)]
+    for r in range(1,H2):                        # 有線（嘴縫、開口上緣）的那列不要被放大成兩列（會變粗線），重複的那列改用下一列
+      if rm[r]==rm[r-1] and SP[rm[r]].count('L')>=4:rm[r]=min(H0-1,rm[r]+1)
+    for r in range(1,H2):rm[r]=max(rm[r],rm[r-1])
+    SP=[''.join(SP[rm[r]][min(W0-1,int((c+.5)*W0/W2))] for c in range(W2)) for r in range(H2)]
+    DZ=[DZ[rm[r]] for r in range(H2)]
     LINE=[i for i,r in enumerate(SP) if 'C' in r][0]
   SC=(len(SP[0])-1)//2;y0=round(Y(588))
   o={}
