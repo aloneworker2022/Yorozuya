@@ -8,7 +8,22 @@
 import math
 # 2026-11-19 使用者：下眼眶太明顯 → 下眼線改淡色（陰影色 c）、細；四角的下眼線不要；眼角的勾、外側直線改細
 LOWC='c';HOOKK=.7
+# 2026-11-19 第二本教學（普通／つり目／たれ目各 6 個）：上眼線外半段長出一根根細睫毛、下眼線外側幾根小短毛、
+# 雙眼皮線拉長貼著上眼線、黑眼珠改成直的橢圓（比較高、比較窄）
+LASHN=4;LASHL=3.0;IRISW,IRISH=5.6,7.8
 TYPES={
+ 'N1':dict(name='普通・杏仁',
+   up=[(-12,0),(-7,-4.5),(0,-6.2),(7,-5.6),(12.5,-2.6),(14.2,-1.6)],upw=(1.2,2.8,1.6),
+   hooks=[([(-12,0),(-13.2,1.4)],1.0)],
+   lo=[(-12,0),(-6,4),(2,5),(9,3.6),(13,.4),(14.2,-1.6)],lod=(.3,.9),low=1.0,iris=(0,-.2),crease=True),
+ 'N2':dict(name='普通・大きい',
+   up=[(-11,1),(-9,-5),(-2,-8.4),(6,-8),(11,-4.2),(13.2,-1)],upw=(1.4,3.0,1.8),
+   hooks=[([(-11,1),(-12.2,2.6)],1.0)],
+   lo=[(-11,1),(-8,5.6),(0,7),(8,6),(12,2.2),(13.2,-1)],lod=(.2,.85),low=1.0,iris=(0,.4),irs=1.08,crease=True),
+ 'N3':dict(name='普通・横長',
+   up=[(-14,0),(-8,-4.2),(0,-5.4),(8,-5),(13,-3),(15.8,-2)],upw=(1.0,2.6,1.4),
+   hooks=[([(-14,0),(-15.2,1.2)],1.0)],
+   lo=[(-14,0),(-6,3.6),(4,4.2),(11,2.6),(15.8,-2)],lod=(.25,.9),low=1.0,iris=(0,-.6),crease=True),
  'T1':dict(name='つり目・杏仁',
    up=[(-12,1),(-8,-4),(-2,-7),(5,-7.5),(11,-6.2),(14,-5.6)],upw=(1.2,2.8,2.2),
    hooks=[([(14,-5.6),(13.2,-3.4)],1.4),([(-12,1),(-13.6,2.6)],1.0)],
@@ -23,7 +38,7 @@ TYPES={
    hooks=[([(-13,-1),(-14.2,1)],1.0)],
    lo=[(-13,-1),(-6,3),(4,3.6),(10,1.6),(13.2,-3.2)],lod=(.18,1),low=1.0,lotip=1.2,iris=(.5,-.6),crease=True),
  'T4':dict(name='つり目・細い',
-   up=[(-9,.5),(0,-2.4),(9.5,-5.2)],upw=(.8,2.4,.8),hooks=[],
+   up=[(-9,.5),(0,-2.4),(9.5,-5.2)],upw=(.8,2.4,.8),hooks=[],lash=0,
    lo=[(-9,.5),(-4,3.2),(3,3.2),(7.5,1.4),(9.5,-5.2)],lod=(.25,.8),low=1.0,iris=(0,-1.2),crease=False),
  'R1':dict(name='たれ目・まる',
    up=[(-11,1.2),(-9.5,-4.6),(-3,-8.6),(4,-8),(9.6,-3.4),(12,3)],upw=(1.4,2.8,2.0),
@@ -70,7 +85,26 @@ class Frame:
     # 上眼線粗細：沿著線 0→1，內→中→外
     a,b,c=T['upw'];n=len(s.up);c=max(1.0,c*HOOKK)   # 外眼角那端也收細
     s.upw=[(a+(b-a)*(i/(n-1))*2) if i<n/2 else (b+(c-b)*((i/(n-1))-.5)*2) for i in range(n)]
-    s.box=(min(p[0] for p in s.poly)-4,max(p[0] for p in s.poly)+4,min(p[1] for p in s.poly)-6,max(p[1] for p in s.poly)+4)
+    # 上睫毛：上眼線 55%～95% 的地方，往上偏外長出去，越外越長
+    s.lashsegs=[]
+    nl=T.get('lash',LASHN);n=len(s.up)
+    for j in range(nl):
+      t=.58+.36*j/max(1,nl-1);i=min(n-2,int(t*(n-1)))
+      (x0,y0),(x1,y1)=s.up[i],s.up[i+1];tx,ty=x1-x0,y1-y0;L=math.hypot(tx,ty) or 1;tx/=L;ty/=L
+      nx,ny=ty,-tx;dx,dy=nx*.75+tx*.65,ny*.75+ty*.65;D=math.hypot(dx,dy);dx/=D;dy/=D
+      ln=LASHL*(.75+.45*j/max(1,nl-1));bx,by=x0-nx*.6,y0-ny*.6
+      s.lashsegs.append([(bx,by),(bx+dx*ln,by+dy*ln)])
+    # 下睫毛：下眼線外側 2～3 根小短毛（淡色）
+    s.lolash=[]
+    if T['lod'][1]>T['lod'][0]:
+      lo=s.lo;n2=len(lo)
+      for t in(.62,.72,.82):
+        i=min(n2-2,int(t*(n2-1)))
+        if not(T['lod'][0]<=t<=T['lod'][1]):continue
+        (x0,y0),(x1,y1)=lo[i],lo[i+1];tx,ty=x1-x0,y1-y0;L=math.hypot(tx,ty) or 1;tx/=L;ty/=L
+        nx,ny=-ty,tx;dx,dy=nx*.8+tx*.5,ny*.8+ty*.5;D=math.hypot(dx,dy)
+        s.lolash.append([(x0,y0),(x0+dx/D*1.5,y0+dy/D*1.5)])
+    s.box=(min(p[0] for p in s.poly)-5,max(p[0] for p in s.poly)+6,min(p[1] for p in s.poly)-8,max(p[1] for p in s.poly)+4)
   def _near(s,x,y,pts,w):
     best=None
     for i in range(len(pts)-1):
@@ -81,10 +115,12 @@ class Frame:
     T=s.T
     # 雙眼皮線：上眼線往上 3.6，只畫中段
     if T.get('crease'):
-      for i in range(len(s.up)//5,len(s.up)*4//5):
+      for i in range(len(s.up)//8,len(s.up)*9//10):
         ux,uy=s.up[i]
         if abs(x-ux)<.5 and abs(y-(uy-3.6))<.5:return 'c'
     if s._near(x,y,s.up,s.upw):return 'K'
+    for seg in s.lashsegs:
+      if s._near(x,y,seg,.8):return 'K'
     for seg,w in T.get('hooks',[]):
       if s._near(x,y,seg,w*HOOKK):return 'K'
     if s.side and s._near(x,y,s.side,T['sidew']):return 'K'
@@ -96,13 +132,11 @@ class Frame:
       if s._near(x,y,seg,w):return LOWC
     for key in('lohook','lotail'):
       if key in T and s._near(x,y,T[key][0],T[key][1]*HOOKK):return LOWC
-    if T.get('lashes'):
-      for k in range(3,len(s.lo)-3,6):
-        lx,ly=s.lo[k]
-        if abs(x-lx)<.45 and ly<y<ly+1.4:return LOWC
+    for seg in s.lolash:
+      if s._near(x,y,seg,.7):return LOWC
     if not _inpoly(x,y,s.poly):return None
     # 眼睛裡面（同舊眼睛的配色）
-    ic=(.5+T['iris'][0],.3+T['iris'][1]);k=T.get('irs',1);IRX,IRY=6.2*k,7*k
+    ic=(.5+T['iris'][0],.3+T['iris'][1]);k=T.get('irs',1);IRX,IRY=IRISW*k,IRISH*k
     r=math.hypot((x-ic[0])/IRX,(y-ic[1])/IRY)
     uy=min((p[1] for p in s.up if abs(p[0]-x)<.6),default=-9)
     if r<1:
