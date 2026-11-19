@@ -80,6 +80,10 @@ def mouth_px():
   def nums(name):return [float(v) for v in re.search(name+r'=\[(.*?)\]',src).group(1).split(',')]
   MT=os.environ.get('MT','closed')
   SP,DZ=(arr('OPEN'),nums('DZ1')) if MT=='open' else (arr('LIPS'),nums('DZ0'))
+  # 小、中嘴微張也用新的唇珠（使用者 2026-11-19：唇珠厚肉，正面看起來是上唇中間往下垂、壓在牙齒上；側面看是往前上翹）
+  if MT=='open' and os.environ.get('MS','小')!='大':
+    SP=[h+h[:9][::-1] for h in [".....uuu..","...uuUUUuu","..LLLLUUUU","CLTTTTLeeh","..LTTTTTLL","..LMMMMMMM","...lPPPHHH","....DPPPHH",".....DDPPP","......DDDD"]]
+    DZ=[0,0,0,-.4,-1.6,-3.6,-1.8,-2.4,-3,-3.6]
   # 大嘴（MS=大）用手點的一張（使用者 2026-11-19：放大的嘴角像分開的點；嘴角不要那麼勾、唇珠要大）；左半 16 格（最後一格是中線），右半鏡射
   if os.environ.get('MS','小')=='大':
     mir=lambda rows:[h+h[:15][::-1] for h in rows]
@@ -140,7 +144,8 @@ if 'BRY' not in os.environ and FR:
   _lt=Y(EYEY)+min(p[1] for p in FR.up)*ES*EH        # 上眼線最高點（畫面 y）
   BRY=CYR+(_lt-BGAP-1.2-CY)/S                         # 眉毛中線（眉峰再往上拱 5）
 BROWS=brow_px()
-LAYERS=[BROWS,EYES,NOSE,mouth_px()]
+MOUTH=mouth_px()
+LAYERS=[BROWS,EYES,NOSE,MOUTH]
 def isface(img,X,Yp):
   return 0<=X<N and 0<=Yp<N and tuple(img[Yp,X])!=(255,255,255) and tuple(img[Yp,X])!=DK
 def paint_front(img):
@@ -152,6 +157,7 @@ def paint_turn(img,deg,cx):
   for L in LAYERS:
     if L is NOSE:continue          # 轉過去的鼻子另外畫（正面那條線投影過去會被壓扁）
     if L is BROWS and deg>=90:continue   # 側臉的眉毛另外畫（在眼睛正上方）
+    if L is MOUTH and deg>=90:continue   # 側臉的嘴唇另外畫（貼著側面輪廓的唇形）
     if L is EYES:continue   # 轉過去的眼睛另外畫（45°：近側菱形、遠側三角形；側臉：三角形）
     for (X,Yp),(c,dz) in L.items():
       for i in range(4):
@@ -170,7 +176,7 @@ def paint_turn(img,deg,cx):
   for (PX,PY),(d,c) in zbuf.items():
     if isface(img,PX,PY):img[PY,PX]=c
   if 0<deg<90:eyes_turn(img,ca,sa,cx);nose_turn(img,sa,cx)
-  if deg>=90:side_eye(img,cx)
+  if deg>=90:side_eye(img,cx);side_lips(img)
   for (PX,PY),(d,c) in bbuf.items():   # 眉毛最後畫
     if isface(img,PX,PY):img[PY,PX]=c
 SHG=float(os.environ.get('SHG','0'))   # 山根往外（往前凸）幾格（使用者 2026-11-19：遠側眼睛往內 3 格後，山根要往外一點）
@@ -266,6 +272,31 @@ def side_eye_at(u,v,flip=False):   # flip：左右鏡射時亮點仍放在左上
     if r>.82:return 'I'
     w=(v-lb(u))/(AY-lb(u));return 'I' if w<.38 else 'i' if w<.7 else 'j'
   return 'w' if v<lb(u)+1.8 else 'W'
+def side_lips(img):
+  # 側臉嘴唇（使用者 2026-11-19：唇珠是厚肉、側面看往前上翹）：沿著側面輪廓（outline.py 的唇形）往內塗 3～4 格
+  # 上唇：唇珠那一塊往前上翹、上面淺下面深；嘴縫從嘴角往後一小段；下唇：比較圓、中間亮
+  U,u,Lc,P,H,D=(216,128,136),(238,176,176),(140,62,72),(238,154,160),(252,216,214),(214,118,128)
+  lip=os.environ.get('LIPS','全')
+  def edge(Yp):
+    row=img[Yp];return next((X for X in range(N) if tuple(row[X])!=(255,255,255)),None)
+  ya,yb,yc,yd=round(Y(578.6)),round(Y(587.5)),round(Y(587.5)),round(Y(593.5))
+  for Yp in range(ya,yb):
+    e=edge(Yp)
+    if e is None:continue
+    t=(Yp-ya)/max(1,yb-ya);w=round(2+2.5*math.sin(math.pi*min(1,t*1.1)))
+    if lip=='下唇':continue
+    for X in range(e,e+w):img[Yp,X]=u if (t<.4 or X==e) else U
+  e=edge(yc)
+  if e is not None:
+    gap=os.environ.get('MT','closed')=='open'
+    for k in range(5):img[yc,e+1+k]=Lc
+    if gap:
+      for k in range(3):img[yc+1,e+2+k]=Lc
+  for Yp in range(yc+1+(1 if os.environ.get('MT','closed')=='open' else 0),yd):
+    e=edge(Yp)
+    if e is None:continue
+    t=(Yp-yc)/max(1,yd-yc);w=round(2+2.2*math.sin(math.pi*t))
+    for X in range(e,e+w):img[Yp,X]=H if (X==e+1 and .25<t<.7) else (D if t>.75 else P)
 def side_brow(img,X0):
   # 側臉眉毛：在眼睛正上方，從眼睛前端往前一點點開始、往後到眼睛 3/4，眉峰在 1/3，前粗後細
   L=18*ES*.85
