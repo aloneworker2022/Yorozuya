@@ -56,8 +56,19 @@ img[head]=SK
 # 近側耳朵（側臉的耳朵貼在頭的側面 x≈球半徑，轉 45° 投影）
 EAR=[(329,546),(336,540),(345,539),(352,547),(352,560),(346,572),(337,580),(327,584),(324,575),(326,560)]
 EDZ=float(os.environ.get("EDZ",str(20*max(0,min(1,(DEG-30)/15)))))   # 45° 才往前收 20；30° 以下照側臉位置（山田式：斜臉耳朵在頭的輪廓邊上）
+# 2026-11-19 改（使用者：斜臉的耳朵錯了）：耳朵是斜著朝前長的，斜臉看過去幾乎是側臉那個耳朵的寬度（山田式量：寬／高≈0.7），
+# 不能當成貼在 x＝常數的平面投影（會壓成細細一條）。前緣位置照投影，往後的寬度用側臉的耳朵 × EW
+EW=float(os.environ.get('EW',str(.35+.65*math.sqrt(SA))))
+EX0,EY0=scr(54,560,322-324+EDZ)
 def earpt(xs,y):
-  return scr(54,y,322-xs+EDZ)   # 耳朵貼在頭的側面（x＝54）；45° 往前移 EDZ，整個收進頭裡（使用者 2026-11-18）
+  return (EX0+(xs-324)*S*EW, Y(y))
+# 耳朵下半段不能掛在頭和脖子外面（下面會露白縫）：耳垂那幾列的後緣超過頭／脖子的後緣，就整個耳朵往前移
+_body=head|neck;_dx=0
+for _y in range(round(Y(570)),round(Y(582))+1):
+  _r=max([X for X in range(N) if _body[_y,X]],default=None)
+  _ex=max(earpt(x,y)[0] for x,y in cr(EAR,True,6) if abs(Y(y)-_y)<1.5) if any(abs(Y(y)-_y)<1.5 for x,y in cr(EAR,True,6)) else None
+  if _r is not None and _ex is not None:_dx=min(_dx,_r+1-_ex)
+EX0+=_dx
 em=mask([earpt(x,y) for x,y in cr([(x,y) for x,y in EAR],True,6)])
 img[em]=SK;img[em&edge(em)]=DK
 for x,y in cr([earpt(333,547),earpt(343,545),earpt(347,553),earpt(344,566)],n=6):img[round(y),round(x)]=SH

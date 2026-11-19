@@ -45,7 +45,7 @@ def eyeAt(x,y,s,IC=IC):   # IC 可以另外給（45° 近側黑眼珠往內移�
 # ── 眉毛：參考圖眉頭在中線外 14.5、眉尾 46.5（參考圖像素），眉線上微微拱 ──
 # 眼睛、眉毛的高度（參考圖像素 y）：EYEY 眼睛中心、BRY 眉毛；EH 眼睛縱向再放大
 # 山田式量：頭頂→下巴當 1，眉 0.41、眼中心 0.61、眼睛高 0.16（我們原本眉 0.50、眼 0.64、眼高 0.10）
-EYEY=float(os.environ.get('EYEY','545'));BRY=float(os.environ.get('BRY','523'));EH=float(os.environ.get('EH','1'))
+EYEY=float(os.environ.get('EYEY','539'));BRY=float(os.environ.get('BRY','504'));EH=float(os.environ.get('EH','1'))   # 預設＝B（使用者：B、C 都可以；C＝EH=1.3）
 BROW=(118,80,62);BROWL=(160,114,90)
 def brow_px():
   o={}
