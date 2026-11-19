@@ -61,9 +61,11 @@ def samples():
     for o in(0,.5):P.append((x+o,Yp+.0,z,'bang'));P.append((x+o,Yp+.5,z,'bang'))
   # 兩側：從太陽穴垂下的兩片，靠臉那邊在前（z 大）、外側在耳朵那裡（z 小）
   for Yp,X in zip(*np.nonzero(sides)):
-    x=X-128;ax=abs(x);zf=-2+26*max(0,min(1,1-(ax-54)/28))   # 靠臉那邊在前一點、外側在耳朵後面
-    for dz in(0,-5,-10):
-      for o in(0,.5):P.append((x+o,Yp,zf+dz,'side'));P.append((x+o,Yp+.5,zf+dz,'side'))
+    # 使用者 2026-11-19：側臉看兩側的頭髮要直直垂下來（不是貼著下顎的形狀）→ 兩側是一塊直立的厚片，前緣在臉頰後面一點、
+    # 每一列前後一樣深，側面看前緣就是一條直線
+    x=X-128
+    for zf in np.arange(-12,23,.8):
+      P.append((x,Yp,zf,'side'));P.append((x+.5,Yp+.5,zf,'side'))
   # 後髮：頭後面一大片，從後腦一路垂下來（外層＋內層有厚度）
   rows=np.nonzero(back.any(1))[0]
   for Yp in rows:
@@ -88,7 +90,7 @@ def render(img,deg,cx):
       c=cat[(X,Yp)]
       col=C['mid'] if c in('cap','bang','side') else C['mid']
       x,y,z=pt[(X,Yp)]
-      if c=='side' and z<-6:col=C['sh']                                 # 兩側的內層（後面那片）暗
+      if c=='side' and z<-8:col=C['sh']                                 # 兩側最裡面那層暗
       out[Yp,X]=col;vis[(X,Yp)]=(c,x,y,z)
   # 後髮：只有貼著脖子／臉的那一兩格暗（不要整塊暗）
   for (X,Yp),(c,x,y,z) in vis.items():
