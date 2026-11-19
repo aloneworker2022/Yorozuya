@@ -62,8 +62,8 @@
 <h1>✦ Wife Pay — 老婆還債編輯</h1>
 <p class="warn">
   圖庫底圖由你上傳，生圖是圖生圖（832×1216），沒有底圖不會改走文生圖。
-  遊戲裡點門會先出旁白標籤，停約 0.8 秒後逐字打出旁白；按「下一句」才換成男子、再換成妻子。圖好了慢慢顯現，不會打斷打字。
-  變數：<code>{name}</code> <code>{hair}</code> <code>{breasts}</code> <code>{body}</code> <code>{pose}</code> <code>{pose_zh}</code> <code>{man_build}</code> <code>{man_build_zh}</code> <code>{family}</code> <code>{voice}</code> <code>{stage}</code>。
+  遊戲裡點門會先出旁白標籤，停約 0.8 秒後逐字打出旁白；按「下一句」才換成男子、再換成妻子。圖一好就慢慢顯現並把對話框拉到圖片下方，不裁切、不擋圖，也不打斷打字。劇本可存多種，開門隨機抽。
+  變數：<code>{name}</code> <code>{hair}</code> <code>{breasts}</code> <code>{body}</code> <code>{pose}</code> <code>{pose_zh}</code> <code>{man_build}</code> <code>{man_build_zh}</code> <code>{family}</code> <code>{voice}</code> <code>{stage}</code> <code>{scenario}</code> <code>{script_name}</code>。
   <a href="/edit_pic">Edit Pic</a> | <a href="/test_room">房間沙盒</a> | <a href="/">回遊戲</a>
 </p>
 
@@ -179,22 +179,50 @@
 </section>
 
 <section>
-  <h2>4. 對話模板</h2>
-  <p class="mini">系統／使用者提示詞（可含變數）。測試會呼叫 <code>POST /api/wifepay/dialog</code>，用下面同一個揭示元件顯示。</p>
-  <label>system</label>
-  <textarea id="dlg-sys" style="min-height:7em"></textarea>
-  <label>user</label>
-  <textarea id="dlg-user" style="min-height:5em"></textarea>
+  <h2>4. 劇本</h2>
+  <p class="mini">可存多種劇本，開門時從啟用的裡面隨機抽（有對上圖庫 tags 會優先）。每本可寫情境、後備旁白／對白；進階欄位可覆寫提示詞（空白＝用內建修正後的旁白模板）。測試可指定某一本或隨機。</p>
+  <div class="row">
+    <span class="grow"><label>編輯這本</label>
+      <select id="script-sel"></select></span>
+    <label style="display:inline-flex;align-items:center;gap:.35em;margin:0 0 .35em;font-size:.85em;color:#d8d0ec">
+      <input id="script-enabled" type="checkbox" checked style="width:auto"> 啟用（會被隨機抽到）
+    </label>
+  </div>
+  <div class="row" style="margin-top:.4em">
+    <button class="cy" type="button" id="btn-script-add">新增劇本</button>
+    <button type="button" id="btn-script-save">儲存這本</button>
+    <button class="del" type="button" id="btn-script-del">刪除這本</button>
+  </div>
+  <label>名稱</label>
+  <input id="script-name" type="text" placeholder="例如：被壓在床上">
+  <label>tags（逗號分隔，抽圖時優先對上，例如 missionary, bed）</label>
+  <input id="script-tags" type="text" placeholder="missionary, bed">
+  <label>情境（會進旁白提示詞）</label>
+  <textarea id="script-scenario" style="min-height:5em"></textarea>
+  <label>後備旁白（模型沒寫好時用，建議 60～120 字，寫表情與態度）</label>
+  <textarea id="script-fb-nar" style="min-height:4em"></textarea>
+  <div class="row">
+    <span class="grow"><label>後備男</label><input id="script-fb-man" type="text"></span>
+    <span class="grow"><label>後備她</label><input id="script-fb-wife" type="text"></span>
+  </div>
+  <details style="margin-top:.65em">
+    <summary class="mini" style="cursor:pointer;color:#6fe3e1">進階：覆寫 system／user 提示詞（空白＝用內建模板）</summary>
+    <label>system</label>
+    <textarea id="dlg-sys" style="min-height:7em"></textarea>
+    <label>user（可含 {scenario} {script_name} {name} {pose_zh} 等變數）</label>
+    <textarea id="dlg-user" style="min-height:5em"></textarea>
+  </details>
   <div class="row" style="margin-top:.45em">
-    <button type="button" id="btn-dlg-save">儲存模板</button>
-    <button type="button" id="btn-dlg-test">測試對話框</button>
+    <button type="button" id="btn-dlg-test">測試這本對話框</button>
   </div>
 </section>
 
 <section>
   <h2>5. 測試</h2>
-  <p class="mini">「測試這張圖」只用目前選中的底圖生一張。「全部一起測試」隨機 1 或 2 張＋對話，播完整動畫（旁白→男子→妻子逐字打出，按下一句換人；圖淡入後對話框下移，不重設打字進度）。</p>
+  <p class="mini">「測試這張圖」只用目前選中的底圖生一張。「全部一起測試」隨機 1 或 2 張＋對話，播完整動畫（旁白→男子→妻子逐字打出，按下一句換人；圖一好就淡入並把對話框拉到下方，不裁切、不擋圖、不重設打字進度）。</p>
   <div class="row">
+    <span class="grow"><label>測試用劇本</label>
+      <select id="ig-script"><option value="random">隨機</option></select></span>
     <button type="button" id="btn-test-img">測試這張圖</button>
     <button class="big" type="button" id="btn-test-all">全部一起測試</button>
   </div>
@@ -202,6 +230,6 @@
   <div id="reveal-host"></div>
 </section>
 
-<script type="module" src="/content/wifepay.js?v=3"></script>
+<script type="module" src="/content/wifepay.js?v=4"></script>
 </body>
 </html>

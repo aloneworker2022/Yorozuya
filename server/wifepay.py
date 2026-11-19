@@ -1,7 +1,7 @@
 """老婆還債偷看：圖生圖圖庫與三段式對話（旁白→男→她）。
 
 圖庫在 assets/wifepay/gallery/＋index.json；產出在 assets/wifepay/out/。
-對話模板在 assets/wifepay/dialog.json。內容規則沿用 escort_lines：成年人、自願、不寫強迫／未成年。
+對話模板在 assets/wifepay/dialog.json；劇本在 assets/wifepay/scripts.json（可存多種、開門隨機抽）。內容規則沿用 escort_lines：成年人、自願、不寫強迫／未成年。
 """
 from __future__ import annotations
 
@@ -53,11 +53,8 @@ OLD_DIALOG = {
     ),
 }
 
-# 旁白要比對白長，寫動作＋兩人表情／態度／肢體；60～120 字。對白維持短句。
-NAR_MIN, NAR_MAX = 60, 180
-MAN_MAX, WIFE_MAX = 36, 40
-
-DEFAULT_DIALOG = {
+# 上一版預設（2026-11-19 加長旁白時仍把整段寫成「從門外聽到的對話」）。使用者若沒改過，載入時遷到新預設。
+PREV_DIALOG = {
     "system": (
         "你替成人戀愛模擬遊戲寫一段玩家從門外聽到的對話。"
         "場景：成年女性為了替丈夫（玩家）還債，自願去接客；玩家剛按了門，先聽到裡面的聲音。"
@@ -75,6 +72,36 @@ DEFAULT_DIALOG = {
         "{extra}"
         "旁白要寫表情、態度、肢體，60～120 字。\n"
         "開始："
+    ),
+}
+
+# 旁白要比對白長，寫動作＋兩人表情／態度／肢體；60～120 字。對白維持短句。
+NAR_MIN, NAR_MAX = 60, 180
+MAN_MAX, WIFE_MAX = 36, 40
+
+DEFAULT_DIALOG = {
+    "system": (
+        "你在寫成人戀愛模擬遊戲裡從門縫看見的一幕場面與對白。"
+        "只要輸出固定三行，不要編號、不要額外說明、不要把括號裡的提示詞抄進內容。"
+        "旁白必須是第三人稱場面敘述：只寫房裡的妻子與客人正在做什麼，以及兩人各自的表情、態度、肢體語言。"
+        "旁白禁止出現對白或引號裡的話，禁止寫玩家、丈夫、門外偷看的人，也不要用「你聽見／從門外傳來」這種說法。"
+        "旁白寫成一行，60～120 字，必須比後面兩句對白長。"
+        "男：客人正在說出口的一句話，只要那句話本身（≤32 字）。"
+        "她：妻子正在說出口的一句話，只要那句話本身（≤36 字）。"
+        "雙方都是成年人、你情我願，可以粗口、激烈、求饒式撒嬌（慢一點、輕一點、會壞掉），"
+        "但絕對不要寫強迫、不同意、暴力、未成年或任何救命／報警類台詞。繁體中文。"
+    ),
+    "user": (
+        "劇本：{script_name}\n"
+        "這一幕的情境：{scenario}\n"
+        "體位：{pose_zh}。\n客人：{man_build_zh}，{who}。\n"
+        "她名叫{name}。對白裡她偶爾可以想到丈夫，但不要說出名字；旁白不要寫到玩家或開門的人。\n"
+        "{extra}"
+        "旁白要寫兩人的表情、態度、肢體，60～120 字，不要把男／她的台詞寫進旁白。\n"
+        "輸出三行，格式如下：\n"
+        "旁白：\n"
+        "男：\n"
+        "她：\n"
     ),
 }
 
@@ -116,6 +143,10 @@ def index_path(assets: Path) -> Path:
 
 def dialog_path(assets: Path) -> Path:
     return Path(assets) / "wifepay" / "dialog.json"
+
+
+def scripts_path(assets: Path) -> Path:
+    return Path(assets) / "wifepay" / "scripts.json"
 
 
 def ensure_dirs(assets: Path) -> None:
@@ -305,10 +336,10 @@ def load_dialog_prompt(assets: Path) -> dict:
                 system = _clip(data.get("system"), 4000) or DEFAULT_DIALOG["system"]
                 user = _clip(data.get("user"), 4000) or DEFAULT_DIALOG["user"]
                 changed = False
-                if _same_tpl(system, OLD_DIALOG["system"]):
+                if any(_same_tpl(system, d["system"]) for d in (OLD_DIALOG, PREV_DIALOG)):
                     system = DEFAULT_DIALOG["system"]
                     changed = True
-                if _same_tpl(user, OLD_DIALOG["user"]):
+                if any(_same_tpl(user, d["user"]) for d in (OLD_DIALOG, PREV_DIALOG)):
                     user = DEFAULT_DIALOG["user"]
                     changed = True
                 row = {"system": system, "user": user}
@@ -330,6 +361,304 @@ def save_dialog_prompt(assets: Path, data: dict) -> dict:
         cur["user"] = _clip(data.get("user"), 4000)
     _atomic_write(dialog_path(assets), json.dumps(cur, ensure_ascii=False, indent=2))
     return cur
+
+
+
+STOCK_SCRIPTS = [
+    {
+        "id": "sc_missionary",
+        "name": "被壓在床上",
+        "enabled": True,
+        "tags": ["missionary"],
+        "scenario": "體位是傳教士。她仰躺在床上，客人壓在她身上一下一下地動。旁白寫兩人的表情、態度與肢體，不要寫玩家。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "暖黃燈下，她仰躺在凌亂的床單上，眉心微蹙、唇瓣微張，眼尾含著水光卻還是看著壓上來的男人；他額角沁著汗，眼神發亮、嘴角帶著得意，腰一下一下深深頂進去，床板跟著輕輕響。",
+            "man": "夾這麼緊……錢花得真值。",
+            "wife": "嗯……慢、慢一點……太深了……",
+        },
+    },
+    {
+        "id": "sc_cowgirl",
+        "name": "她自己動",
+        "enabled": True,
+        "tags": ["cowgirl"],
+        "scenario": "體位是騎乘。她跨坐在客人腿上自己起伏。旁白寫兩人的表情、態度與肢體，不要寫玩家。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "她跨坐在他大腿上自己起伏，臉頰潮紅、睫毛濕濕的，偶爾咬住下唇把呻吟壓低；男人仰躺著，一隻手捏著她的腰，表情又饞又滿意，不時往上頂，看她肩頭輕輕發抖。",
+            "man": "對，再坐深一點，自己動啊。",
+            "wife": "哈啊……進、進到最裡面了……",
+        },
+    },
+    {
+        "id": "sc_doggy",
+        "name": "從後面",
+        "enabled": True,
+        "tags": ["doggy"],
+        "scenario": "體位是從後面。她跪在床上，客人在她身後。旁白寫兩人的表情、態度與肢體，不要寫玩家。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "她跪在床上被從後面撞著，手指緊抓著被單，側臉貼著枕頭，眉眼皺著卻沒有躲；身後的男人喘得低沉，掌心按在她腰上，動作又重又穩，每一下都讓她肩頭一顫。",
+            "man": "屁股再翹高一點，這姿勢最深了吧。",
+            "wife": "啊……從後面……好深……膝蓋好痠……",
+        },
+    },
+    {
+        "id": "sc_kiss",
+        "name": "面對面擁吻",
+        "enabled": True,
+        "tags": ["kiss"],
+        "scenario": "他們面對面坐著或抱著，一邊接吻一邊慢慢磨。旁白寫兩人的表情、態度與肢體，不要寫玩家。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "他們面對面坐著緊緊抱在一起，她閉著眼、耳根發燙，手指抓著他的背；男人吻得很深，手沿著她的腰慢慢磨，眼神裡帶著貪戀，呼吸都交纏在一塊。",
+            "man": "舌頭伸出來……貼這麼緊，喜歡嗎？",
+            "wife": "嗯……好近……這樣好害羞……",
+        },
+    },
+    {
+        "id": "sc_reverse",
+        "name": "背向坐著",
+        "enabled": True,
+        "tags": ["reverse"],
+        "scenario": "她背對著坐在客人身上，自己起伏，偶爾側過頭。旁白寫兩人的表情、態度與肢體，不要寫玩家。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "她背對著坐在他身上，雙手撐在他大腿上自己起伏，耳根發紅、側臉卻還是忍不住回看；男人從後面托著她的腰，下巴抵在她肩上，眼神發亮、氣息噴在她頸側，每一下都讓她腰軟。",
+            "man": "回過頭來，讓我看你的臉。",
+            "wife": "這樣……好深，不要突然頂……",
+        },
+    },
+    {
+        "id": "sc_foreplay",
+        "name": "還在前戲",
+        "enabled": True,
+        "tags": ["kiss", "foreplay"],
+        "scenario": "還沒進入正題，或剛開始。他們在床沿或枕頭上接吻、愛撫，節奏比較慢。旁白寫兩人的表情、態度與肢體，不要寫玩家。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "他們還坐在床沿接吻，她羞得眼睫低垂、手指卻抓緊他的衣襟不放；男人一邊慢慢吻她的頸側，一邊用手掌沿著她的腰往上撫，態度溫柔卻顯然已經很想要。",
+            "man": "別急著躲，讓我再親一會兒。",
+            "wife": "嗯……你手……太近了啦……",
+        },
+    },
+    {
+        "id": "sc_regular",
+        "name": "常客熟路",
+        "enabled": True,
+        "tags": ["cowgirl", "missionary"],
+        "scenario": "若是常客就寫得更熟門熟路；若是第一次來，就寫他很快找到她的節奏。兩人已經對上步調。旁白寫表情、態度與肢體，不要寫玩家。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "像是早就對上節奏那樣，她被他抱到床上後就跟著他的動作走，眼神裡有點無奈又帶著熱；男人一臉熟稔地吻她鎖骨，掌心按著她的腰，笑意裡帶著得意，動作卻不急著給夠。",
+            "man": "還是這麼敏感，上次也是這樣。",
+            "wife": "別、別說那個……專心一點……",
+        },
+    },
+    {
+        "id": "sc_intense",
+        "name": "激烈求饒",
+        "enabled": True,
+        "tags": ["doggy", "missionary"],
+        "scenario": "節奏比較激烈，她帶著求饒式的撒嬌（慢一點、輕一點），但雙方都是你情我願，沒有強迫。旁白寫兩人的表情、態度與肢體，不要寫玩家。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "她被頂得聲音都發顫，眉心皺緊、唇間漏出求饒似的氣音，手指死死抓著床單卻沒有推開他；男人喘得又重又急，額角是汗，眼神盯著她不放，一下比一下更深，卻還停在她受得住的邊。",
+            "man": "再忍一下，很快就讓你緩。",
+            "wife": "太、太快了……慢一點好不好……",
+        },
+    },
+]
+
+
+def _is_builtin_tpl(system: str, user: str) -> bool:
+    """系統或使用者提示是否等於某一版內建預設（含舊版）。"""
+    sys_hit = any(_same_tpl(system, d["system"]) for d in (OLD_DIALOG, PREV_DIALOG, DEFAULT_DIALOG))
+    user_hit = any(_same_tpl(user, d["user"]) for d in (OLD_DIALOG, PREV_DIALOG, DEFAULT_DIALOG))
+    return sys_hit and user_hit
+
+
+def clean_fallback(raw) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    nar = apply_banned(_clip(raw.get("narration"), NAR_MAX))
+    man = apply_banned(_clip(raw.get("man"), MAN_MAX))
+    wife = apply_banned(_clip(raw.get("wife"), WIFE_MAX))
+    if not (nar and man and wife):
+        return None
+    if not (NAR_MIN <= len(nar) <= NAR_MAX):
+        return None
+    return {"narration": nar, "man": man, "wife": wife}
+
+
+def clean_script(raw: dict, *, new_id: bool = False) -> dict | None:
+    if not isinstance(raw, dict):
+        return None
+    sid = _clip(raw.get("id"), 40)
+    if new_id or not re.fullmatch(r"[A-Za-z0-9_-]{2,40}", sid or ""):
+        sid = "sc_" + uuid.uuid4().hex[:10]
+    name = _clip(raw.get("name"), 40) or "未命名劇本"
+    scenario = _clip(raw.get("scenario"), 2000)
+    system = _clip(raw.get("system"), 4000)
+    user = _clip(raw.get("user"), 4000)
+    enabled = raw.get("enabled")
+    if enabled is None:
+        enabled = True
+    fb = clean_fallback(raw.get("fallback")) if raw.get("fallback") is not None else None
+    return {
+        "id": sid,
+        "name": name,
+        "enabled": bool(enabled),
+        "tags": clean_tags(raw.get("tags")),
+        "scenario": scenario,
+        "system": system,
+        "user": user,
+        "fallback": fb,
+    }
+
+
+def _seed_scripts(assets: Path) -> list[dict]:
+    """第一次：內建 8 種劇本。若 dialog.json 是使用者改過的模板，放到第一筆並保留原文。"""
+    scripts = [clean_script(x) for x in STOCK_SCRIPTS]
+    scripts = [s for s in scripts if s]
+    raw = None
+    p = dialog_path(assets)
+    if p.is_file():
+        try:
+            data = json.loads(p.read_text("utf-8"))
+            if isinstance(data, dict):
+                raw = {
+                    "system": _clip(data.get("system"), 4000),
+                    "user": _clip(data.get("user"), 4000),
+                }
+        except (OSError, json.JSONDecodeError):
+            raw = None
+    # 先讓內建舊模板遷到新預設（自訂的不動）
+    load_dialog_prompt(assets)
+    if raw and raw["system"] and raw["user"] and not _is_builtin_tpl(raw["system"], raw["user"]):
+        custom = clean_script({
+            "id": "sc_custom",
+            "name": "自訂模板",
+            "enabled": True,
+            "tags": [],
+            "scenario": "沿用你原本儲存的對話模板。",
+            "system": raw["system"],
+            "user": raw["user"],
+            "fallback": STOCK_SCRIPTS[0]["fallback"],
+        })
+        if custom:
+            scripts = [custom] + [s for s in scripts if s["id"] != "sc_custom"]
+    return scripts
+
+
+def load_scripts(assets: Path) -> list[dict]:
+    ensure_dirs(assets)
+    p = scripts_path(assets)
+    if p.is_file():
+        try:
+            data = json.loads(p.read_text("utf-8"))
+        except (OSError, json.JSONDecodeError):
+            data = None
+        items = data if isinstance(data, list) else (data.get("scripts") if isinstance(data, dict) else None)
+        if isinstance(items, list):
+            out = []
+            seen = set()
+            for it in items:
+                row = clean_script(it) if isinstance(it, dict) else None
+                if not row or row["id"] in seen:
+                    continue
+                seen.add(row["id"])
+                out.append(row)
+            if out:
+                return out
+    scripts = _seed_scripts(assets)
+    save_scripts(assets, scripts)
+    return scripts
+
+
+def save_scripts(assets: Path, scripts: list[dict]) -> list[dict]:
+    ensure_dirs(assets)
+    rows = []
+    seen = set()
+    for it in scripts or []:
+        row = clean_script(it) if isinstance(it, dict) else None
+        if not row or row["id"] in seen:
+            continue
+        seen.add(row["id"])
+        rows.append(row)
+    _atomic_write(scripts_path(assets), json.dumps({"scripts": rows}, ensure_ascii=False, indent=2))
+    return rows
+
+
+def get_script(assets: Path, script_id: str) -> dict | None:
+    sid = str(script_id or "").strip()
+    return next((s for s in load_scripts(assets) if s["id"] == sid), None)
+
+
+def add_script(assets: Path, data: dict | None = None) -> dict:
+    scripts = load_scripts(assets)
+    row = clean_script(data or {"name": "新劇本", "scenario": ""}, new_id=True)
+    if not row:
+        row = clean_script({"name": "新劇本"}, new_id=True)
+    scripts.append(row)
+    save_scripts(assets, scripts)
+    return row
+
+
+def patch_script(assets: Path, script_id: str, fields: dict) -> dict | None:
+    scripts = load_scripts(assets)
+    hit = next((s for s in scripts if s["id"] == script_id), None)
+    if not hit:
+        return None
+    if not isinstance(fields, dict):
+        fields = {}
+    merged = {**hit, **{k: fields[k] for k in fields if k != "id"}}
+    merged["id"] = hit["id"]
+    row = clean_script(merged)
+    if not row:
+        return None
+    row["id"] = hit["id"]
+    scripts = [row if s["id"] == hit["id"] else s for s in scripts]
+    save_scripts(assets, scripts)
+    return row
+
+
+def delete_script(assets: Path, script_id: str) -> bool:
+    scripts = load_scripts(assets)
+    if not any(s["id"] == script_id for s in scripts):
+        return False
+    if len(scripts) <= 1:
+        return False
+    keep = [s for s in scripts if s["id"] != script_id]
+    save_scripts(assets, keep)
+    return True
+
+
+def pick_script(scripts: list, tags=None, script_id: str | None = None, rnd=None) -> dict | None:
+    """指定 id 就用那一筆（停用也可，方便測試）。否則從啟用的裡面抽；有 tags 時優先對上劇本 tags。"""
+    rows = [s for s in (scripts or []) if isinstance(s, dict) and s.get("id")]
+    if not rows:
+        return None
+    sid = str(script_id or "").strip()
+    if sid and sid not in ("random", "*"):
+        hit = next((s for s in rows if s["id"] == sid), None)
+        if hit:
+            return hit
+    pool = [s for s in rows if s.get("enabled", True)] or rows
+    tagset = set(clean_tags(tags) if tags is not None else [])
+    prefer = [s for s in pool if tagset and tagset & set(s.get("tags") or [])]
+    src = prefer or pool
+    rng = rnd if hasattr(rnd, "randrange") else random.Random()
+    return src[rng.randrange(len(src))]
 
 
 def _look_of(info: dict) -> dict:
@@ -422,7 +751,10 @@ def apply_banned(text: str) -> str:
     return "" if (not t or _banned(t)) else t
 
 
-def dialog_messages(info: dict, template: dict | None = None) -> tuple[str, str]:
+def dialog_messages(info: dict, template: dict | None = None, script: dict | None = None) -> tuple[str, str]:
+    """組系統／使用者提示。劇本可覆寫模板，並帶入 {scenario}、{script_name}。"""
+    info = info or {}
+    script = script if isinstance(script, dict) else {}
     tpl = template or DEFAULT_DIALOG
     v = persona_vars(info)
     extra = []
@@ -430,9 +762,26 @@ def dialog_messages(info: dict, template: dict | None = None) -> tuple[str, str]
         extra.append(f"她的叫聲類型：{v['voice_zh']}")
     if v.get("family"):
         extra.append(f"她的個性：{v['family']}")
-    v = {**v, "extra": (("\n".join(extra) + "\n") if extra else "")}
-    system = expand(tpl.get("system") or DEFAULT_DIALOG["system"], v)
-    user = expand(tpl.get("user") or DEFAULT_DIALOG["user"], v)
+    scenario = str(script.get("scenario") or info.get("scenario") or "").strip()
+    script_name = str(script.get("name") or info.get("script_name") or "").strip()
+    v = {
+        **v,
+        "extra": (("\n".join(extra) + "\n") if extra else ""),
+        "scenario": scenario,
+        "script_name": script_name,
+    }
+    sys_tpl = str(script.get("system") or "").strip() or (tpl.get("system") or DEFAULT_DIALOG["system"])
+    user_tpl = str(script.get("user") or "").strip() or (tpl.get("user") or DEFAULT_DIALOG["user"])
+    system = expand(sys_tpl, v)
+    user = expand(user_tpl, v)
+    if not script_name:
+        user = re.sub(r"^劇本：\s*\n", "", user)
+    if not scenario:
+        user = re.sub(r"這一幕的情境：\s*\n", "", user)
+    # 自訂使用者模板若沒有 {scenario} 欄位，就把情境補在最前面，避免劇本沒被用到
+    if scenario and "{scenario}" not in user_tpl:
+        title = f"【劇本：{script_name}】\n" if script_name else ""
+        user = f"{title}這一幕的情境：{scenario}\n{user}"
     return system, user
 
 
@@ -466,8 +815,14 @@ def parse_dialog(reply: str) -> dict | None:
 
 
 def fallback_dialog(info: dict | None = None, rnd=None) -> dict:
+    info = info or {}
+    script = info.get("script") if isinstance(info.get("script"), dict) else None
+    if script:
+        row = clean_fallback(script.get("fallback"))
+        if row:
+            return dict(row)
     roll = rnd if callable(rnd) else (rnd.random if hasattr(rnd, "random") else random.random)
-    pose = str((info or {}).get("pose") or "")
+    pose = str(info.get("pose") or "")
     by_pose = {
         "missionary": FALLBACKS[0],
         "cowgirl": FALLBACKS[1],

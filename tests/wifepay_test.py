@@ -159,6 +159,21 @@ def test_dialog_messages_expand():
     assert "老漢" in user or "後面" in user
     assert "表情" in sys and "60" in sys and "120" in sys
     assert "60～120" in user
+    # 旁白提示不該再把整段寫成「從門外聽到的對話」，也不該把說明塞進輸出格式裡
+    assert "聽到的對話" not in sys
+    assert "第三人稱" in sys
+    assert "肢體" in sys
+    assert "不要把" in user or "寫進旁白" in sys or "寫進旁白" in user
+    # 沒選劇本時不要留下空的「劇本：」列
+    assert not user.startswith("劇本：")
+    sc = W.STOCK_SCRIPTS[1]
+    sys2, user2 = W.dialog_messages(
+        {"name": "小焰", "pose": "cowgirl", "build": "slim", "stage": "wife"},
+        script=sc,
+    )
+    assert sc["name"] in user2
+    assert "騎乘" in user2 or "跨坐" in user2
+    assert "{scenario}" not in user2 and "{script_name}" not in user2 and "{name}" not in user2
 
 
 def test_migrate_old_dialog_default():
@@ -171,6 +186,13 @@ def test_migrate_old_dialog_default():
     assert d["user"] == W.DEFAULT_DIALOG["user"]
     saved = json.loads(p.read_text("utf-8"))
     assert saved["system"] == W.DEFAULT_DIALOG["system"]
+    # 上一版「聽到的對話」預設也要遷
+    assets_prev = _assets()
+    pp = W.dialog_path(assets_prev)
+    pp.parent.mkdir(parents=True, exist_ok=True)
+    pp.write_text(json.dumps(W.PREV_DIALOG, ensure_ascii=False, indent=2), encoding="utf-8")
+    d2 = W.load_dialog_prompt(assets_prev)
+    assert d2["system"] == W.DEFAULT_DIALOG["system"]
     # 使用者自訂的模板不能被蓋掉
     assets2 = _assets()
     custom = {"system": "我自己寫的系統提示", "user": "使用者 {name}"}
@@ -178,6 +200,50 @@ def test_migrate_old_dialog_default():
     again = W.load_dialog_prompt(assets2)
     assert again["system"] == "我自己寫的系統提示"
     assert again["user"] == "使用者 {name}"
+
+
+def test_scripts_crud_and_pick():
+    assets = _assets()
+    scripts = W.load_scripts(assets)
+    assert len(scripts) >= 8
+    ids = {s["id"] for s in scripts}
+    assert "sc_cowgirl" in ids and "sc_intense" in ids
+    # 每個內建劇本都有可用的後備旁白
+    for s in scripts:
+        fb = W.clean_fallback(s.get("fallback"))
+        assert fb, s["id"]
+        assert W.apply_banned(fb["narration"]) == fb["narration"]
+    # 指定 id
+    hit = W.pick_script(scripts, script_id="sc_kiss")
+    assert hit and hit["id"] == "sc_kiss"
+    # tags 優先
+    tagged = W.pick_script(scripts, tags=["doggy"], rnd=__import__("random").Random(0))
+    assert "doggy" in (tagged.get("tags") or [])
+    # CRUD
+    added = W.add_script(assets, {"name": "測試本", "scenario": "只是測試情境。", "tags": ["kiss"]})
+    assert added["id"].startswith("sc_")
+    assert W.get_script(assets, added["id"])["name"] == "測試本"
+    patched = W.patch_script(assets, added["id"], {"name": "測試本乙", "enabled": False})
+    assert patched["name"] == "測試本乙" and patched["enabled"] is False
+    assert W.delete_script(assets, added["id"]) is True
+    assert W.get_script(assets, added["id"]) is None
+    # 不能刪到一個都不剩
+    only = W.load_scripts(assets)
+    last = only[0]
+    for s in only[1:]:
+        assert W.delete_script(assets, s["id"]) is True
+    assert W.delete_script(assets, last["id"]) is False
+    assert len(W.load_scripts(assets)) == 1
+    # 自訂 dialog.json 會變成第一個劇本，原文保留
+    assets2 = _assets()
+    W.save_dialog_prompt(assets2, {"system": "我自己寫的系統提示", "user": "使用者 {name} 加 {scenario}"})
+    seeded = W.load_scripts(assets2)
+    assert seeded[0]["name"] == "自訂模板"
+    assert seeded[0]["system"] == "我自己寫的系統提示"
+    assert "使用者 {name}" in seeded[0]["user"]
+    # 劇本後備優先於體位後備
+    row = W.fallback_dialog({"pose": "missionary", "script": hit}, rnd=lambda: 0.0)
+    assert row["narration"] == hit["fallback"]["narration"]
 
 
 if __name__ == "__main__":
@@ -189,4 +255,5 @@ if __name__ == "__main__":
     test_pick_one_or_two()
     test_dialog_messages_expand()
     test_migrate_old_dialog_default()
+    test_scripts_crud_and_pick()
     print("wifepay_test: ok")

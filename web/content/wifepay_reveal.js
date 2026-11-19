@@ -1,18 +1,22 @@
 /* 老婆還債偷看：共用「中央對話框 → 圖淡入、對話框下移」元件（遊戲與 /wifepay 編輯頁同一套）。
  * 對話：先出說話人標籤，停約 0.8 秒後打字機逐字出現；一段跑完按「下一句」才換人（旁白→男子→妻子），舊句往上留著。
  * 打字途中再點會一次跑完。圖庫空或生圖失敗只留對話，不退回人偶、不改文生圖。圖淡入不重設打字進度。 */
-const CSS_ID = "wifepay-reveal-css-2";
+const CSS_ID = "wifepay-reveal-css-3";
 const CSS = `
-.wp-reveal{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;background:rgba(8,6,12,.28)}
-.wp-reveal.page{position:relative;inset:auto;min-height:28rem;height:min(86dvh,40rem);background:#120e18;border-radius:12px;overflow:hidden;pointer-events:auto}
-.wp-pics{position:absolute;inset:0;display:flex;flex-direction:column;opacity:0;transition:opacity 1.8s ease;background:#0c0912}
+.wp-reveal{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;background:rgba(8,6,12,.28);overflow:hidden}
+.wp-reveal.page{position:relative;inset:auto;width:100%;height:min(86dvh,44rem);min-height:28rem;background:#120e18;border-radius:12px;overflow:hidden;pointer-events:auto}
+.wp-pics{display:none;flex:1 1 auto;min-height:0;width:100%;opacity:0;transition:opacity 1.8s ease;background:#0c0912;align-items:flex-end;justify-content:center;gap:.4rem;padding:.3rem .3rem 0;box-sizing:border-box}
+.wp-pics.ready{display:flex}
 .wp-pics.show{opacity:1}
-.wp-pics img{flex:1 1 0;width:100%;height:0;object-fit:cover;display:block}
-.wp-dialog{position:relative;z-index:2;width:90%;max-width:24rem;margin:0 auto;padding:.85rem .95rem .95rem;border-radius:14px;background:rgba(22,16,30,.92);border:1px solid rgba(232,138,180,.35);color:#f2e9ff;font:600 15px/1.55 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.4);pointer-events:auto;transition:transform 1.15s ease,margin 1.15s ease;cursor:pointer}
-.wp-reveal.has-pics .wp-dialog{transform:translateY(0);margin-top:auto;margin-bottom:7%}
+.wp-pics.one{flex-direction:column}
+.wp-pics.two{flex-direction:row;flex-wrap:nowrap}
+.wp-pics img{flex:1 1 0;min-width:0;min-height:0;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;object-position:center center;display:block}
+.wp-dialog{position:relative;z-index:2;flex:0 0 auto;width:90%;max-width:24rem;max-height:42%;margin:0 auto;padding:.85rem .95rem .95rem;border-radius:14px;background:rgba(22,16,30,.96);border:1px solid rgba(232,138,180,.35);color:#f2e9ff;font:600 15px/1.55 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.4);pointer-events:auto;cursor:pointer;overflow:auto;box-sizing:border-box}
+.wp-reveal.has-pics{justify-content:flex-end;align-items:stretch}
+.wp-reveal.has-pics .wp-dialog{margin:.4rem auto .55rem;max-height:36%}
 .wp-wait{margin:0 0 .4rem;text-align:center;color:#e6be8c}
 .wp-log{width:100%;max-height:14.5rem;overflow:auto;display:flex;flex-direction:column;justify-content:flex-end;gap:.55rem}
-.wp-reveal.has-pics .wp-log{max-height:11.5rem}
+.wp-reveal.has-pics .wp-log{max-height:min(11rem,28dvh)}
 .wp-line{margin:0;opacity:1}
 .wp-line.hist{opacity:.7}
 .wp-line.wp-nar{color:#d8d0c0;font-weight:500}
@@ -64,7 +68,14 @@ export async function fetchDialog(info) {
     man: String(j.man || ""),
     wife: String(j.wife || ""),
     ai: !!j.ai,
+    script_id: String(j.script_id || ""),
+    script_name: String(j.script_name || ""),
   };
+}
+
+export async function fetchScripts() {
+  const j = await apiJson("/api/wifepay/scripts");
+  return Array.isArray(j.scripts) ? j.scripts : [];
 }
 
 /** 輪詢既有 /api/imggen；成功回圖 URL，失敗丟錯。 */
@@ -291,11 +302,21 @@ export function mountWifepayReveal(host, opts = {}) {
       const list = (urls || []).map((u) => String(u || "")).filter(Boolean);
       if (!list.length || closed.yes) return;
       pics.hidden = false;
-      pics.innerHTML = list.map((u) => `<img alt="" src="${u.replace(/"/g, "")}">`).join("");
-      requestAnimationFrame(() => {
-        pics.classList.add("show");
-        el.classList.add("has-pics");
+      pics.classList.add("ready");
+      pics.classList.toggle("two", list.length > 1);
+      pics.classList.toggle("one", list.length <= 1);
+      list.forEach((u, i) => {
+        let img = pics.children[i];
+        if (!img || img.tagName !== "IMG") {
+          img = document.createElement("img");
+          img.alt = "";
+          pics.append(img);
+        }
+        if (img.getAttribute("src") !== u) img.src = u;
       });
+      while (pics.children.length > list.length) pics.removeChild(pics.lastChild);
+      el.classList.add("has-pics");
+      requestAnimationFrame(() => { pics.classList.add("show"); });
     },
   };
 
@@ -320,10 +341,14 @@ export function mountWifepayReveal(host, opts = {}) {
       return;
     }
     first.body.classList.remove("waiting");
-    await waitPause(800);
-    if (closed.yes || job !== playJob) return;
+    const instant = !!opts.instant;
+    if (!instant) {
+      await waitPause(800);
+      if (closed.yes || job !== playJob) return;
+    }
     if (row.narration) {
-      await typeText(first.body, row.narration);
+      if (instant) first.body.textContent = row.narration;
+      else await typeText(first.body, row.narration);
     } else {
       first.node.remove();
     }
@@ -332,14 +357,20 @@ export function mountWifepayReveal(host, opts = {}) {
     if (row.man) rest.push(["wp-man", labels.man, row.man]);
     if (row.wife) rest.push(["wp-wife", labels.wife, row.wife]);
     for (let i = 0; i < rest.length; i++) {
-      await waitNext();
-      if (closed.yes || job !== playJob) return;
+      if (!instant) {
+        await waitNext();
+        if (closed.yes || job !== playJob) return;
+      }
       markHist();
       const [kind, label, text] = rest[i];
       const line = addLine(kind, label, false);
-      await waitPause(800);
-      if (closed.yes || job !== playJob) return;
-      await typeText(line.body, text);
+      if (instant) {
+        line.body.textContent = text;
+      } else {
+        await waitPause(800);
+        if (closed.yes || job !== playJob) return;
+        await typeText(line.body, text);
+      }
     }
     ctl.phase = "done";
     showNext(false);
@@ -380,6 +411,7 @@ export function startWifepayPeek(host, opts = {}) {
     stage: opts.stage || opts.character?.roomStage || opts.who?.roomStage || opts.character?.stage || "",
     regular: !!opts.regular,
     guestName: opts.guestName || opts.guest?.name || "",
+    script_id: opts.script_id || opts.script || "random",
   };
   const genOpts = {
     ...info,
@@ -390,9 +422,12 @@ export function startWifepayPeek(host, opts = {}) {
     timeout: opts.timeout,
   };
   let emptyMessage = "";
-  const images = async () => {
+  const pickP = (async () => {
     if (typeof opts.onStatus === "function") opts.onStatus("抽圖庫…");
-    const picked = await pickGallery(info.pose, opts.count);
+    return pickGallery(info.pose, opts.count);
+  })();
+  const images = async () => {
+    const picked = await pickP;
     if (picked.empty || !picked.items?.length) {
       emptyMessage = "圖庫是空的。請先到 /wifepay 上傳底圖（不會改走文生圖）。";
       return [];
@@ -404,7 +439,11 @@ export function startWifepayPeek(host, opts = {}) {
         const url = await generateFromItem(item, { ...genOpts, key: `wifepay:${Date.now().toString(36)}:${i}` }, (sec) => {
           if (typeof opts.onStatus === "function") opts.onStatus(`生圖中… ${sec}s（${picked.items.length} 張）`);
         });
-        if (url) urls.push(url);
+        if (url) {
+          urls.push(url);
+          // 任一張先好就立刻顯現、把對話往下推，不等全部生完、也不等對話打完
+          try { ui.setImages(urls.slice()); } catch { /* */ }
+        }
       } catch (err) {
         console.warn("[wifepay]", err);
       }
@@ -413,10 +452,18 @@ export function startWifepayPeek(host, opts = {}) {
     return urls;
   };
   const dialog = async () => {
-    try { return await fetchDialog(info); } catch { return null; }
+    let tags = [info.pose, ...(opts.tags || [])].filter(Boolean);
+    try {
+      const picked = await pickP;
+      for (const it of picked.items || []) {
+        for (const tag of it.tags || []) if (tag) tags.push(tag);
+      }
+    } catch { /* 圖庫空也還是能生對話 */ }
+    try { return await fetchDialog({ ...info, tags }); } catch { return null; }
   };
   const ui = mountWifepayReveal(host, {
     page: !!opts.page,
+    instant: !!opts.instant,
     waitText: opts.waitText || "門後傳來聲音……",
     wifeName: info.name,
     guestName: info.guestName,

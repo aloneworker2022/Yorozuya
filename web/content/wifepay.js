@@ -1,9 +1,9 @@
-/* Wife Pay 編輯頁 v2：抽妹子只擲參數（不產立繪、不叫模型），參數可改可再抽。 */
+/* Wife Pay 編輯頁 v4：劇本可存多種隨機抽；抽妹子只擲參數。 */
 import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES } from "./girl_gen.js";
 import { familyOf } from "./girl_voice.js?v=1";
 import {
-  apiJson, fetchGallery, fetchDialog, generateFromItem, mountWifepayReveal, startWifepayPeek,
-} from "./wifepay_reveal.js?v=2";
+  apiJson, fetchGallery, fetchDialog, fetchScripts, generateFromItem, mountWifepayReveal, startWifepayPeek,
+} from "./wifepay_reveal.js?v=3";
 
 const $ = (id) => document.getElementById(id);
 const ENG_KEY = "yorozuya_eng";
@@ -12,6 +12,8 @@ let girls = [];
 let currentGirl = null;
 let items = [];
 let selectedId = "";
+let scripts = [];
+let selectedScriptId = "";
 
 function esc(s) {
   return String(s ?? "")
@@ -328,6 +330,7 @@ function genInfo() {
     comfy_url: $("ig-comfy").value.trim(),
     seed: Number($("ig-seed").value || 0),
     denoise: over === "" ? undefined : Number(over),
+    script_id: $("ig-script")?.value || "random",
   };
 }
 
@@ -377,18 +380,99 @@ function overDenoise(it) {
   return over === "" ? (it?.denoise ?? 0.55) : Number(over);
 }
 
-async function loadDialogTpl() {
-  const j = await apiJson("/api/wifepay/dialog-prompt");
-  $("dlg-sys").value = j.system || "";
-  $("dlg-user").value = j.user || "";
+function currentScript() {
+  return scripts.find((s) => s.id === selectedScriptId) || scripts[0] || null;
 }
 
-async function saveDialogTpl() {
-  await apiJson("/api/wifepay/dialog-prompt", "PUT", {
-    system: $("dlg-sys").value,
-    user: $("dlg-user").value,
-  });
-  setStatus("gen-status", "✓ 已儲存對話模板");
+function renderScriptSelects() {
+  const edit = $("script-sel");
+  const test = $("ig-script");
+  const editVal = selectedScriptId || currentScript()?.id || "";
+  const testVal = test?.value || "random";
+  if (edit) {
+    edit.innerHTML = scripts.map((s) => {
+      const off = s.enabled === false ? "（停用）" : "";
+      return `<option value="${esc(s.id)}"${s.id === editVal ? " selected" : ""}>${esc(s.name || s.id)}${off}</option>`;
+    }).join("") || '<option value="">（尚無劇本）</option>';
+  }
+  if (test) {
+    const opts = ['<option value="random">隨機</option>'].concat(scripts.map((s) => {
+      const off = s.enabled === false ? "（停用）" : "";
+      return `<option value="${esc(s.id)}">${esc(s.name || s.id)}${off}</option>`;
+    }));
+    test.innerHTML = opts.join("");
+    test.value = scripts.some((s) => s.id === testVal) ? testVal : "random";
+  }
+}
+
+function fillScriptForm(row) {
+  const s = row || currentScript() || {};
+  selectedScriptId = s.id || "";
+  if ($("script-sel") && s.id) $("script-sel").value = s.id;
+  if ($("script-enabled")) $("script-enabled").checked = s.enabled !== false;
+  if ($("script-name")) $("script-name").value = s.name || "";
+  if ($("script-tags")) $("script-tags").value = Array.isArray(s.tags) ? s.tags.join(", ") : (s.tags || "");
+  if ($("script-scenario")) $("script-scenario").value = s.scenario || "";
+  const fb = s.fallback || {};
+  if ($("script-fb-nar")) $("script-fb-nar").value = fb.narration || "";
+  if ($("script-fb-man")) $("script-fb-man").value = fb.man || "";
+  if ($("script-fb-wife")) $("script-fb-wife").value = fb.wife || "";
+  if ($("dlg-sys")) $("dlg-sys").value = s.system || "";
+  if ($("dlg-user")) $("dlg-user").value = s.user || "";
+}
+
+function gatherScriptFields() {
+  const fbNar = $("script-fb-nar")?.value.trim() || "";
+  const fbMan = $("script-fb-man")?.value.trim() || "";
+  const fbWife = $("script-fb-wife")?.value.trim() || "";
+  return {
+    name: $("script-name")?.value.trim() || "未命名劇本",
+    enabled: !!$("script-enabled")?.checked,
+    tags: $("script-tags")?.value || "",
+    scenario: $("script-scenario")?.value || "",
+    system: $("dlg-sys")?.value || "",
+    user: $("dlg-user")?.value || "",
+    fallback: (fbNar || fbMan || fbWife) ? { narration: fbNar, man: fbMan, wife: fbWife } : null,
+  };
+}
+
+async function loadScriptsList() {
+  scripts = await fetchScripts();
+  if (!scripts.some((s) => s.id === selectedScriptId)) selectedScriptId = scripts[0]?.id || "";
+  renderScriptSelects();
+  fillScriptForm(currentScript());
+}
+
+async function saveCurrentScript() {
+  const cur = currentScript();
+  if (!cur) throw new Error("沒有劇本可儲存");
+  const j = await apiJson(`/api/wifepay/scripts/${encodeURIComponent(cur.id)}`, "PATCH", gatherScriptFields());
+  scripts = j.scripts || scripts;
+  selectedScriptId = (j.script || cur).id;
+  renderScriptSelects();
+  fillScriptForm(j.script || currentScript());
+  setStatus("gen-status", "✓ 已儲存劇本");
+}
+
+async function addNewScript() {
+  const j = await apiJson("/api/wifepay/scripts", "POST", { name: "新劇本", scenario: "", enabled: true });
+  scripts = j.scripts || scripts;
+  selectedScriptId = (j.script || scripts[scripts.length - 1]).id;
+  renderScriptSelects();
+  fillScriptForm(j.script || currentScript());
+  setStatus("gen-status", "✓ 已新增劇本，編輯後請再按儲存");
+}
+
+async function deleteCurrentScript() {
+  const cur = currentScript();
+  if (!cur) throw new Error("沒有劇本可刪");
+  if (!confirm(`刪除劇本「${cur.name}」？`)) return;
+  const j = await apiJson(`/api/wifepay/scripts/${encodeURIComponent(cur.id)}`, "DELETE");
+  scripts = j.scripts || [];
+  selectedScriptId = scripts[0]?.id || "";
+  renderScriptSelects();
+  fillScriptForm(currentScript());
+  setStatus("gen-status", "✓ 已刪除劇本");
 }
 
 function revealHost() {
@@ -400,6 +484,7 @@ function revealHost() {
 async function testDialog() {
   if (!currentGirl) { setStatus("gen-status", "先選或抽一隻魅子", true); return; }
   const info = genInfo();
+  info.script_id = selectedScriptId || info.script_id || "random";
   setStatus("gen-status", "產生對話…");
   mountWifepayReveal(revealHost(), {
     page: true,
@@ -407,7 +492,8 @@ async function testDialog() {
     guestName: info.guestName,
     dialog: async () => {
       const row = await fetchDialog(info);
-      setStatus("gen-status", row.ai ? "✓ 模型寫的對話" : "✓ 用本地後備（模型沒寫好）");
+      const who = row.script_name ? `／劇本「${row.script_name}」` : "";
+      setStatus("gen-status", (row.ai ? "✓ 模型寫的對話" : "✓ 用本地後備（模型沒寫好）") + who);
       return row;
     },
     images: [],
@@ -530,7 +616,13 @@ function bind() {
   $("btn-item-save")?.addEventListener("click", () => saveItem().catch((e) => setStatus("gen-status", e.message, true)));
   $("btn-ig-ping")?.addEventListener("click", () => pingEngine());
   $("btn-preview-prompt")?.addEventListener("click", () => previewPrompt());
-  $("btn-dlg-save")?.addEventListener("click", () => saveDialogTpl().catch((e) => setStatus("gen-status", e.message, true)));
+  $("btn-script-save")?.addEventListener("click", () => saveCurrentScript().catch((e) => setStatus("gen-status", e.message, true)));
+  $("btn-script-add")?.addEventListener("click", () => addNewScript().catch((e) => setStatus("gen-status", e.message, true)));
+  $("btn-script-del")?.addEventListener("click", () => deleteCurrentScript().catch((e) => setStatus("gen-status", e.message, true)));
+  $("script-sel")?.addEventListener("change", () => {
+    selectedScriptId = $("script-sel").value;
+    fillScriptForm(currentScript());
+  });
   $("btn-dlg-test")?.addEventListener("click", () => testDialog());
   $("btn-test-img")?.addEventListener("click", () => testOneImage());
   $("btn-test-all")?.addEventListener("click", () => testAll());
@@ -538,6 +630,6 @@ function bind() {
 
 bind();
 updateModeUi();
-Promise.all([loadGirls(), reloadGallery().catch((e) => setStatus("gen-status", e.message, true)), loadDialogTpl().catch(() => {}), loadEngDefaults()]).then(() => {
+Promise.all([loadGirls(), reloadGallery().catch((e) => setStatus("gen-status", e.message, true)), loadScriptsList().catch((e) => setStatus("gen-status", e.message, true)), loadEngDefaults()]).then(() => {
   setStatus("gen-status", items.length ? `圖庫 ${items.length} 張` : "圖庫是空的，請先上傳底圖");
 });

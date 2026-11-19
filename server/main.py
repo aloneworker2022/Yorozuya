@@ -5143,18 +5143,59 @@ def wifepay_dialog_prompt_put(body: dict):
     return wifepay.save_dialog_prompt(ASSETS_DIR, body or {})
 
 
+@app.get("/api/wifepay/scripts")
+def wifepay_scripts_get():
+    return {"scripts": wifepay.load_scripts(ASSETS_DIR)}
+
+
+@app.post("/api/wifepay/scripts")
+def wifepay_scripts_add(body: dict | None = None):
+    row = wifepay.add_script(ASSETS_DIR, body or {})
+    return {"script": row, "scripts": wifepay.load_scripts(ASSETS_DIR)}
+
+
+@app.patch("/api/wifepay/scripts/{script_id}")
+def wifepay_scripts_patch(script_id: str, body: dict | None = None):
+    hit = wifepay.patch_script(ASSETS_DIR, script_id, body or {})
+    if not hit:
+        raise HTTPException(status_code=404, detail="沒有這個劇本")
+    return {"script": hit, "scripts": wifepay.load_scripts(ASSETS_DIR)}
+
+
+@app.delete("/api/wifepay/scripts/{script_id}")
+def wifepay_scripts_delete(script_id: str):
+    if not wifepay.get_script(ASSETS_DIR, script_id):
+        raise HTTPException(status_code=404, detail="沒有這個劇本")
+    if not wifepay.delete_script(ASSETS_DIR, script_id):
+        raise HTTPException(status_code=400, detail="至少要留一個劇本")
+    return {"ok": True, "scripts": wifepay.load_scripts(ASSETS_DIR)}
+
+
 @app.post("/api/wifepay/dialog")
 async def wifepay_dialog(body: dict):
-    """回 {narration, man, wife, ai}。模型約 30 秒沒回或寫壞／觸礁 → 本地三段後備。"""
+    """回 {narration, man, wife, ai, script_id, script_name}。模型約 30 秒沒回或寫壞／觸礁 → 該劇本或本地後備。"""
     body = body or {}
+    scripts = wifepay.load_scripts(ASSETS_DIR)
+    tags = body.get("tags")
+    if not tags:
+        tags = [str(body.get("pose") or "")]
+    script = wifepay.pick_script(scripts, tags=tags, script_id=body.get("script_id") or body.get("script"))
     tpl = wifepay.load_dialog_prompt(ASSETS_DIR)
-    system, user = wifepay.dialog_messages(body, tpl)
+    system, user = wifepay.dialog_messages(body, tpl, script)
     try:
         reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=30)
     except Exception:
         reply = ""
-    row, ai = wifepay.resolve_dialog(reply, body)
-    return {**row, "ai": ai}
+    info = dict(body)
+    if script:
+        info["script"] = script
+    row, ai = wifepay.resolve_dialog(reply, info)
+    return {
+        **row,
+        "ai": ai,
+        "script_id": (script or {}).get("id") or "",
+        "script_name": (script or {}).get("name") or "",
+    }
 
 
 @app.post("/api/wifepay/pick")
