@@ -34,14 +34,17 @@ def regions():
   global MER
   import random
   rnd=random.Random(7 if HS!='bob' else 11)
-  MER=[];p=-56
-  while p<56:MER.append(p);p+=rnd.choice([7,8,9,10,12,13,15])
+  # 大塊、小塊交錯（使用者 2026-11-19）：大塊 14～19°、小塊 4～7°，大概一大一小、偶爾連兩個小的
+  MER=[];p=-56;big=rnd.random()<.5;SIZES=[]
+  while p<56:
+    MER.append(p);w=rnd.uniform(14,19) if big else rnd.uniform(4,7);SIZES.append(big);p+=w
+    big=(not big) if rnd.random()<.8 else big
   MER.append(56)
   tips={}
   for i in range(len(MER)-1):
     x0,x1=mer_x(MER[i],BANG_Y),mer_x(MER[i+1],BANG_Y)
-    L=rnd.choice([0,1,2,3,4,5,-1,-2]);L+=4 if rnd.random()<.15 else 0
-    pointed=rnd.random()<.65;lean=rnd.choice([-1,0,0,1])
+    L=(rnd.choice([2,3,4,5,6]) if SIZES[i] else rnd.choice([-1,0,1,2]));L+=3 if (SIZES[i] and rnd.random()<.2) else 0   # 大塊長、小塊短
+    pointed=rnd.random()<(.75 if SIZES[i] else .5);lean=rnd.choice([-1,0,0,1])
     for x in range(int(math.floor(x0)),int(math.ceil(x1))+1):
       u=(x+.5-x0)/max(1,x1-x0);u=min(1,max(0,u))
       drop=L+(3.5*(1-abs(2*u-1-lean*.4)) if pointed else 1.2)
