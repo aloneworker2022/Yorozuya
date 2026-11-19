@@ -6,7 +6,7 @@ from PIL import Image,ImageDraw,ImageFont
 os.environ.setdefault('GUIDE','0')
 from eyeframe import Frame,TYPES
 from outline import Y,S,N
-EPAL=dict(K=(58,36,36),k=(110,70,62),W=(250,247,244),w=(214,206,214),I=(84,52,44),i=(140,88,62),j=(190,132,88),P=(38,22,22),H=(255,255,255),L=(184,124,104),c=(216,166,140))
+EPAL=dict(K=(58,36,36),k=(110,70,62),W=(250,247,244),w=(214,206,214),I=(84,52,44),i=(140,88,62),j=(190,132,88),P=(38,22,22),O=(112,66,50),H=(255,255,255),L=(184,124,104),c=(216,166,140))
 D=sys.argv[1];ES=1.35
 base=np.array(Image.open(D+'/front.png').convert('RGB'))
 F=ImageFont.truetype('/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',30)

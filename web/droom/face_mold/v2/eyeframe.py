@@ -224,7 +224,7 @@ class Frame:
       # 瞳孔類型 1（使用者給的第一張）：平塗；黑眼珠外框深、上半一塊弧形陰影（上眼皮蓋下來）、裡面一圈細線、
       # 中間直立的小橢圓瞳孔（深色框、裡面淺、正中一條深色直線）；沒有亮點
       dx,dy=x-ic[0],y-ic[1]
-      if r>1-.9/min(IRX,IRY):return 'P'
+      if r>1-.9/min(IRX,IRY):return 'O'   # 外框用黑眼珠的深色、不用黑（使用者 2026-11-19）
       pr=math.hypot(dx/(IRX*.2),dy/(IRY*.42))
       if pr<1:
         if pr>1-.9/(IRX*.2) or abs(dx)<.45:return 'P'
@@ -238,7 +238,7 @@ class Frame:
       pr=math.hypot(dx,dy)/(.3*min(IRX,IRY))
       if math.hypot((hx+.42*min(IRX,IRY)*.6)/(.13*min(IRX,IRY)+.5),(dy+.42*min(IRX,IRY)*.6)/(.13*min(IRX,IRY)+.5))<1:return 'H'
       if pr<1:return 'P'
-      if r>1-1.2/min(IRX,IRY):return 'P'
+      if r>1-1.2/min(IRX,IRY):return 'O'
       if pr<1.75:return 'j'
       v=(y-ic[1]+IRY)/(2*IRY);return 'I' if v<.36 else 'i' if v<.7 else 'j'
     if r<1:
