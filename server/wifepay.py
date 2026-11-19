@@ -20,8 +20,8 @@ GALLERY_PREFIX = "/assets/wifepay/gallery/"
 OUT_PREFIX = "/assets/wifepay/out/"
 DEFAULT_DENOISE = 0.55
 DENOISE_LO, DENOISE_HI = 0.35, 0.85
-CHAR_SEC_DEFAULT = 0.9
-CHAR_SEC_LEGACY = 1.2
+CHAR_SEC_DEFAULT = 0.6
+CHAR_SEC_LEGACY = (1.2, 0.9)
 CHAR_SEC_LO, CHAR_SEC_HI = 0.05, 2.0
 # 舊版打字間隔（毫秒）當比例：一般 26、逗號 50、句號 90
 _TYPE_BASE_MS, _TYPE_COMMA_MS, _TYPE_PERIOD_MS = 26, 50, 90
@@ -812,11 +812,12 @@ def pick_peek(count: int = 1, rnd=None, side: str | None = None, fracs=None) -> 
 
 
 def _is_legacy_char_sec(v) -> bool:
-    """仍是上一版預設 1.2 秒（尚未被使用者改成別的值）。"""
+    """仍是舊預設 0.9 或更早的 1.2 秒（尚未被使用者改成別的值）。"""
     try:
-        return abs(float(v) - CHAR_SEC_LEGACY) < 1e-6
+        x = float(v)
     except (TypeError, ValueError):
         return False
+    return any(abs(x - old) < 1e-6 for old in CHAR_SEC_LEGACY)
 
 
 def clip_prompt(v, default: str = "") -> str:
@@ -880,7 +881,7 @@ def _prompt_field(raw: dict, key: str, default: str) -> str:
 
 
 def _config_from_raw(raw: dict | None) -> tuple[dict, bool]:
-    """組設定；若 char_sec 仍是舊預設 1.2，回傳 (設定, 需要寫回)。其他欄位保留。"""
+    """組設定；若 char_sec 仍是舊預設 0.9 或 1.2，回傳 (設定, 需要寫回)。其他欄位保留。"""
     raw = raw if isinstance(raw, dict) else {}
     wrote = bool("char_sec" in raw and raw.get("char_sec") is not None and _is_legacy_char_sec(raw.get("char_sec")))
     if wrote:
@@ -923,7 +924,7 @@ def _config_from_raw(raw: dict | None) -> tuple[dict, bool]:
 
 def load_config(assets: Path) -> dict:
     """打字速度、自訂姿勢、預設正面／負面提示詞、隔門聽不清。缺檔或壞檔用程式預設，不依賴被 gitignore 的資產檔。
-    若檔裡還是舊預設 1.2，自動遷到 0.9 並寫回（其他欄位保留）；使用者改過的其他值不動。
+    若檔裡還是舊預設 0.9 或 1.2，自動遷到 0.6 並寫回（其他欄位保留）；使用者改過的其他值不動。
     預設正面／負面若仍是上一版（尚未含視線標籤），或自訂裡缺新標籤，載入時補上並寫回；不覆蓋已有的詞。"""
     ensure_dirs(assets)
     raw = {}

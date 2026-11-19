@@ -2,21 +2,24 @@
  * 對話：一開始就在中央打字（旁白→男→她，按「下一句」換人）。
  * 圖好了先把對話框在約 0.4 秒滑到下方，再把已切好的門縫圖（1/2 或 3/5，同一邊）從該側螢幕邊緣移入（約 0.7 秒 ease-out，略淡入）。
  * 若有第二張：不要在按「下一句」時換圖；改成點圖片，第二張從同一側移入並蓋在第一張上面（底下那張略暗、微偏移）。
- * 圖片區用 dvh／svh 限制高度（直向約 55%、橫向更矮），切圖 contain 在框內；圖垂直置中於頂部（含 safe-area）與對話框上緣之間，上下留白大致相同，對話框留在底部完整可見。
+ * 圖片區用 dvh／svh 限制（手機直向約 42dvh、寬度約 70vw），切圖 contain 後把圖框收到切圖大小，避免滿版；圖垂直置中於頂部（含 safe-area）與對話框上緣之間，對話框留在底部完整可見。
  * prefers-reduced-motion 改短淡入。男子／她的對白可做「隔門聽不清」；旁白不變。 */
 import { hearLine, normalizeMuffleLevel, parseMuffleEnabled } from "./wifepay_heard.js?v=1";
 
-const CSS_ID = "wifepay-reveal-css-10";
+const CSS_ID = "wifepay-reveal-css-11";
 const DIALOG_DOWN_MS = 400;
 const SLIDE_MS = 700;
 const REDUCE_MS = 180;
+export const PICS_MAX_VH_PORTRAIT = 0.42;
+export const PICS_MAX_VH_LANDSCAPE = 0.36;
+export const PICS_MAX_VW = 0.70;
 const CSS = `
 .wp-reveal{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;background:rgba(8,6,12,.92);overflow:hidden;overscroll-behavior:none;box-sizing:border-box;width:100%;height:100%;max-width:100%;max-height:100%;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .wp-reveal.page{position:relative;inset:auto;width:100%;height:min(86dvh,44rem);max-height:calc(100dvh - 6.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));max-height:calc(100svh - 6.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:0;background:#120e18;border-radius:12px;overflow:hidden;pointer-events:auto}
-.wp-pics{display:none;flex:0 0 auto;min-height:0;width:min(100%,96vw);max-width:100%;max-height:0;opacity:1;background:#07050a;align-items:center;justify-content:center;padding:0;box-sizing:border-box;position:relative;overflow:hidden;transition:max-height .4s ease,height .4s ease}
+.wp-pics{display:none;flex:0 0 auto;min-height:0;width:min(100%,70vw);max-width:70vw;max-height:0;opacity:1;background:#07050a;align-items:center;justify-content:center;padding:0;box-sizing:border-box;position:relative;overflow:hidden;transition:max-height .4s ease,height .4s ease}
 .wp-pics.ready{display:flex;pointer-events:auto}
 .wp-pics.has-next{cursor:pointer}
-.wp-reveal.has-pics .wp-pics{flex:0 0 auto;width:min(100%,96vw);max-width:min(100%,96vw);max-height:min(55dvh,55svh);margin-top:auto;margin-bottom:auto}
+.wp-reveal.has-pics .wp-pics{flex:0 0 auto;width:min(100%,70vw);max-width:min(100%,70vw);max-height:min(42dvh,42svh);margin-top:auto;margin-bottom:auto}
 .wp-stage{position:relative;height:100%;width:100%;overflow:hidden;background:linear-gradient(90deg,#050308 0%,#0c0910 18%,#07050a 50%,#0c0910 82%,#050308 100%)}
 .wp-slot{position:absolute;top:0;overflow:hidden;background:#000;border:none;box-sizing:border-box;box-shadow:inset 6px 0 0 rgba(40,28,24,.9),inset -6px 0 0 rgba(24,16,14,.9),0 0 18px rgba(0,0,0,.55);opacity:0;will-change:transform,opacity;z-index:1}
 .wp-slot img{position:absolute;top:0;height:100%;width:auto;max-width:none;display:block}
@@ -29,7 +32,7 @@ const CSS = `
 .wp-full-btn{position:absolute;right:.45rem;top:.45rem;z-index:3;pointer-events:auto;padding:.22rem .65rem;border:1px solid rgba(232,138,180,.4);border-radius:999px;background:rgba(20,14,24,.82);color:#ffd0e4;font:600 12px/1.3 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;cursor:pointer}
 .wp-dialog{position:relative;z-index:2;flex:0 0 auto;width:min(90%,24rem);max-width:calc(100vw - 1.2rem);max-height:min(38dvh,38svh);margin:0 auto;padding:.85rem .95rem .95rem;border-radius:14px;background:rgba(22,16,30,.96);border:1px solid rgba(232,138,180,.35);color:#f2e9ff;font:600 15px/1.55 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.4);pointer-events:auto;cursor:pointer;overflow:auto;box-sizing:border-box;transition:margin .4s ease,max-height .4s ease}
 @media (orientation: landscape){
-  .wp-reveal.has-pics .wp-pics{max-height:min(42dvh,42svh)}
+  .wp-reveal.has-pics .wp-pics{max-height:min(36dvh,36svh)}
   .wp-dialog{max-height:min(48dvh,48svh)}
   .wp-reveal.has-pics .wp-dialog{max-height:min(48dvh,48svh)}
 }
@@ -58,7 +61,7 @@ const CSS = `
 
 function ensureCss() {
   if (document.getElementById(CSS_ID)) return;
-  for (const id of ["wifepay-reveal-css-9", "wifepay-reveal-css-8", "wifepay-reveal-css-7", "wifepay-reveal-css-6", "wifepay-reveal-css-5"]) {
+  for (const id of ["wifepay-reveal-css-10", "wifepay-reveal-css-9", "wifepay-reveal-css-8", "wifepay-reveal-css-7", "wifepay-reveal-css-6", "wifepay-reveal-css-5"]) {
     const old = document.getElementById(id);
     if (old) old.remove();
   }
@@ -155,12 +158,12 @@ export function invalidateConfig() { _cfgP = null; }
 
 export async function fetchConfig() {
   if (!_cfgP) {
-    _cfgP = apiJson("/api/wifepay/config").catch(() => ({ char_sec: 0.9, poses: [], pose_catalog: [], door_muffle: true, door_muffle_level: "mid" }));
+    _cfgP = apiJson("/api/wifepay/config").catch(() => ({ char_sec: 0.6, poses: [], pose_catalog: [], door_muffle: true, door_muffle_level: "mid" }));
   }
   const j = await _cfgP;
   const char = Number(j.char_sec);
   return {
-    char_sec: Number.isFinite(char) ? Math.max(0.05, Math.min(2, char)) : 0.9,
+    char_sec: Number.isFinite(char) ? Math.max(0.05, Math.min(2, char)) : 0.6,
     poses: Array.isArray(j.poses) ? j.poses : [],
     pose_catalog: Array.isArray(j.pose_catalog) ? j.pose_catalog : [],
     door_muffle: parseMuffleEnabled(j.door_muffle, true),
@@ -316,8 +319,8 @@ export async function generateFromItem(item, opts = {}, onTick) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-export function typeDelay(mark, charSec = 0.9, prev = "") {
-  const base = Math.max(50, Math.min(2000, Math.round((Number(charSec) || 0.9) * 1000)));
+export function typeDelay(mark, charSec = 0.6, prev = "") {
+  const base = Math.max(50, Math.min(2000, Math.round((Number(charSec) || 0.6) * 1000)));
   // ……／… 比句號再多停一點；連續的 ... 後面幾點也略長
   if (/[…]/.test(mark)) return Math.round(base * (110 / 26));
   if (mark === "." && /[.…]/.test(prev)) return Math.round(base * (80 / 26));
@@ -340,7 +343,7 @@ function speakerLabels(opts, row) {
  * 在 host 裡掛上揭示畫面。
  * opts.dialog = 已有 {narration,man,wife} 或 ()=>Promise
  * opts.images = 已有 url[] 或 ()=>Promise<url[]>（空陣列＝只留對話）
- * opts.charSec 每字秒數（預設 0.9；也可等 fetchConfig）
+ * opts.charSec 每字秒數（預設 0.6；也可等 fetchConfig）
  * opts.peek = {side, fracs}
  * opts.fullImage 編輯頁看全圖
  * opts.showFullToggle 顯示「看全圖」按鈕
@@ -421,31 +424,61 @@ export function mountWifepayReveal(host, opts = {}) {
 
   function viewportBox() {
     const vv = window.visualViewport;
-    const vw = Math.max(1, (vv && vv.width) || window.innerWidth || document.documentElement.clientWidth || 1);
-    const vh = Math.max(1, (vv && vv.height) || window.innerHeight || document.documentElement.clientHeight || 1);
+    const iw = window.innerWidth || 1;
+    const ih = window.innerHeight || 1;
+    const cw = document.documentElement.clientWidth || iw;
+    const ch = document.documentElement.clientHeight || ih;
+    const vw = Math.max(1, Math.min(iw, cw, (vv && vv.width) || iw));
+    const vh = Math.max(1, Math.min(ih, ch, (vv && vv.height) || ih));
     return { vw, vh };
   }
 
   function picsBudget() {
     const { vw, vh } = viewportBox();
     const portrait = vh >= vw;
-    const cap = portrait ? 0.55 : 0.42;
+    const capH = portrait ? PICS_MAX_VH_PORTRAIT : PICS_MAX_VH_LANDSCAPE;
     const host = el.getBoundingClientRect();
     const dialogH = Math.max(box.getBoundingClientRect().height || 0, Math.min(vh * 0.22, 160));
     const pad = 20;
     const hostH = host.height || el.clientHeight || vh;
     const remain = Math.max(80, hostH - dialogH - pad);
-    const maxH = Math.max(80, Math.min(vh * cap, remain));
-    const maxW = Math.max(80, Math.min(vw * 0.96, host.width || el.clientWidth || vw));
+    const maxH = Math.max(80, Math.min(vh * capH, remain));
+    const maxW = Math.max(80, Math.min(vw * PICS_MAX_VW, host.width || el.clientWidth || vw));
     return { maxW, maxH, vw, vh };
+  }
+
+  function peekBoxForBudget(maxW, maxH) {
+    if (state.full) return { w: maxW, h: maxH };
+    const slots = [...stage.querySelectorAll(".wp-slot")];
+    let w = 0, h = 0;
+    for (const slot of slots) {
+      const img = slot.querySelector("img");
+      if (!img || !img.naturalWidth || !img.naturalHeight) continue;
+      const i = Number(slot.dataset.i) || 0;
+      const frac = fracValue((state.peek.fracs || [])[i] || (state.peek.fracs || [])[0] || "1/2");
+      const lay = peekSlotLayout({
+        doorW: maxW,
+        doorH: maxH,
+        imgW: img.naturalWidth,
+        imgH: img.naturalHeight,
+        side: state.peek.side,
+        frac,
+        slide: 1,
+      });
+      if (lay.vis > w) w = lay.vis;
+      if (lay.slotH > h) h = lay.slotH;
+    }
+    if (!w || !h) return { w: maxW, h: maxH };
+    return { w: Math.min(maxW, w), h: Math.min(maxH, h) };
   }
 
   function applyPicsBudget() {
     const { maxW, maxH } = picsBudget();
+    const boxSz = peekBoxForBudget(maxW, maxH);
     pics.style.maxWidth = Math.round(maxW) + "px";
-    pics.style.width = "100%";
     pics.style.maxHeight = Math.round(maxH) + "px";
-    pics.style.height = Math.round(maxH) + "px";
+    pics.style.width = Math.round(boxSz.w) + "px";
+    pics.style.height = Math.round(boxSz.h) + "px";
   }
 
   function stageSize() {
@@ -760,7 +793,7 @@ export function mountWifepayReveal(host, opts = {}) {
         body.textContent = chars.slice(0, i).join("");
         scrollLog();
         if (i >= chars.length) return finish();
-        const sec = state.charSec != null ? state.charSec : 0.9;
+        const sec = state.charSec != null ? state.charSec : 0.6;
         timer = setTimeout(tick, typeDelay(chars[i - 1], sec, chars[i - 2] || ""));
       };
       tick();
@@ -959,6 +992,9 @@ export function startWifepayPeek(host, opts = {}) {
   let peek = opts.peek || null;
   const pickP = (async () => {
     try {
+      if (typeof opts.images === "function" || (Array.isArray(opts.images) && opts.images.filter(Boolean).length)) {
+        return { items: [], peek: opts.peek || null, empty: false, skipped: true };
+      }
       if (Array.isArray(opts.items) && opts.items.length) {
         const given = opts.items.filter((x) => x && x.id && x.url).slice(0, PICK_MAX);
         return { items: given, peek: opts.peek || pickPeek(given.length || 1), empty: !given.length };
@@ -969,6 +1005,10 @@ export function startWifepayPeek(host, opts = {}) {
     }
   })();
   const images = async () => {
+    if (typeof opts.images === "function") return await opts.images();
+    if (Array.isArray(opts.images) && opts.images.filter(Boolean).length) {
+      return opts.images.map((u) => String(u || "")).filter(Boolean);
+    }
     const picked = await pickP;
     if (picked.char_sec != null) ui?.setCharSec(picked.char_sec);
     if (picked.peek) peek = picked.peek;
@@ -997,6 +1037,8 @@ export function startWifepayPeek(host, opts = {}) {
     return urls;
   };
   const dialog = async () => {
+    if (typeof opts.dialog === "function") return await opts.dialog();
+    if (opts.dialog && typeof opts.dialog === "object") return opts.dialog;
     let tags = [info.pose, ...(opts.tags || [])].filter(Boolean);
     try {
       const picked = await pickP;

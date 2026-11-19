@@ -6,7 +6,7 @@
  * 日租 mode=door/room 仍用舊字幕／紙娃娃路徑，與老婆還債無關。
  * 不扣錢、不決定發現與否：這些由呼叫端（app.js）先算好傳進來。 */
 import { peekLine, nextGapMs, flavorWife } from "./escort_voices.js?v=3";
-import { startWifepayPeek } from "./wifepay_reveal.js?v=14";
+import { startWifepayPeek } from "./wifepay_reveal.js?v=16";
 
 /** 遊戲與 test_room 共用的正式老婆還債開門偷看參數（一律走 startWifepayPeek）。 */
 export function buildWifepayPeekOpts(who, extra = {}) {
@@ -378,7 +378,7 @@ function drawScene(g, st) {
 }
 
 const CSS = `
-.peek-ov{position:fixed;inset:0;z-index:9000;background:#16121e;display:flex;align-items:center;justify-content:center;touch-action:manipulation;overflow:hidden;overscroll-behavior:none}
+.peek-ov{position:fixed;inset:0;z-index:9000;width:100%;height:100%;max-width:100vw;max-height:100%;background:#16121e;display:flex;align-items:center;justify-content:center;touch-action:manipulation;overflow:hidden;overscroll-behavior:none;box-sizing:border-box}
 .peek-box{position:relative;height:100%;max-height:100dvh;aspect-ratio:195/422;max-width:100vw}
 .peek-box canvas{width:100%;height:100%;image-rendering:pixelated;display:block}
 .peek-t{position:absolute;left:0;right:0;text-align:center;font:600 15px/1.3 "Fusion Pixel",system-ui,sans-serif;pointer-events:none;text-shadow:0 1px 0 #000}
@@ -399,10 +399,10 @@ const CSS = `
  * 回傳 { close(), state, open, ready, say }（state.opened：真的開過門；state.lines：日租冒過的字幕，測試用）。
  */
 export function openPeek(opts = {}) {
-  if (!document.getElementById("peek-css-4")) {
-    const old = document.getElementById("peek-css") || document.getElementById("peek-css-2") || document.getElementById("peek-css-3");
+  if (!document.getElementById("peek-css-5")) {
+    const old = document.getElementById("peek-css") || document.getElementById("peek-css-2") || document.getElementById("peek-css-3") || document.getElementById("peek-css-4");
     if (old) old.remove();
-    const s = document.createElement("style"); s.id = "peek-css-4"; s.textContent = CSS; document.head.append(s);
+    const s = document.createElement("style"); s.id = "peek-css-5"; s.textContent = CSS; document.head.append(s);
   }
   const pose = POSE_ID[opts.pose] ? opts.pose : "cowgirl";
   const ov = document.createElement("div");
@@ -424,7 +424,7 @@ export function openPeek(opts = {}) {
   if (mode === "door") st.opened = true;
   const man = MAN_BUILDS[opts.man] ? opts.man : "average", tempo = MAN_BUILDS[man].tempo;   // 客人體型：重的慢、瘦的快
   ov.dataset.man = man;
-  let D = window.RoomDoll, doll = opts.doll || D.lookToDoll(opts.who?.look || null);
+  let D = window.RoomDoll, doll = opts.doll || (D && D.lookToDoll && D.lookToDoll(opts.who?.look || null));
   const dpose = POSE_ID[pose];
   hint.textContent = mode === "room" ? (opts.hint || "") : mode === "door" ? (opts.hint || "門後傳來聲音……") : opts.cost ? `點門偷看（−${opts.cost} 金）` : "點門偷看";
   status.textContent = mode === "peek" ? "" : (opts.status || "");
@@ -512,6 +512,13 @@ export function openPeek(opts = {}) {
       ckpt: wp.ckpt || "", comfy_url: wp.comfy_url || "",
       script_id: wp.script_id || wp.script || "random",
       denoise: wp.denoise, prompt: wp.prompt, negative: wp.negative, seed: wp.seed,
+      images: opts.images ?? wp.images,
+      dialog: opts.dialog ?? wp.dialog,
+      peek: opts.peek ?? wp.peek,
+      instant: !!(opts.instant ?? wp.instant),
+      charSec: opts.charSec ?? wp.charSec,
+      doorMuffle: opts.doorMuffle ?? wp.doorMuffle,
+      showFullToggle: false,
       onStatus: (m) => { hint.textContent = m || ""; },
     });
   };

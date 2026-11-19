@@ -94,7 +94,7 @@
 <h1>✦ Wife Pay — 老婆還債編輯</h1>
 <p class="warn">
   依序：選姿勢 → 編輯圖庫 → 編劇本 → 編 prompt → 調 denoise → 測試。
-  點門後圖只從門縫露出左或右的 1/2 或 3/5；兩張圖同一邊，交疊切換。對話每個字預設 0.9 秒，可在最後一步調整。
+  點門後圖只從門縫露出左或右的 1/2 或 3/5；兩張圖同一邊，交疊切換。對話每個字預設 0.6 秒，可在最後一步調整。
   變數：<code>{name}</code> <code>{hair}</code> <code>{breasts}</code> <code>{body}</code> <code>{pose}</code> <code>{pose_zh}</code> <code>{man_build}</code> <code>{man_build_zh}</code> <code>{family}</code> <code>{voice}</code> <code>{stage}</code> <code>{scenario}</code> <code>{script_name}</code>。
   <a href="/edit_pic">Edit Pic</a> | <a href="/test_room">房間沙盒</a> | <a href="/">回遊戲</a>
 </p>
@@ -294,13 +294,13 @@
     <button class="cy" type="button" id="btn-ig-ping">測試引擎</button>
   </div>
   <div class="status" id="ig-eng-status"></div>
-  <label>打字速度（每字秒數，預設 0.9，範圍 0.05～2.0；標點會按比例多停。點一下可一次跑完這句）</label>
+  <label>打字速度（每字秒數，預設 0.6，範圍 0.05～2.0；標點會按比例多停。點一下可一次跑完這句）</label>
   <div class="row">
-    <span class="grow"><input id="ig-char-sec" type="range" min="0.05" max="2" step="0.05" value="0.9"></span>
-    <span class="fix0"><input id="ig-char-sec-num" type="number" min="0.05" max="2" step="0.05" value="0.9"></span>
+    <span class="grow"><input id="ig-char-sec" type="range" min="0.05" max="2" step="0.05" value="0.6"></span>
+    <span class="fix0"><input id="ig-char-sec-num" type="number" min="0.05" max="2" step="0.05" value="0.6"></span>
     <button type="button" id="btn-char-save">儲存速度</button>
   </div>
-  <p class="mini" id="char-sec-label">目前每個字 0.9 秒（遊戲裡也用這個設定）</p>
+  <p class="mini" id="char-sec-label">目前每個字 0.6 秒（遊戲裡也用這個設定）</p>
   <label class="chk"><input id="ig-muffle" type="checkbox" checked> 隔門聽不清（遊戲裡也用：男子／她的對白變成隻字片語並穿插吟叫，旁白不變）</label>
   <label>聽不清程度：<b id="muffle-level-label">中</b></label>
   <div class="row">
@@ -334,6 +334,6 @@
   <button class="cy" type="button" id="btn-next">下一步</button>
 </div>
 
-<script type="module" src="/content/wifepay.js?v=16"></script>
+<script type="module" src="/content/wifepay.js?v=18"></script>
 </body>
 </html>

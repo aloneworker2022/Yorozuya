@@ -364,16 +364,16 @@ def test_scripts_seed_and_merge():
 def test_config_char_sec_persist():
     assets = _assets()
     cfg = W.load_config(assets)
-    assert cfg["char_sec"] == W.CHAR_SEC_DEFAULT == 0.9
+    assert cfg["char_sec"] == W.CHAR_SEC_DEFAULT == 0.6
     assert cfg["poses"] == []
     # 缺檔時從程式預設，不依賴被 gitignore 的 config.json
     assert not W.config_path(assets).is_file()
-    saved = W.save_config(assets, {"char_sec": 0.9, "poses": ["standing", "standing", "missionary"]})
-    assert saved["char_sec"] == 0.9
+    saved = W.save_config(assets, {"char_sec": 0.7, "poses": ["standing", "standing", "missionary"]})
+    assert saved["char_sec"] == 0.7
     assert saved["poses"] == ["standing", "missionary"]
     again = W.load_config(assets)
-    assert again["char_sec"] == 0.9 and again["poses"] == ["standing", "missionary"]
-    # clamp（0 或無效會回到新預設 0.9）
+    assert again["char_sec"] == 0.7 and again["poses"] == ["standing", "missionary"]
+    # clamp（0 或無效會回到新預設 0.6）
     assert W.save_config(assets, {"char_sec": 0})["char_sec"] == W.CHAR_SEC_DEFAULT
     assert W.save_config(assets, {"char_sec": 9})["char_sec"] == W.CHAR_SEC_HI
     assert W.save_config(assets, {"char_sec": 0.01})["char_sec"] == W.CHAR_SEC_LO
@@ -382,19 +382,25 @@ def test_config_char_sec_persist():
     assert W.load_config(assets)["char_sec"] == 0.5
     assert W.save_config(assets, {"char_sec": 1.0})["char_sec"] == 1.0
     assert W.load_config(assets)["char_sec"] == 1.0
-    # 檔裡還是舊預設 1.2 時，遷到 0.9，姿勢保留
+    # 檔裡還是舊預設 1.2 或 0.9 時，遷到 0.6，姿勢保留
     path = W.config_path(assets)
     path.write_text(json.dumps({"char_sec": 1.2, "poses": ["standing"]}, ensure_ascii=False), encoding="utf-8")
     migrated = W.load_config(assets)
-    assert migrated["char_sec"] == 0.9 and migrated["poses"] == ["standing"]
+    assert migrated["char_sec"] == 0.6 and migrated["poses"] == ["standing"]
     stored = json.loads(path.read_text("utf-8"))
-    assert stored["char_sec"] == 0.9 and stored["poses"] == ["standing"]
+    assert stored["char_sec"] == 0.6 and stored["poses"] == ["standing"]
+    path.write_text(json.dumps({"char_sec": 0.9, "poses": ["standing"]}, ensure_ascii=False), encoding="utf-8")
+    migrated2 = W.load_config(assets)
+    assert migrated2["char_sec"] == 0.6 and migrated2["poses"] == ["standing"]
+    stored2 = json.loads(path.read_text("utf-8"))
+    assert stored2["char_sec"] == 0.6 and stored2["poses"] == ["standing"]
     assert stored["global_prompt"] == W.GLOBAL_POS_DEFAULT
     assert stored["global_negative"] == W.GLOBAL_NEG_DEFAULT
     # 標點等待按比例放大
+    assert W.type_delay_ms("字", 0.6) == 600
+    assert W.type_delay_ms("，", 0.6) == int(round(600 * (50 / 26)))
+    assert W.type_delay_ms("。", 0.6) == int(round(600 * (90 / 26)))
     assert W.type_delay_ms("字", 0.9) == 900
-    assert W.type_delay_ms("，", 0.9) == int(round(900 * (50 / 26)))
-    assert W.type_delay_ms("。", 0.9) == int(round(900 * (90 / 26)))
     assert W.type_delay_ms("字", 0.05) == 50
     poses = W.list_poses(assets, ["bed", "cowgirl"])
     ids = [p["id"] for p in poses]
@@ -472,18 +478,18 @@ def test_global_prompts_compose_and_config():
     restored = W.save_config(assets, {"global_prompt": "  ", "global_negative": ""})
     assert restored["global_prompt"] == W.GLOBAL_POS_DEFAULT
     assert restored["global_negative"] == W.GLOBAL_NEG_DEFAULT
-    # 遷 1.2 秒時保留使用者改過的預設提示詞，只補缺的視線標籤
+    # 遷舊預設打字速度時保留使用者改過的預設提示詞，只補缺的視線標籤
     path = W.config_path(assets)
     path.write_text(json.dumps({
         "char_sec": 1.2, "poses": ["doggy"],
         "global_prompt": "wide shot only", "global_negative": "pov",
     }, ensure_ascii=False), encoding="utf-8")
     migrated = W.load_config(assets)
-    assert migrated["char_sec"] == 0.9 and migrated["poses"] == ["doggy"]
+    assert migrated["char_sec"] == 0.6 and migrated["poses"] == ["doggy"]
     assert migrated["global_prompt"] == "wide shot only, " + ", ".join(W.LOOK_POS_TAGS)
     assert migrated["global_negative"] == "pov, " + ", ".join(W.LOOK_NEG_TAGS)
     stored = json.loads(path.read_text("utf-8"))
-    assert stored["char_sec"] == 0.9
+    assert stored["char_sec"] == 0.6
     assert stored["global_prompt"] == migrated["global_prompt"]
 
 
@@ -524,7 +530,7 @@ def test_global_gaze_migration():
     path.write_text(json.dumps({
         "global_prompt": W.GLOBAL_POS_DEFAULT,
         "global_negative": W.GLOBAL_NEG_DEFAULT,
-        "char_sec": 0.9,
+        "char_sec": 0.6,
     }, ensure_ascii=False), encoding="utf-8")
     again = W.load_config(assets)
     assert again["global_prompt"] == W.GLOBAL_POS_DEFAULT
@@ -610,13 +616,13 @@ def test_door_muffle_config():
     assert again["char_sec"] == 0.6
     assert again["door_muffle"] is False
     assert again["door_muffle_level"] == "heavy"
-    # 遷 1.2 秒時保留隔門設定
+    # 遷舊預設打字速度時保留隔門設定
     path = W.config_path(assets)
     path.write_text(json.dumps({
         "char_sec": 1.2, "poses": [], "door_muffle": False, "door_muffle_level": "light",
     }, ensure_ascii=False), encoding="utf-8")
     migrated = W.load_config(assets)
-    assert migrated["char_sec"] == 0.9
+    assert migrated["char_sec"] == 0.6
     assert migrated["door_muffle"] is False
     assert migrated["door_muffle_level"] == "light"
 

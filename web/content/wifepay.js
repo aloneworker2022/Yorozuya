@@ -4,7 +4,7 @@ import { familyOf } from "./girl_voice.js?v=1";
 import {
   apiJson, fetchGalleryDoc, fetchDialog, fetchScripts, generateFromItem, mountWifepayReveal, startWifepayPeek,
   fetchConfig, saveConfig, pickPeek, pickItems, itemsForPose,
-} from "./wifepay_reveal.js?v=14";
+} from "./wifepay_reveal.js?v=16";
 
 const $ = (id) => document.getElementById(id);
 const ENG_KEY = "yorozuya_eng";
@@ -28,7 +28,7 @@ let selectedPose = "";
 let testPick = [];
 let extraPoses = [];
 let currentStep = 1;
-let charSec = 0.9;
+let charSec = 0.6;
 let doorMuffle = true;
 let doorMuffleLevel = "mid";
 const MUFFLE_LEVEL_ZH = { light: "輕", mid: "中", heavy: "重" };
@@ -486,7 +486,7 @@ async function loadWpConfig() {
 }
 
 function syncCharSecUi(sec) {
-  const n = Math.max(0.05, Math.min(2, Number(sec) || 0.9));
+  const n = Math.max(0.05, Math.min(2, Number(sec) || 0.6));
   charSec = Math.round(n * 100) / 100;
   if ($("ig-char-sec")) $("ig-char-sec").value = String(charSec);
   if ($("ig-char-sec-num")) $("ig-char-sec-num").value = String(charSec);
