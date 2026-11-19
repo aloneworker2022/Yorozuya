@@ -5,7 +5,7 @@
 #   內側那束：從太陽穴下來，蓋到臉頰邊緣（Inner strands overlap the face），過了下巴往外、波浪往下
 #   前髮：眉毛高度一條線，寬到兩邊太陽穴
 #   髮尾：底下幾個捲起來的尖
-# 用法：python3 hair_wavy.py <有 front_f.png 的資料夾> <第2步輸出.png> [第3步輸出.png]
+# 用法：python3 hair_wavy.py <有 front_f.png 的資料夾> <第2步輸出.png> [第3步輸出.png] [前髮輸出.png]
 import os,sys,math
 import numpy as np
 from PIL import Image
@@ -70,80 +70,107 @@ if __name__=='__main__':
   D=sys.argv[1];img=np.array(Image.open(f'{D}/front_f.png').convert('RGB'))
   o=outline(img)
   Image.fromarray(o).resize((N*3,H*3),Image.NEAREST).save(sys.argv[2])
-# ---------------- 第 3 步：前髮一束束、髮流線、兩側分束（還是只有黑線；頭髮蓋住的地方塗白） ----------------
+# ---------------- 第 3 步：髮流線（教學圖：Draw streaks — they show the direction the hair is combed） ----------------
+# 頭髮從頭頂的髮旋往下梳 → 髮流線從髮旋沿著頭的圓弧往下散開；前髮下緣一束束（剪齊、束和束之間小缺口）；
+# 兩側的髮流線跟著外輪廓的波浪一段一段；內側髮束加第二條邊（有寬度）；頭髮蓋住的地方塗白（耳朵、額頭、脖子後面）
 from PIL import ImageDraw
-def xfun(pts):
-  P=np.array(crom(pts));o=np.argsort(P[:,1]);return lambda y:np.interp(y,P[o,1],P[o,0])
+import random
+W=(CX-2,36)                                              # 髮旋（頭頂）
+RO2=86
+def mer(phi,y):
+  # 從髮旋沿著頭的圓弧往下的經線：在正面看到的 x
+  c=max(-1,min(1,(CY-y)/RO2));th=math.acos(c) if y<CY else math.pi/2
+  return CX+RO2*.97*math.sin(th)*math.sin(math.radians(phi))
+def phi_at(x,y):
+  c=max(-1,min(1,(CY-y)/RO2));th=math.acos(c) if y<CY else math.pi/2
+  return math.degrees(math.asin(max(-1,min(1,(x-CX)/(RO2*.97*math.sin(th))))))
+def offset(pts,d,lo,hi):
+  # 一條線往內（往臉中間）平移 d 格，只取 y 在 lo～hi 那段
+  P=np.array(crom(pts,12));out=[]
+  for k in range(1,len(P)-1):
+    t=P[k+1]-P[k-1];t/=np.linalg.norm(t)+1e-9;n=np.array([t[1],-t[0]])
+    if (n[0]*(CX-P[k,0]))<0:n=-n
+    q=P[k]+n*d
+    if lo<=q[1]<=hi:out.append(tuple(q))
+  return out[::3]
 def stage3(img):
-  out=extend(img)
-  domeL=[(CX+80*math.cos(a),CY-1+79*math.sin(a)) for a in np.radians(np.linspace(-90,-178,10))]
-  oL=[(46,128),(42,145),(33,166),(32,186),(39,203),(34,222),(24,242),(25,262),(33,280),(27,296),(22,304)]
-  iL=[(60,128),(62,146),(67,164),(76,186),(83,204),(84,214),(79,230),(70,250),(73,268),(82,284),(80,298),(74,306)]
-  fo,fi=xfun(domeL[-1:]+oL),xfun(iL)
-  # 前髮下緣：一束約 15 格，下緣剪齊、束和束之間往上缺一小口；兩側最外面那束長一點、往下框住臉
-  xs=[60,74,89,103,117,131,145,159,172,185,197]
-  yb=lambda x:134+.0*(x-CX)-(abs(x-CX)/68)**2*2
-  bang=[]
+  base=extend(img);out=base.copy()
+  C=curves()
+  outerL,outerR,lockL,lockR1,lockR2=C[0],C[1],C[2],C[3],C[4]
+  # 前髮下緣：一束約 14 格，剪齊；束和束之間往上缺一小口；兩邊最外那束稍長
+  xs=[65,79,93,107,121,135,149,163,177,191]
+  bang=[];rb=random.Random(3);yb={}
   for k in range(len(xs)-1):
-    a,b=xs[k],xs[k+1];ya=yb(a)-3.5;yc=yb((a+b)/2)
-    if k==0:bang+=[(a,yb(a)+8),(a+5,yb(a)+5),(b-3,yc+1),(b,ya)]
-    elif k==len(xs)-2:bang+=[(a,ya),(a+3,yc+1),(b-5,yb(b)+5),(b,yb(b)+8)]
-    else:bang+=[(a,ya),(a+2,yc),(b-2,yc),(b,ya)] if k>0 else []
-  # 填白：頭頂＋前髮、左右兩側（含耳朵、臉頰邊）
+    a,b=xs[k],xs[k+1];y=134+rb.choice([0,0,1,2])+(3 if k in(0,len(xs)-2) else 0)
+    yb[k]=y;bang+=[(a,y-4),(a+2,y),(b-2,y),(b,y-4)]
+  # 填白：整個頭髮的範圍；再把沒被頭髮蓋住的臉、脖子放回來
   m=Image.new('L',(N,H),0);d=ImageDraw.Draw(m)
-  top=domeL[::-1][:-1]+[(CX+(CX-x),y) for x,y in domeL][::-1] if False else None
-  arc=[(CX+80*math.cos(a),CY-1+79*math.sin(a)) for a in np.radians(np.linspace(-178,-2,60))]
-  d.polygon([(round(x),round(y)) for x,y in arc+[(2*CX-46+1,128)]+[(round(x),round(y)) for x,y in bang[::-1]]+[(46,128)]],fill=1)
-  ends={}
-  rnd=__import__('random').Random(4)
-  T=[0,.38,.7,1]
-  for s in(-1,1):
-    E=[300+rnd.uniform(-2,4) for _ in range(3)]
-    ends[s]=E
-    def X(t,y,s=s):
-      v=fi(y)+t*(fo(y)-fi(y));return v if s<0 else 2*CX-v+1
-    poly=[(X(1,y),y) for y in np.arange(124,E[2]-2,1)]+[(X(t,E[k]+2),E[k]+2) for k,t in((2,.85),(1,.55),(0,.2))]+[(X(0,y),y) for y in np.arange(E[0]-2,127,-1)]
-    d.polygon([(round(x),round(y)) for x,y in poly],fill=1)
-  M=np.array(m).astype(bool);out[M]=255
+  sil=crom(outerL,12)+[(50,317),(80,318),(109,317),(147,317),(180,318),(212,317)]+crom(outerR,12)[::-1]
+  d.polygon([(round(x),round(y)) for x,y in sil],fill=1);M=np.array(m).astype(bool)
+  fl=lambda y:np.interp(y,[p[1] for p in crom(lockL,12)],[p[0] for p in crom(lockL,12)])
+  r1=crom(lockR1,12);r2=crom(lockR2,12)
+  fr=lambda y:min(np.interp(y,[p[1] for p in r1],[p[0] for p in r1]),np.interp(y,[p[1] for p in r2],[p[0] for p in r2]))
+  out[M]=255
+  orig=extend(img);skin=~(orig==255).all(2)
+  for y in range(134,H):
+    for x in range(N):
+      if not skin[y,x]:continue
+      inside=(y>=137 and fl(y)<x<fr(y)) or (y<137 and 66<=x<=190) or (y>212 and 109<=x<=147)
+      if inside:out[y,x]=orig[y,x]
   L=[]
-  # 頭頂圓頂
-  L.append(domeL);L.append(mirror(domeL,dx=1))
-  # 前髮
+  L+=[outerL,outerR]
+  blk=C[5];L+=[blk[:-1]+[(CX-63,130)],C[6][:-1]+[(CX+64,130)]]       # 前面方塊的兩條邊＝前髮外緣
   L.append(bang)
-  # 前髮的分束線：從每個缺口往上，往頭頂（髮旋在頭頂中間偏後）收；長短不一，不畫到頂
-  W=(CX,40);rl=__import__('random').Random(9)
-  for k in range(1,len(xs)-1):
-    if rl.random()<.25:continue
-    a=xs[k];y0=yb(a)-3.5;ln=rl.uniform(.35,.7)
-    pts=[(a+(W[0]-a)*u*.55,y0+(W[1]-y0)*u) for u in np.linspace(0,ln,5)]
-    L.append(pts)
-  # 頭頂兩側的髮流線：從頭頂往兩邊順著圓頂下來
-  for s in(-1,1):
-    for r,a0,a1 in((70,-115,-160),(62,-125,-168),(74,-100,-140)):
-      p=[(CX+s*-r*math.cos(math.radians(a)),CY-1+r*math.sin(math.radians(a))) for a in np.linspace(a0,a1,6)]
-      L.append(p)
-  # 兩側：外輪廓、內側、中間兩條分束線（跟著波浪），每束的尾巴圓圓收起來
-  for s in(-1,1):
-    E=ends[s]
-    def X(t,y,s=s):
-      v=fi(y)+t*(fo(y)-fi(y));return v if s<0 else 2*CX-v+1
-    dome=domeL if s<0 else mirror(domeL,dx=1)
-    L.append([(X(1,y),y) for y in np.arange(124,E[2]-3,2)])            # 外輪廓
-    L.append([(X(0,y),y) for y in np.arange(128,E[0]-3,2)])            # 內側（蓋到臉頰）
-    L.append([(X(.38,y),y) for y in np.arange(150,max(E[0],E[1])-3,2)])   # 分束線（從眼睛那層開始）
-    L.append([(X(.7,y),y) for y in np.arange(176,max(E[1],E[2])-3,2)])
-    for k in range(3):                                                  # 每束的尾巴：圓弧往內捲
-      ta,tb=T[k],T[k+1];e=E[k]
-      xa,xb=X(ta,e-3),X(tb,e-3)
-      L.append([(xa,e-3),(xa+(xb-xa)*.3,e+2),(xa+(xb-xa)*.7,e+2),(xb,e-3)])
-    # 脖子後面的後髮：一條波浪線＋下緣
-    xn=109 if s<0 else 147
-    L.append([(X(0,214)+(xn-X(0,214))*.45,216),(X(0,240)+(xn-X(0,240))*.5,240),(X(0,265)+(xn-X(0,265))*.4,265),(X(0,290)+(xn-X(0,290))*.5,292)])
-    be=[(X(0,E[0]-3),E[0]-3),((X(0,E[0])+xn)/2,E[0]+1),(xn,E[0]-2)]
-    L.append(be)
+  # 前髮的髮流線：從缺口往上，沿頭的圓弧朝髮旋收；長短不一
+  rl=random.Random(9)
+  for k in(1,3,4,6,8):                                   # 不是每個缺口都拉線（太整齊像柵欄）
+    x=xs[k];ph=phi_at(x,130);y0=rl.choice([48,60,72,86]);y1=yb[k]-4-rl.choice([0,4,10])
+    L.append([(mer(ph,y),y) for y in np.linspace(y0,y1,8)])
+  # 頭頂兩側：從髮旋順著圓頂往兩側下來（在方塊外面）
+  for ph,y0,y1 in((-58,50,104),(-72,58,118),(60,52,108),(73,60,120)):
+    L.append([(mer(ph,y),y) for y in np.linspace(y0,y1,8)])
+  # 兩側長髮的髮流線：跟著外輪廓的波浪，一段一段
+  for o,(dd,lo,hi) in ((outerL,(11,150,215)),(outerL,(21,170,262)),(outerL,(10,232,290)),
+                      (outerR,(11,155,222)),(outerR,(20,175,268)),(outerR,(10,238,290))):
+    seg=offset(o,dd,lo,hi)
+    if len(seg)>2:L.append(seg)
+  # 內側髮束：加第二條邊（往外 5 格，兩頭收尖）
+  L.append(lockR1)
+  for lk in(lockL,lockR2):                               # 右邊兩束交叉：只給外面那束第二條邊（不然交叉處很亂）
+    P=crom(lk,12);n=len(P);sec=[]
+    sgn=-1 if lk[0][0]<CX else 1
+    for k in range(0,n,3):
+      w=4*math.sin(math.pi*k/(n-1));x,y=P[k];sec.append((x+sgn*w,y))
+    L+=[lk,sec]
+  # 髮尾下緣（後髮）：外輪廓尾巴到脖子
+  L+=[[(33,313),(50,317),(66,312),(82,317),(96,313),(109,316)],[(228,312),(212,316),(196,311),(180,316),(164,312),(147,316)]]
   for c in L:
     for x,y in pixels(crom(c,12)):
       if 0<=x<N and 0<=y<H:out[y,x]=INK
   return out
 if __name__=='__main__' and len(sys.argv)>3:
   o=stage3(img);Image.fromarray(o).resize((N*3,H*3),Image.NEAREST).save(sys.argv[3])
+# ---------------- 第 3 步之一：前髮（使用者 2026-11-19 在圖上畫紅線） ----------------
+# 前髮的線從額頭中間才開始（不是從頭頂），短短的；有的分成「Λ」（一束分成兩撮）；
+# 尾端超過方塊的橫線往下垂 → 前髮下緣在那幾個地方是往下尖的髮尾，不是一條直線
+BANG_LINES=[[(97,98),(99,120),(100,140)],[(97,98),(92,112),(88,125)],      # 左：Λ
+            [(127,98),(130,120),(133,142)],                               # 中：一條
+            [(155,98),(157,118),(158,137)],[(155,98),(165,118),(175,137)]] # 右：Λ
+BANG_TIPS=[(100,140),(133,142),(158,137),(175,137)]                       # 往下尖的髮尾
+def bang_edge():
+  # 前髮下緣：方塊的橫線，在每個髮尾的地方往下拉成尖
+  y0=lambda x:132+2*(1-((x-CX)/64)**2)
+  pts=[(CX-63,132)]
+  for tx,ty in BANG_TIPS:
+    pts+=[(tx-5,y0(tx-5)),(tx,ty),(tx+4,y0(tx+4))]
+  pts.append((CX+64,132))
+  return pts
+def stage3_bangs(img):
+  out=extend(img)
+  C=curves()[:-1]+[bang_edge()]+BANG_LINES
+  for c in C:
+    for x,y in pixels(crom(c,12)):
+      if 0<=x<N and 0<=y<H:out[y,x]=INK
+  return out
+if __name__=='__main__' and len(sys.argv)>4:
+  o=stage3_bangs(img);Image.fromarray(o).resize((N*3,H*3),Image.NEAREST).save(sys.argv[4])
