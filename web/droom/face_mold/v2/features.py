@@ -121,20 +121,29 @@ def paint_turn(img,deg,cx):
   if 0<deg<90:eyes_turn(img,ca,sa,cx);nose_turn(img,sa,cx)
   if deg>=90:side_eye(img,cx)
 SHG=float(os.environ.get('SHG','0'))   # 山根往外（往前凸）幾格（使用者 2026-11-19：遠側眼睛往內 3 格後，山根要往外一點）
+NX=float(os.environ.get('NX','4'))   # 斜臉整個鼻子（形狀不變）往前（畫面左）平移幾格（使用者 2026-11-19）
 def bridge_pts(sa,cx):
   # 鼻樑線每一列的 X：側臉中線投影；山根那段再往外推 SHG 格，到鼻頭前收回 0
   from shape3d import zc,znose
   pts={}
   for k in range(400):
     y=528+k*(567-528)/399;w=1 if y<=545 else max(0,1-(y-545)/17)
-    X=cx-(zc(y)+znose(y))*sa*S-SHG*w;pts.setdefault(round(Y(y)),[]).append(round(X))
+    X=cx-(zc(y)+znose(y))*sa*S-SHG*w-NX;pts.setdefault(round(Y(y)),[]).append(round(X))
   return pts
 def nose_turn(img,sa,cx):
   # 45° 鼻子（使用者：山根要畫出來、要立體）：沿著側臉中線（x＝0、z＝zp）投影出鼻樑線——
   # 從眉頭下面（山根，先往內凹）一路到鼻頭；鼻樑右邊（背光那面，光從左上）一條淡影；鼻頭深色、鼻底往右一小段影子
-  put=lambda X,Yp,c:isface(img,X,Yp) and img.__setitem__((Yp,X),c)
   pts=bridge_pts(sa,cx)
   tipY=round(Y(567));tipX=min(pts[tipY])
+  # 鼻子平移後跑出臉的輪廓：中間補肉色，跑出去的那段當輪廓（外框不描線，一律肉色）
+  out=set()
+  rows=dict(pts);rows.update({tipY+dy:rows.get(tipY+dy,[])+[tipX+dx] for dx,dy in((-1,0),(0,-1),(0,1),(1,1))})
+  for Yp,xs in rows.items():
+    if not xs:continue
+    row=img[Yp];edge=next((X for X in range(N) if tuple(row[X])!=(255,255,255)),None)
+    if edge is None:continue
+    for X in range(min(xs),edge):img[Yp,X]=SK;out.add((X,Yp))
+  put=lambda X,Yp,c:isface(img,X,Yp) and img.__setitem__((Yp,X),SK if (X,Yp) in out else c)
   for Yp,xs in sorted(pts.items()):
     y=CYR+(Yp-CY)/S
     for X in set(xs):put(X,Yp,LT if y<538 else SH)

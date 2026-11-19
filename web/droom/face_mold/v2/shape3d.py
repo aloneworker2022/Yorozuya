@@ -18,7 +18,7 @@ zc=lambda y:322-lerp_tab(FLAT,y)
 import os
 NK=float(os.environ.get('NK','1'))
 # 整個鼻子（山根→鼻頭→鼻底）一起往前推 NF（參考圖像素；使用者 2026-11-19：是整組往前移，不是只拉長鼻尖）
-NF=float(os.environ.get('NF','8'))
+NF=float(os.environ.get('NF','0'))   # 0＝不改形狀（使用者：只要整組往前移，見 features.py NX）
 def _nfw(y):return max(0,min(1,(y-538)/6,(580-y)/4))
 def znose(y):return max(0,zp(y)-zc(y))*NK+NF*_nfw(y)
 NW=5   # 鼻子的寬（中線左右各幾格，參考圖像素）
