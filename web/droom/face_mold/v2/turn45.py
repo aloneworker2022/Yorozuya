@@ -59,18 +59,21 @@ EDZ=float(os.environ.get("EDZ",str(20*max(0,min(1,(DEG-30)/15)))))   # 45° 才�
 # 2026-11-19 改（使用者：斜臉的耳朵錯了）：耳朵是斜著朝前長的，斜臉看過去幾乎是側臉那個耳朵的寬度（山田式量：寬／高≈0.7），
 # 不能當成貼在 x＝常數的平面投影（會壓成細細一條）。前緣位置照投影，往後的寬度用側臉的耳朵 × EW
 EW=float(os.environ.get('EW',str(.35+.65*math.sqrt(SA))))
-EX0,EY0=scr(54,560,322-324+EDZ)
+# 2026-11-19 再改（使用者：耳朵要後面一點、高一點；接臉那條線不要那麼明顯）
+# 位置：前緣放在頭寬（眼線那列最左 → 頭蓋最右）的 EFR 處（山田式量 0.76），整個耳朵往上 EUP（參考圖像素）
+EFR=float(os.environ.get('EFR','.74'));EUP=float(os.environ.get('EUP','8'))
+_l=min(X for X in range(N) if head[round(Y(545)),X]);_r=max(X for X in range(N) if head[round(CY),X])
+EX0=_l+EFR*(_r-_l)
 def earpt(xs,y):
-  return (EX0+(xs-324)*S*EW, Y(y))
-# 耳朵下半段不能掛在頭和脖子外面（下面會露白縫）：耳垂那幾列的後緣超過頭／脖子的後緣，就整個耳朵往前移
-_body=head|neck;_dx=0
-for _y in range(round(Y(570)),round(Y(582))+1):
-  _r=max([X for X in range(N) if _body[_y,X]],default=None)
-  _ex=max(earpt(x,y)[0] for x,y in cr(EAR,True,6) if abs(Y(y)-_y)<1.5) if any(abs(Y(y)-_y)<1.5 for x,y in cr(EAR,True,6)) else None
-  if _r is not None and _ex is not None:_dx=min(_dx,_r+1-_ex)
-EX0+=_dx
+  return (EX0+(xs-324)*S*EW, Y(y-EUP))
 em=mask([earpt(x,y) for x,y in cr([(x,y) for x,y in EAR],True,6)])
-img[em]=SK;img[em&edge(em)]=DK
+_body=head|neck
+img[em&~_body]=SK;img[em]=SK
+# 耳朵外框：碰到白（輪廓外）的不描線；後半圈深色；前緣（接臉那邊）只用淡色
+_e=em&edge(em)
+for Yp,X in zip(*np.nonzero(_e)):
+  if X<EX0+6*S*EW:img[Yp,X]=(229,185,158)     # 前緣淡
+  else:img[Yp,X]=DK
 for x,y in cr([earpt(333,547),earpt(343,545),earpt(347,553),earpt(344,566)],n=6):img[round(y),round(x)]=SH
 # 輔助線
 if G:
