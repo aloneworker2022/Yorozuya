@@ -432,7 +432,9 @@ def test_global_prompts_compose_and_config():
     assert cfg["global_prompt"] == W.GLOBAL_POS_DEFAULT
     assert cfg["global_negative"] == W.GLOBAL_NEG_DEFAULT
     assert "wide angle" in cfg["global_prompt"] and "third-person view" in cfg["global_prompt"]
+    assert "looking at the man" in cfg["global_prompt"] and "eye contact with man" in cfg["global_prompt"]
     assert "first-person view" in cfg["global_negative"] and "solo" in cfg["global_negative"]
+    assert "looking at viewer" in cfg["global_negative"] and "looking at camera" in cfg["global_negative"]
     # 不分大小寫去重，保留第一次的寫法，後段接在後面
     assert W.merge_prompt_tags("Wide Angle, 1girl", "wide angle, 1boy, 1girl") == "Wide Angle, 1girl, 1boy"
     composed = W.compose_gen_prompts(
@@ -444,8 +446,14 @@ def test_global_prompts_compose_and_config():
     assert tags.count("1girl") == 1 and tags.count("1boy") == 1
     assert "cowgirl pose" in composed["positive"] and "black hair" in composed["positive"]
     neg = composed["negative"].lower()
-    for w in ("pov", "first-person view", "male pov", "close-up", "cropped", "out of frame", "solo", "child", "loli"):
+    for w in ("pov", "first-person view", "male pov", "close-up", "cropped", "out of frame", "solo",
+              "looking at viewer", "looking at camera", "eye contact with viewer", "child", "loli"):
         assert w in neg
+    for w in ("looking at viewer", "looking at camera", "eye contact with viewer"):
+        assert w not in composed["positive"].lower()
+        assert w not in composed["lead"].lower()
+        assert w not in composed["extra"].lower()
+    assert "looking at the man" in composed["positive"]
     assert composed["lead"] == W.GLOBAL_POS_DEFAULT
     assert composed["extra"].startswith("1girl, 1boy")
     # 存自訂預設；之後只改打字速度時不要蓋掉
@@ -460,7 +468,7 @@ def test_global_prompts_compose_and_config():
     restored = W.save_config(assets, {"global_prompt": "  ", "global_negative": ""})
     assert restored["global_prompt"] == W.GLOBAL_POS_DEFAULT
     assert restored["global_negative"] == W.GLOBAL_NEG_DEFAULT
-    # 遷 1.2 秒時保留使用者改過的預設提示詞
+    # 遷 1.2 秒時保留使用者改過的預設提示詞，只補缺的視線標籤
     path = W.config_path(assets)
     path.write_text(json.dumps({
         "char_sec": 1.2, "poses": ["doggy"],
@@ -468,10 +476,65 @@ def test_global_prompts_compose_and_config():
     }, ensure_ascii=False), encoding="utf-8")
     migrated = W.load_config(assets)
     assert migrated["char_sec"] == 0.9 and migrated["poses"] == ["doggy"]
-    assert migrated["global_prompt"] == "wide shot only"
-    assert migrated["global_negative"] == "pov"
+    assert migrated["global_prompt"] == "wide shot only, " + ", ".join(W.LOOK_POS_TAGS)
+    assert migrated["global_negative"] == "pov, " + ", ".join(W.LOOK_NEG_TAGS)
     stored = json.loads(path.read_text("utf-8"))
-    assert stored["char_sec"] == 0.9 and stored["global_prompt"] == "wide shot only"
+    assert stored["char_sec"] == 0.9
+    assert stored["global_prompt"] == migrated["global_prompt"]
+
+
+def test_global_gaze_migration():
+    assets = _assets()
+    W.ensure_dirs(assets)
+    path = W.config_path(assets)
+    # 舊預設 → 新預設
+    path.write_text(json.dumps({
+        "global_prompt": W.PREV_GLOBAL_POS_DEFAULT,
+        "global_negative": W.PREV_GLOBAL_NEG_DEFAULT,
+    }, ensure_ascii=False), encoding="utf-8")
+    got = W.load_config(assets)
+    assert got["global_prompt"] == W.GLOBAL_POS_DEFAULT
+    assert got["global_negative"] == W.GLOBAL_NEG_DEFAULT
+    stored = json.loads(path.read_text("utf-8"))
+    assert stored["global_prompt"] == W.GLOBAL_POS_DEFAULT
+    assert stored["global_negative"] == W.GLOBAL_NEG_DEFAULT
+    # 自訂：只補缺的，不覆蓋已有
+    path.write_text(json.dumps({
+        "global_prompt": "wide shot only, looking at the man",
+        "global_negative": "pov, looking at viewer",
+    }, ensure_ascii=False), encoding="utf-8")
+    got = W.load_config(assets)
+    assert got["global_prompt"] == "wide shot only, looking at the man, looking at another, eye contact with man"
+    assert got["global_negative"] == "pov, looking at viewer, looking at camera, eye contact with viewer"
+    # 正向若寫了 looking at viewer，合併時拔掉
+    dirty = W.compose_gen_prompts(
+        {"global_prompt": "wide angle, looking at viewer, 1girl", "global_negative": W.GLOBAL_NEG_DEFAULT},
+        "looking at camera, cowgirl pose", "",
+        {},
+    )
+    low = dirty["positive"].lower()
+    assert "looking at viewer" not in low and "looking at camera" not in low
+    assert "eye contact with viewer" not in low
+    assert "looking at viewer" in dirty["negative"].lower()
+    # 已經是新預設，不再改寫
+    path.write_text(json.dumps({
+        "global_prompt": W.GLOBAL_POS_DEFAULT,
+        "global_negative": W.GLOBAL_NEG_DEFAULT,
+        "char_sec": 0.9,
+    }, ensure_ascii=False), encoding="utf-8")
+    again = W.load_config(assets)
+    assert again["global_prompt"] == W.GLOBAL_POS_DEFAULT
+    assert again["global_negative"] == W.GLOBAL_NEG_DEFAULT
+    assert again["gaze_prompt_ver"] == W.GAZE_PROMPT_VER
+    # 已遷過的檔，使用者若拿掉視線標籤就不再塞回去
+    path.write_text(json.dumps({
+        "global_prompt": "wide angle only",
+        "global_negative": "pov",
+        "gaze_prompt_ver": W.GAZE_PROMPT_VER,
+    }, ensure_ascii=False), encoding="utf-8")
+    kept = W.load_config(assets)
+    assert kept["global_prompt"] == "wide angle only"
+    assert kept["global_negative"] == "pov"
 
 
 def test_img2img_workflow_passes_negative():
@@ -606,6 +669,7 @@ if __name__ == "__main__":
     test_config_char_sec_persist()
     test_pick_peek_side_consistency()
     test_global_prompts_compose_and_config()
+    test_global_gaze_migration()
     test_img2img_workflow_passes_negative()
     test_hear_through_door()
     test_door_muffle_config()

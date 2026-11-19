@@ -1,12 +1,12 @@
 /* 接客偷看畫面（2026-10-10 Al；樣板 mockups/peek/half4.py）。
  * 全螢幕：走廊、掛粉紅牌子「工作室・接客中」的門 → 點門 → 門往內開一半。
- * 老婆還債（mode=peek）一律走共用 wifepay 揭示：步驟設定的姿勢／圖庫／劇本／廣角正負提示／降噪、
- * 同一側門縫切（1/2 或 3/5）、隨機 1～2 張、隔門聽不清、打字速度跟設定走、旁白→男人→老婆＋「下一句」。
+ * 老婆還債（mode=peek）一律走共用 wifepay 揭示：不先播開門動畫，直接出台詞；圖好了對話框先下滑，再用門縫拉開顯示。
+ * 步驟設定的姿勢／圖庫／劇本／廣角正負提示／降噪、同一側門縫切（1/2 或 3/5）、隨機 1～2 張、隔門聽不清、打字速度跟設定走、旁白→男人→老婆＋「下一句」。
  * 生圖失敗只留對話。遊戲與 test_room 都經 openWifepayPeek／buildWifepayPeekOpts，不再走舊台詞氣泡或 /api/escort/peek-lines。
  * 日租 mode=door/room 仍用舊字幕／紙娃娃路徑，與老婆還債無關。
  * 不扣錢、不決定發現與否：這些由呼叫端（app.js）先算好傳進來。 */
 import { peekLine, nextGapMs, flavorWife } from "./escort_voices.js?v=3";
-import { startWifepayPeek } from "./wifepay_reveal.js?v=8";
+import { startWifepayPeek } from "./wifepay_reveal.js?v=9";
 
 /** 遊戲與 test_room 共用的正式老婆還債開門偷看參數（一律走 startWifepayPeek）。 */
 export function buildWifepayPeekOpts(who, extra = {}) {
@@ -389,7 +389,8 @@ const CSS = `
 .peek-bub.w{background:rgba(60,20,40,.82);color:#ffb0cf;border:1px solid #c0608c}
 .peek-ov.door .peek-bub{opacity:0;filter:blur(.4px)}.peek-ov.door .peek-bub.on{opacity:.78}
 .peek-close{position:absolute;top:8px;right:8px;background:none;border:0;color:#998;font-size:22px;z-index:8}
-.peek-ov.peek-wifepay .peek-bub,.peek-ov.peek-wifepay .peek-talk{display:none !important}`;
+.peek-ov.peek-wifepay .peek-bub,.peek-ov.peek-wifepay .peek-talk{display:none !important}
+.peek-ov.peek-wifepay canvas{visibility:hidden}`;
 
 /**
  * 打開偷看。opts：{ who, doll, pose('missionary'…), man（客人體型，見 MAN_BUILDS）, noticed, cost, voice, family, wifepay, onOpen, onClose(state) }。
@@ -397,10 +398,10 @@ const CSS = `
  * 回傳 { close(), state, open, ready, say }（state.opened：真的開過門；state.lines：日租冒過的字幕，測試用）。
  */
 export function openPeek(opts = {}) {
-  if (!document.getElementById("peek-css-2")) {
-    const old = document.getElementById("peek-css");
+  if (!document.getElementById("peek-css-3")) {
+    const old = document.getElementById("peek-css") || document.getElementById("peek-css-2");
     if (old) old.remove();
-    const s = document.createElement("style"); s.id = "peek-css-2"; s.textContent = CSS; document.head.append(s);
+    const s = document.createElement("style"); s.id = "peek-css-3"; s.textContent = CSS; document.head.append(s);
   }
   const pose = POSE_ID[opts.pose] ? opts.pose : "cowgirl";
   const ov = document.createElement("div");
@@ -515,11 +516,17 @@ export function openPeek(opts = {}) {
   };
   const openDoor = () => {
     if (opts.onOpen && opts.onOpen() === false) return;
-    st.opened = true; st.target = 1; talkAt = performance.now() + 900;
-    status.textContent = opts.noticed ? "……她好像看到門縫了！" : "她沒發現你……";
-    status.style.color = opts.noticed ? "#ff8a8a" : "";
-    hint.textContent = mode === "peek" ? "門後傳來聲音……" : "點門關上";
-    if (mode === "peek") startReveal();
+    st.opened = true;
+    if (mode !== "peek") {
+      st.target = 1; talkAt = performance.now() + 900;
+      status.textContent = opts.noticed ? "……她好像看到門縫了！" : "她沒發現你……";
+      status.style.color = opts.noticed ? "#ff8a8a" : "";
+      hint.textContent = "點門關上";
+    } else {
+      hint.textContent = "";
+      status.textContent = "";
+      startReveal();
+    }
   };
   const finish = () => {
     if (!ov.isConnected) return;
@@ -536,8 +543,13 @@ export function openPeek(opts = {}) {
     if (!onDoor || st.closed) return;
     if (!st.opened) openDoor(); else closeDoor();
   });
-  ov.querySelector(".peek-close").addEventListener("click", () => (mode !== "peek" ? finish() : st.opened ? closeDoor() : finish()));
-  if (mode !== "peek") talkAt = performance.now() + 900;
+  ov.querySelector(".peek-close").addEventListener("click", () => (mode === "peek" || !st.opened ? finish() : closeDoor()));
+  if (mode === "peek") {
+    cv.style.visibility = "hidden";
+    openDoor();
+  } else {
+    talkAt = performance.now() + 900;
+  }
   raf = requestAnimationFrame(tick);
   return { state: st, ready: framesReady, open: openDoor, close: closeDoor, say };
 }

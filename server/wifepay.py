@@ -47,10 +47,17 @@ DEFAULT_NEGATIVE = (
     "worst quality, blurry, deformed, extra limbs"
 )
 # 每張圖都會套用的廣角／雙人構圖；負面擋第一人稱與單人特寫。18+ 安全負向仍走 DEFAULT_NEGATIVE。
-GLOBAL_POS_DEFAULT = (
+# 視線：正向看著男子，負向擋看鏡頭／viewer（舊預設見 PREV_GLOBAL_*，載入時補上缺的新標籤）。
+PREV_GLOBAL_POS_DEFAULT = (
     "wide angle, wide shot, full body, two people, 1girl, 1boy, both visible, third-person view"
 )
-GLOBAL_NEG_DEFAULT = "pov, first-person view, male pov, close-up, cropped, out of frame, solo"
+PREV_GLOBAL_NEG_DEFAULT = "pov, first-person view, male pov, close-up, cropped, out of frame, solo"
+LOOK_POS_TAGS = ("looking at another", "looking at the man", "eye contact with man")
+LOOK_NEG_TAGS = ("looking at viewer", "looking at camera", "eye contact with viewer")
+GLOBAL_POS_DEFAULT = PREV_GLOBAL_POS_DEFAULT + ", " + ", ".join(LOOK_POS_TAGS)
+GLOBAL_NEG_DEFAULT = PREV_GLOBAL_NEG_DEFAULT + ", " + ", ".join(LOOK_NEG_TAGS)
+# 已寫入檔案的設定只在這版還沒遷過時補視線標籤；之後使用者若拿掉就不再塞回去。
+GAZE_PROMPT_VER = 1
 
 # 舊預設：使用者若沒改過 dialog.json（內容等於這份），載入時遷到新預設。
 OLD_DIALOG = {
@@ -825,6 +832,33 @@ def merge_prompt_tags(*parts: str) -> str:
     return ", ".join(split_prompt_tags(", ".join(str(p or "") for p in parts)))
 
 
+def _tag_keys(text: str) -> list[str]:
+    return [t.lower() for t in split_prompt_tags(text)]
+
+
+def tags_equal(a: str, b: str) -> bool:
+    return _tag_keys(a) == _tag_keys(b)
+
+
+def strip_viewer_gaze(text: str) -> str:
+    """正向裡不要留下 looking at viewer／鏡頭類標籤。"""
+    ban = {t.lower() for t in LOOK_NEG_TAGS}
+    return ", ".join(t for t in split_prompt_tags(text) if t.lower() not in ban)
+
+
+def apply_gaze_defaults(text: str, kind: str) -> str:
+    """補上視線標籤：舊預設會變成新預設；自訂內容只在缺的時候接在後面，不覆蓋。"""
+    default = GLOBAL_POS_DEFAULT if kind == "pos" else GLOBAL_NEG_DEFAULT
+    added = LOOK_POS_TAGS if kind == "pos" else LOOK_NEG_TAGS
+    raw = str(text or "").strip()
+    if not raw:
+        return default
+    out = merge_prompt_tags(raw, ", ".join(added))
+    if kind == "pos":
+        out = strip_viewer_gaze(out)
+    return clip_prompt(out, default)
+
+
 def _prompt_field(raw: dict, key: str, default: str) -> str:
     if key not in raw:
         return default
@@ -841,22 +875,42 @@ def _config_from_raw(raw: dict | None) -> tuple[dict, bool]:
         char_sec = clamp_char_sec(raw.get("char_sec"))
     else:
         char_sec = CHAR_SEC_DEFAULT
+    gpos = _prompt_field(raw, "global_prompt", GLOBAL_POS_DEFAULT)
+    gneg = _prompt_field(raw, "global_negative", GLOBAL_NEG_DEFAULT)
+    have_ver = raw.get("gaze_prompt_ver") == GAZE_PROMPT_VER
+    # 舊檔還沒遷過：舊預設改成新預設；自訂只補缺的視線標籤。已遷過的不再改。
+    if raw and not have_ver:
+        if "global_prompt" in raw:
+            gpos2 = apply_gaze_defaults(gpos, "pos")
+            if not tags_equal(gpos, gpos2):
+                gpos = gpos2
+        else:
+            gpos = GLOBAL_POS_DEFAULT
+        if "global_negative" in raw:
+            gneg2 = apply_gaze_defaults(gneg, "neg")
+            if not tags_equal(gneg, gneg2):
+                gneg = gneg2
+        else:
+            gneg = GLOBAL_NEG_DEFAULT
+        wrote = True
     return {
         "char_sec": char_sec,
         "poses": clean_tags(raw.get("poses")),
-        "global_prompt": _prompt_field(raw, "global_prompt", GLOBAL_POS_DEFAULT),
-        "global_negative": _prompt_field(raw, "global_negative", GLOBAL_NEG_DEFAULT),
+        "global_prompt": gpos,
+        "global_negative": gneg,
         "door_muffle": parse_muffle_enabled(raw.get("door_muffle") if "door_muffle" in raw else None, MUFFLE_DEFAULT),
         "door_muffle_level": (
             normalize_muffle_level(raw.get("door_muffle_level"))
             if "door_muffle_level" in raw else MUFFLE_LEVEL_DEFAULT
         ),
+        "gaze_prompt_ver": GAZE_PROMPT_VER,
     }, wrote
 
 
 def load_config(assets: Path) -> dict:
     """打字速度、自訂姿勢、預設正面／負面提示詞、隔門聽不清。缺檔或壞檔用程式預設，不依賴被 gitignore 的資產檔。
-    若檔裡還是舊預設 1.2，自動遷到 0.9 並寫回（其他欄位保留）；使用者改過的其他值不動。"""
+    若檔裡還是舊預設 1.2，自動遷到 0.9 並寫回（其他欄位保留）；使用者改過的其他值不動。
+    預設正面／負面若仍是上一版（尚未含視線標籤），或自訂裡缺新標籤，載入時補上並寫回；不覆蓋已有的詞。"""
     ensure_dirs(assets)
     raw = {}
     p = config_path(assets)
@@ -1614,13 +1668,13 @@ def compose_gen_prompts(cfg: dict | None, item_prompt: str = "", item_negative: 
     負向：預設 + 單張 + 安全 DEFAULT_NEGATIVE（child／loli 等 18+ 規則不變）。
     lead／extra 分別給 ImgGenIn，讓廣角雙人詞壓在 Comfy prompt 最前面。"""
     cfg = cfg if isinstance(cfg, dict) else {}
-    gpos = clip_prompt(cfg.get("global_prompt"), GLOBAL_POS_DEFAULT)
+    gpos = strip_viewer_gaze(clip_prompt(cfg.get("global_prompt"), GLOBAL_POS_DEFAULT))
     gneg = clip_prompt(cfg.get("global_negative"), GLOBAL_NEG_DEFAULT)
-    item_pos = expand(item_prompt or "", variables)
+    item_pos = strip_viewer_gaze(expand(item_prompt or "", variables))
     item_neg = expand(item_negative or "", variables)
     if not item_pos.strip():
-        item_pos = expand(DEFAULT_ITEM_PROMPT, variables)
-    positive = merge_prompt_tags(gpos, item_pos)
+        item_pos = strip_viewer_gaze(expand(DEFAULT_ITEM_PROMPT, variables))
+    positive = strip_viewer_gaze(merge_prompt_tags(gpos, item_pos))
     negative = merge_prompt_tags(gneg, item_neg, DEFAULT_NEGATIVE)
     return {
         "global_prompt": gpos,

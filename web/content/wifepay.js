@@ -1,10 +1,10 @@
-/* Wife Pay 編輯頁 v10：每姿勢最多兩張、隨機 1～2 張；隔門聽不清；步驟精靈。 */
+/* Wife Pay 編輯頁 v11：視線看著男子；圖以門縫拉開；步驟精靈。 */
 import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES } from "./girl_gen.js";
 import { familyOf } from "./girl_voice.js?v=1";
 import {
   apiJson, fetchGalleryDoc, fetchDialog, fetchScripts, generateFromItem, mountWifepayReveal, startWifepayPeek,
   fetchConfig, saveConfig, pickPeek, POSE_SELECT_MAX, itemsForPose,
-} from "./wifepay_reveal.js?v=8";
+} from "./wifepay_reveal.js?v=9";
 
 const $ = (id) => document.getElementById(id);
 const ENG_KEY = "yorozuya_eng";
@@ -31,8 +31,8 @@ let charSec = 0.9;
 let doorMuffle = true;
 let doorMuffleLevel = "mid";
 const MUFFLE_LEVEL_ZH = { light: "輕", mid: "中", heavy: "重" };
-const DEFAULT_GLOBAL_POS = "wide angle, wide shot, full body, two people, 1girl, 1boy, both visible, third-person view";
-const DEFAULT_GLOBAL_NEG = "pov, first-person view, male pov, close-up, cropped, out of frame, solo";
+const DEFAULT_GLOBAL_POS = "wide angle, wide shot, full body, two people, 1girl, 1boy, both visible, third-person view, looking at another, looking at the man, eye contact with man";
+const DEFAULT_GLOBAL_NEG = "pov, first-person view, male pov, close-up, cropped, out of frame, solo, looking at viewer, looking at camera, eye contact with viewer";
 let promptDefaults = { global_prompt: DEFAULT_GLOBAL_POS, global_negative: DEFAULT_GLOBAL_NEG };
 
 
