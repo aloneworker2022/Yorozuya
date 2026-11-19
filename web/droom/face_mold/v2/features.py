@@ -120,15 +120,20 @@ def paint_turn(img,deg,cx):
     if isface(img,PX,PY):img[PY,PX]=c
   if 0<deg<90:eyes_turn(img,ca,sa,cx);nose_turn(img,sa,cx)
   if deg>=90:side_eye(img,cx)
+SHG=float(os.environ.get('SHG','3'))   # 山根往外（往前凸）幾格（使用者 2026-11-19：遠側眼睛往內 3 格後，山根要往外一點）
+def bridge_pts(sa,cx):
+  # 鼻樑線每一列的 X：側臉中線投影；山根那段再往外推 SHG 格，到鼻頭前收回 0
+  from shape3d import zp
+  pts={}
+  for k in range(400):
+    y=528+k*(567-528)/399;w=1 if y<=545 else max(0,1-(y-545)/17)
+    X=cx-zp(y)*sa*S-SHG*w;pts.setdefault(round(Y(y)),[]).append(round(X))
+  return pts
 def nose_turn(img,sa,cx):
   # 45° 鼻子（使用者：山根要畫出來、要立體）：沿著側臉中線（x＝0、z＝zp）投影出鼻樑線——
   # 從眉頭下面（山根，先往內凹）一路到鼻頭；鼻樑右邊（背光那面，光從左上）一條淡影；鼻頭深色、鼻底往右一小段影子
-  from shape3d import zp
-  def P(y):return cx-zp(y)*sa*S,Y(y)
   put=lambda X,Yp,c:isface(img,X,Yp) and img.__setitem__((Yp,X),c)
-  pts={}
-  for k in range(400):
-    y=528+k*(567-528)/399;X,Yp=P(y);pts.setdefault(round(Yp),[]).append(round(X))
+  pts=bridge_pts(sa,cx)
   tipY=round(Y(567));tipX=min(pts[tipY])
   for Yp,xs in sorted(pts.items()):
     y=CYR+(Yp-CY)/S
@@ -145,15 +150,17 @@ def nose_turn(img,sa,cx):
 def eyes_turn(img,ca,sa,cx):
   # 2026-11-19 改（使用者給山田式教學：斜臉兩隻眼睛都還是橢圓，遠側那隻比較窄、在臉的輪廓和中線中間，不會被切掉）
   # 兩隻都用正面那隻眼睛，橫向壓的倍率＝臉表面在那裡的縮短量（ca－斜率×sa），黑眼珠往臉朝的那邊（左）靠一點
+  BR=bridge_pts(sa,cx)
   for s in(1,-1):
     xr=s*30/S;yr=545;z=surf(xr,yr)
     Xc=cx+(xr*ca-z*sa)*S;Yc=Y(yr)
-    if s<0:Xc+=float(os.environ.get('FARIN','0'))   # 遠側眼睛往鼻子那邊移幾格（外側留空）
+    if s<0:Xc+=float(os.environ.get('FARIN','3'))   # 遠側眼睛往鼻子那邊移幾格（外側留空）
     zx=(surf(xr+.5,yr)-surf(xr-.5,yr))
     kx=max(.35,min(1,ca-zx*sa))
     ic=(-1.3,.3) if s==1 else (1.3*kx,.3)     # 往畫面左邊（她看的方向）
     for Yp in range(math.floor(Yc-16*ES),math.ceil(Yc+10*ES)):
       for X in range(math.floor(Xc-20*ES),math.ceil(Xc+20*ES)):
+        if s<0 and Yp in BR and X>=min(BR[Yp]):continue   # 遠側內眼角藏在鼻樑後面
         ch=eyeAt(s*(X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/ES,s,IC=ic)
         if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
 # ── 側臉的眼睛（使用者給的教學：臉是圓的，側面看眼睛是三角形）──
