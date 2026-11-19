@@ -10619,6 +10619,8 @@ async function playUndress(mode) {
       clearVaginaFingers(girl);
       u.stage = Math.min(3, stageBefore + 1);
       stageAfter = u.stage;
+      // 2026-11-19 使用者：她脫了 → 聊天黑影（坐著）表演脫衣動畫（T 恤／胸罩／內褲），旁白生出來之前就開始播
+      if (stageAfter > stageBefore) window.ChatShadow?.undress?.(stageBefore, stageAfter);
       // 事後算帳：失神中被脫（或被叫脫）衣服，清醒時本來會漲的侵犯記成欠帳
       if (dazedForUndress && stageAfter > stageBefore) {
         const normal = normalUndressInvasion(help ? "help" : "tell", { stage: girl.stage || "stranger", personality: basePersonality(girl), stats: girl.stats || null });

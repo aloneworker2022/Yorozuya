@@ -1517,7 +1517,7 @@
       lie_phone: { frames: 2, fps: .5, canvas: 'wide' }, prone_kick: { frames: 4, fps: 3, canvas: 'wide' },
       sleep_curl: { frames: 2, fps: .35, canvas: 'wide' }, sit_curl: { frames: 2, fps: .45 },
       squat_down: { frames: 16, fps: 8 },   // 2026-11-01 站著→蹲下→站起來（使用者：站著然後蹲下這個動作）
-      sit_m: { frames: 1, fps: 0, canvas: 'floor' }, sit_v: { frames: 1, fps: 0, canvas: 'floor' },   // 2026-10-31：坐地 M 字腿／V 字腿（先靜態）
+      sit_m: { frames: 1, fps: 0, canvas: 'floor' }, mermaid: { frames: 1, fps: 0, canvas: 'floor' }, sit_v: { frames: 1, fps: 0, canvas: 'floor' },   // mermaid：2026-11-19 聊天黑影脫衣的美人魚坐姿；   // 2026-10-31：坐地 M 字腿／V 字腿（先靜態）
       ass_up: { frames: 1, fps: 0, canvas: 'floor' },   // 2026-11-03 趴跪翹臀（胸貼地、膝跪地、臀翹高；先靜態樣品）
       // 接客偷看（2026-10-10）：側面正交投影、10 格一個抽送循環（慢慢退出→猛地頂進）
       sex_missionary: { frames: 30, fps: 9, canvas: 'peek' }, sex_cowgirl: { frames: 30, fps: 12, canvas: 'peek' },
@@ -1822,6 +1822,39 @@
         sh.xf.t[2] += (g.headZ ?? 3.2) - zmin;   // 頭整顆抬到枕在手臂上的高度（同一個 xf 物件，已建的頭零件一起動）
         hair(sh, P, doll, tor, 0, mulT(mulR(CH.R, headR), [0, 0, -1]));
         sh.xf = null; sh.floor = false;
+        return { sh, P };
+      }
+      if (pose === 'mermaid') {   // 2026-11-19 聊天黑影脫衣時（使用者）：美人魚坐姿——屁股坐地、兩腿併攏往她右邊（＋x）收，上身坐直，左手撐地、右手放在腿上
+        sh.floor = true;
+        const dz = 2.4 - P.C, hz = P.hipz + dz, hy = -1.2;
+        const tor = torso(sh, P, doll, hy, dz, -.04);
+        const L = Lt + Ls;
+        // 兩膝併在前面偏右、小腿往右後方收（右腿在下、左腿疊在上面一點）
+        const ank = { [-1]: [L * .52, hy + 1.5, 2.3], [1]: [L * .6, hy - 2.2, 1.9] };
+        const pole = { [-1]: [.25, 1, .55], [1]: [.35, 1, .3] };
+        const knees = {};
+        for (const s of [-1, 1]) {
+          const hip = [s * hip_x, hy, hz];
+          knees[s] = ik(hip, ank[s], Lt, Ls, pole[s]);
+          leg(sh, P, s, hip, knees[s], ank[s], [.62, -.7, -.15]);
+          const bt = F(b, 'butt');
+          sh.ell(BODY, [s * (hip_x + 1.2), hy - 2.6, 2.2], [5.2 * bt, 5.8 * bt, 2.6]);   // 坐在地上屁股被壓扁往外擠
+        }
+        {   // 左手撐在身旁地上（手肘微彎）
+          const s = -1, sj = shj(s, tor), wrist = [s * (hip_out + 3.6), hy + 1.2, 2.8];
+          const elbow = [(sj[0] + wrist[0]) / 2 + s * 1.8, (sj[1] + wrist[1]) / 2 + .4, (sj[2] + wrist[2]) / 2 + 1];
+          arm(sh, P, sj, elbow, wrist);
+        }
+        {   // 右手放在腿上（膝蓋上方）
+          const s = 1, sj = shj(s, tor), k = knees[-1], wrist = [k[0] - 1.5, k[1] - 1.5, k[2] + 3.2];
+          const elbow = [s * (waist_out + 4.2), hy + 2.5, tor.zW - 2.5];
+          arm(sh, P, sj, elbow, wrist);
+        }
+        if (front) definition(sh, P, tor);
+        if (!doll.pants) inguinal(sh, P, tor);
+        if (doll.pubic || doll.labia || doll.pants) { const i0 = sh.prims.length; groin(sh, P, doll, tor); for (let i = i0; i < sh.prims.length; i++) if (sh.prims[i].cloth) sh.prims[i].under = 1; }
+        if (doll.cloth || doll.underBra) dress(sh, P, doll, tor);
+        hair(sh, P, doll, tor);
         return { sh, P };
       }
       if (pose === 'sit_m' || pose === 'sit_v') {   // 2026-10-31：坐在地上、雙腿打開；上身微微往後靠，兩手撐在身後地上

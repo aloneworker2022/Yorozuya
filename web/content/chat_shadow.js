@@ -9,9 +9,14 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=5', (document.currentScript && document.currentScript.src) || location.href).href;
-  const N = 16, FPS = { breathe: 4, talk: 7 };
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=6', (document.currentScript && document.currentScript.src) || location.href).href;
+  const N = 16, NA = 20, FPS = { breathe: 4, talk: 7, shirt: 10, bra: 10, panties: 10 };
+  const ANIMS = ['shirt', 'bra', 'panties'];   // 脫衣動畫：undress.stage 0→1 脫 T 恤、1→2 脫胸罩、2→3 脫內褲
+  const nOf = (pose) => (ANIMS.includes(pose) ? NA : N);
   const SCALE = 2, CV = { w: 84, h: 134, ax: 42, ay: 131, tMax: 40, tMin: -45 };   // 手抬起來也在框內；腳底固定在 ay
+  // 坐著（美人魚坐姿，脫衣時）：腿往右收比較寬、人比較矮 → 自己的畫布（顯示時一樣撐滿高度＝坐著的她看起來比較大）
+  const CV_SIT = { w: 104, h: 100, ax: 46, ay: 94, tMax: 60, tMin: -60 };   // 上面留空間給脫 T 恤時舉到頭上的手
+  const cvOf = (doll) => (doll && doll._body === 'mermaid' ? CV_SIT : CV);
 
   // look.breast_shape → 模型乳型（照 droom-chest-model 備忘錄 MEMO-2026-11-18、使用者確認的表）；外擴／八字使用者取消 → 先用自然圓潤
   const SHAPE_OF = [[/母乳|沉重/, { shape: 'heavy' }], [/木瓜/, { shape: 'pendulous' }], [/鐘/, { shape: 'bell' }], [/水滴/, { shape: 'teardrop' }],
@@ -26,76 +31,113 @@
     return 'medium';
   }
 
-  /** 第 f 格的動作量（worker 裡也用，不能用外面的變數）。 */
-  function motion(pose, f, n) {
+  /** 第 f 格的動作量（worker 裡也用，不能用外面的變數）。pose：breathe／talk／脫衣動畫 shirt／bra／panties；sit＝坐著（不比劃）。 */
+  function motion(pose, f, n, sit) {
     const ph = 2 * Math.PI * f / n;
     const breath = (q) => { q = ((q % 1) + 1) % 1; return q < .4 ? .5 - .5 * Math.cos(Math.PI * q / .4) : .5 + .5 * Math.cos(Math.PI * (q - .4) / .6); };
+    if (pose === 'shirt' || pose === 'bra' || pose === 'panties') return { ph, br: .4 * breath(f / n), tilt: 0, nod: pose === 'shirt' ? 0 : 6 * Math.sin(Math.PI * f / (n - 1)), gest: 0, anim: { kind: pose, u: f / (n - 1) } };
     if (pose === 'talk') return { ph, br: .65 * breath(2 * f / n),
       tilt: 3.2 * Math.sin(ph) + 1.2 * Math.sin(3 * ph + .5),
       nod: 4.5 * Math.max(0, Math.sin(2 * ph)) ** 1.5 - 1.2 * Math.sin(3 * ph + 1),
-      gest: .5 - .5 * Math.cos(ph) };
+      gest: sit ? 0 : .5 - .5 * Math.cos(ph) };
     return { ph, br: breath(f / n), tilt: 1.6 * Math.sin(ph + .6), nod: 0, gest: 0 };
   }
 
   /** 照部位動零件（droom render 的 opts.deform）。H：droom 的矩陣小工具＋primDist。
-   *  身體零件照部位動；衣服零件（襯衫、胸罩、丁字褲）跟著離它最近的身體零件一起動。 */
+   *  身體零件照部位動；衣服零件跟著離它最近的身體零件一起動；袖子跟上臂／前臂。
+   *  m.anim＝脫衣動畫 {kind: shirt|bra|panties, u: 0～1}：兩手擺到位、那件衣服移走（u＞.78 不見）、手再放回來。 */
   function deform(sh, P, H, m) {
-    const { br, tilt, nod, gest, ph } = m, lift = br * 1.6, hl = lift * .85, S = P.S, zW = S - .6 * P.T;
+    const { br, tilt, nod, gest, ph } = m, anim = m.anim || null, lift = br * 1.6, hl = lift * .85, S = P.S, zW = S - .6 * P.T;
+    const sm = (u) => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
+    const nrm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+    const app = (X, q) => { const r = H.mulV(X.R, q); return [r[0] + X.t[0], r[1] + X.t[1], r[2] + X.t[2]]; };
+    /** 把方向 u 轉到 v（只轉 w 那麼多）的旋轉矩陣。 */
+    const rotTo = (u, v, w) => {
+      u = nrm(u); v = nrm(v);
+      let ax = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+      if (Math.hypot(...ax) < 1e-6) ax = [1, 0, 0];
+      ax = nrm(ax);
+      const ang = Math.acos(Math.max(-1, Math.min(1, u[0] * v[0] + u[1] * v[1] + u[2] * v[2]))) * w;
+      const c = Math.cos(ang), sn = Math.sin(ang), t = 1 - c, [x, y, z] = ax;
+      return [c + t * x * x, t * x * y - sn * z, t * x * z + sn * y, t * x * y + sn * z, c + t * y * y, t * y * z - sn * x, t * x * z - sn * y, t * y * z + sn * x, c + t * z * z];
+    };
     const head = sh.prims.find(p => p.part === 'head'), o = head ? head.off : [0, 0, 0];
     const headX = tilt || nod ? H.about(H.mulR(H.rotY(tilt), H.rotX(-nod)), [o[0], o[1], S - 1 + o[2] + hl]) : null;
-    // 比劃的手（armL：空著的那隻；armR 插腰）：上臂繞肩膀往外抬、前臂繞手肘轉到往上往前（攤手）
-    let upX = null, foreX = null, upper = null;
-    const arm = sh.prims.filter(p => p.part === 'armL' && p.a && !p.cloth);
-    arm.sort((a, b) => (b.a[2] + b.off[2]) - (a.a[2] + a.off[2]));
-    upper = arm[0] || null;
-    if (gest > 0 && arm.length >= 2) {
-      const sp = [arm[0].a[0] + arm[0].off[0], arm[0].a[1] + arm[0].off[1], arm[0].a[2] + arm[0].off[2] + lift * .9];
-      const ep = [arm[1].a[0] + arm[1].off[0], arm[1].a[1] + arm[1].off[1], arm[1].a[2] + arm[1].off[2] + lift * .9];
-      upX = H.about(H.mulR(H.rotY(14 * gest), H.rotX(12 * gest)), sp);
-      const e2 = H.mulV(upX.R, ep); e2[0] += upX.t[0]; e2[1] += upX.t[1]; e2[2] += upX.t[2];
-      const w0 = [arm[2] ? arm[2].a[0] + arm[2].off[0] : ep[0], arm[2] ? arm[2].a[1] + arm[2].off[1] : ep[1], arm[2] ? arm[2].a[2] + arm[2].off[2] + lift * .9 : ep[2] - 10];
-      const w1 = H.mulV(upX.R, w0); w1[0] += upX.t[0]; w1[1] += upX.t[1]; w1[2] += upX.t[2];
-      const nrm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
-      const u = nrm([w1[0] - e2[0], w1[1] - e2[1], w1[2] - e2[2]]);
-      const v = nrm([Math.sign(sp[0]) * (.12 + .16 * Math.sin(4 * ph)), .62, .78]);
-      const ax = nrm([u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]]);
-      const ang = Math.acos(Math.max(-1, Math.min(1, u[0] * v[0] + u[1] * v[1] + u[2] * v[2]))) * gest;
-      const c = Math.cos(ang), sn = Math.sin(ang), t = 1 - c, [x, y, z] = ax;
-      const RA = [c + t * x * x, t * x * y - sn * z, t * x * z + sn * y, t * x * y + sn * z, c + t * y * y, t * y * z - sn * x, t * x * z - sn * y, t * y * z + sn * x, c + t * z * z];
-      foreX = H.compose(H.about(RA, e2), upX);
+    // 兩隻手：肩、手肘、手腕（零件 a 點，從上往下排）；armX[side]＝{up, fore, upper}
+    const LIFT = { armL: .9, armR: .5 };
+    const armX = {};
+    for (const part of ['armL', 'armR']) {
+      const arm = sh.prims.filter(p => p.part === part && p.a && !p.cloth);   // 照建立順序：上臂（a＝肩）、前臂（a＝手肘）、手（a＝手腕）——不能照高度排（手放在腿上時手腕比手肘高）
+      if (arm.length < 2) continue;
+      const sd = part === 'armL' ? -1 : 1, lz = lift * LIFT[part];
+      const pt = (p) => [p.a[0] + p.off[0], p.a[1] + p.off[1], p.a[2] + p.off[2] + lz];
+      const sp = pt(arm[0]), ep = pt(arm[1]), w0 = arm[2] ? pt(arm[2]) : [ep[0], ep[1], ep[2] - 10];
+      let upT = null, foreT = null, w = 0;
+      if (anim) {
+        const u = anim.u;
+        w = u < .3 ? sm(u / .3) : u < .78 ? 1 : 1 - sm((u - .78) / .22);
+        if (anim.kind === 'shirt') { upT = [sd * .32, .12, .94]; foreT = [-sd * .6, .2, .78]; }   // 兩手舉到頭上、在頭頂交叉拉衣服
+        else if (anim.kind === 'bra') { upT = [sd * .7, -.5, -.5]; foreT = [-sd * .75, -.6, .25]; }   // 手肘往外往後、手到背後解扣
+        else { upT = [sd * .3, .35, -.89]; foreT = [sd * .05, .6, -.8]; }   // 兩手往下到腰側、把內褲往下拉
+      } else if (gest > 0 && part === 'armL') {   // 說話比劃（站著）：上臂往外往前一點、前臂往上往前攤手
+        w = gest; upT = null; foreT = [sd * (.12 + .16 * Math.sin(4 * ph)), .62, .78];
+      }
+      if (!w) continue;
+      const up = upT ? H.about(rotTo([ep[0] - sp[0], ep[1] - sp[1], ep[2] - sp[2]], upT, w), sp) : H.about(H.mulR(H.rotY(-sd * 14 * w), H.rotX(12 * w)), sp);
+      const e2 = app(up, ep), w1 = app(up, w0);
+      const fore = H.compose(H.about(rotTo([w1[0] - e2[0], w1[1] - e2[1], w1[2] - e2[2]], foreT, w), e2), up);
+      armX[part] = { up, fore, upper: arm[0] };
     }
-    // 軀幹（含乳房、衣服）用連續的位移場，不照零件分段——不然衣服一圈一圈跟不同零件走會裂開：
-    //   往上：從胯下 0 平滑升到肩膀 lift；往前：胸口最多；乳房附近再往前往外一點（越靠近乳房中心越多）
-    const C = P.C, sm = (u) => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
-    const bc = [-1, 1].map(sd => { const L = sh.prims.filter(p => p.part === 'breast' && !p.cloth && Math.sign(p.bc[0] + p.off[0]) === sd); if (!L.length) return null; const c = [0, 0, 0]; let r = 0; for (const p of L) { for (let i = 0; i < 3; i++) c[i] += (p.bc[i] + p.off[i]) / L.length; r = Math.max(r, p.br); } return { c, r: Math.min(r, 9) + 2 }; });
+    // 軀幹（含乳房、衣服）用連續的位移場：往上從胯下 0 平滑升到肩膀 lift；往前胸口最多；乳房附近再往前往外一點
+    const C = P.C;
+    const bcs = [-1, 1].map(sd => { const L = sh.prims.filter(p => p.part === 'breast' && !p.cloth && Math.sign(p.bc[0] + p.off[0]) === sd); if (!L.length) return null; const c = [0, 0, 0]; let r = 0; for (const p of L) { for (let i = 0; i < 3; i++) c[i] += (p.bc[i] + p.off[i]) / L.length; r = Math.max(r, p.br); } return { c, r: Math.min(r, 9) + 2 }; });
     const field = (q) => {
       const f = sm((q[2] - C) / (S - C)), fc = sm((q[2] - zW) / (S - zW));
       const d = [0, .3 * br * fc, lift * f];
-      for (const [i, b] of bc.entries()) if (b) { const w = 1 - Math.hypot(q[0] - b.c[0], q[1] - b.c[1], q[2] - b.c[2]) / b.r; if (w > 0) { const ws = sm(w); d[0] += (i ? 1 : -1) * .3 * br * ws; d[1] += .2 * br * ws; } }
+      for (const [i, b] of bcs.entries()) if (b) { const w = 1 - Math.hypot(q[0] - b.c[0], q[1] - b.c[1], q[2] - b.c[2]) / b.r; if (w > 0) { const ws = sm(w); d[0] += (i ? 1 : -1) * .3 * br * ws; d[1] += .2 * br * ws; } }
       return d;
     };
+    const armAct = (part, isUpper) => { const X = armX[part]; return [0, 0, lift * LIFT[part], X ? (isUpper ? X.up : X.fore) : null]; };
     /** 一個身體零件這格怎麼動：[dx, dy, dz, 轉動或 null]。 */
     const act = (p, q) => {
       const part = p.part;
       if (part === 'head' || p.mat === 1) return [0, 0, hl, headX];
-      if (part === 'armL') return [0, 0, lift * .9, upX ? (p === upper ? upX : foreX) : null];
-      if (part === 'armR') return [0, 0, lift * .5, null];
+      if (part === 'armL' || part === 'armR') return armAct(part, armX[part] ? p === armX[part].upper : false);
       if (part === 'legs') return null;
       const d = field(q); d.push(null); return d;
     };
     const body = sh.prims.filter(p => p.mat === 0 && !p.cloth && !p.carve);
+    // 脫衣動畫：要移走的那件（T 恤＝外衣；胸罩＝內衣的布 1／2；內褲＝內衣的其他（蕾絲、褲頭））
+    const isGone = !anim ? null : anim.kind === 'shirt' ? (p) => p.cloth && !p.under : anim.kind === 'bra' ? (p) => p.cloth && p.under && (p.cloth === 1 || p.cloth === 2) : (p) => p.cloth && p.under && p.cloth !== 1 && p.cloth !== 2;
+    let goneMove = null;
+    if (anim) {
+      const u = anim.u, G = sh.prims.filter(isGone);
+      if (u > .78 || !G.length) goneMove = () => [0, 0, 1000];   // 已經脫掉：移到畫面外
+      else if (anim.kind === 'shirt') {   // 往上拉過頭
+        const lo = Math.min(...G.map(p => p.bc[2] + p.off[2])), top = Math.max(...sh.prims.filter(p => p.part === 'head' || p.mat === 1).map(p => p.bc[2] + p.off[2] + p.br), S + 20);
+        const r = sm((u - .18) / .55) * (top + 4 - lo);
+        goneMove = (q) => [-q[0] * .25 * sm((u - .3) / .4), 0, r];
+      } else if (anim.kind === 'bra') {   // 解開後往下往前掉
+        const k = sm((u - .38) / .38);
+        goneMove = () => [0, 5 * k, -16 * k];
+      } else {   // 內褲：沿大腿往膝蓋方向滑下去
+        const k = sm((u - .25) / .5), dir = nrm([.55, .45, -.25]);
+        goneMove = () => [dir[0] * 16 * k, dir[1] * 16 * k, dir[2] * 16 * k];
+      }
+    }
     const acts = new Map();
     for (const p of sh.prims) {
       let a;
       const q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
-      if (p.sleeve) {   // 襯衫袖子：上臂那段跟上臂、前臂那段跟前臂
-        const L = p.bc[0] + p.off[0] < 0 ? 'armL' : 'armR';
-        a = L === 'armR' ? [0, 0, lift * .5, null] : [0, 0, lift * .9, upX ? (p.sleeve === 1 ? upX : foreX) : null];
-      } else if (p.cloth) {   // 衣服：最近的身體零件是手／頭 → 跟著它；其他（軀幹上的）照位移場
+      if (goneMove && isGone(p)) { const g = goneMove(q), f = field(q); a = [g[0] + f[0], g[1] + f[1], g[2] + f[2], null]; }
+      else if (p.sleeve) {   // 袖子：上臂那段跟上臂、前臂那段跟前臂
+        const part = p.bc[0] + p.off[0] < 0 ? 'armL' : 'armR';
+        a = armAct(part, p.sleeve === 1);
+      } else if (p.cloth) {   // 衣服：最近的是上臂才跟手走（袖子），其他照軀幹的位移場（靠近手的下襬、褲頭不會被帶走）
         let best = null, bd = 1e9;
         for (const b of body) { const lb = Math.hypot(q[0] - b.bc[0] - b.off[0], q[1] - b.bc[1] - b.off[1], q[2] - b.bc[2] - b.off[2]) - b.br; if (lb >= bd) continue; const d = H.primDist(b, q[0], q[1], q[2]); if (d < bd) { bd = d; best = b; } }
-        // 袖子只套到上臂 → 最近的是上臂才跟手走；靠近垂在腰邊的手的下襬、褲頭照軀幹走（不然抬手會被帶走）
-        a = !best ? null : best.part === 'armL' || best.part === 'armR' ? (best === upper ? [0, 0, lift * .9, upX] : best.part === 'armR' && q[2] > zW ? act(best, q) : field(q).concat([null])) : act(best, q);
+        const X = best && armX[best.part];
+        a = !best ? null : X && best === X.upper ? armAct(best.part, true) : (best.part === 'armL' || best.part === 'armR') ? field(q).concat([null]) : act(best, q);
       } else a = act(p, q);
       if (a) acts.set(p, a);
     }
@@ -143,13 +185,13 @@
 
   /** 一格：同一個身形只建一次模型（襯衫／胸罩建模要好幾秒），每格複製一份再照動作變形、畫、上黑影色。worker 裡也用。 */
   function drawFrame(F, cache, doll, pose, f, n, scale, cv) {
-    const key = JSON.stringify(doll);
-    if (cache.key !== key) { cache.key = key; cache.base = F.build(doll, 'idle', 0, 0, {}); }
+    const key = JSON.stringify(doll), body = doll._body || 'idle';   // _body：站著 idle／脫衣時坐著 mermaid
+    if (cache.key !== key) { cache.key = key; cache.base = F.build(doll, body, 0, 0, {}); }
     const base = cache.base;
     const shape = () => ({ P: base.P, sh: Object.assign({}, base.sh, { prims: base.sh.prims.map(p => Object.assign({}, p)), areolaStamps: (base.sh.areolaStamps || []).map(q => Object.assign({}, q)) }) });
-    const m = motion(pose, f, n);
+    const m = motion(pose, f, n, body === 'mermaid');
     // 分三次畫：只有身體 → 身體＋內衣（胸罩、丁字褲）→ 身體＋外衣（T 恤），再一層層疊灰色上去
-    const run = (keep) => F.render(doll, 'idle', 0, 0, { scale, cv, shape: () => { const v = shape(); v.sh.prims = v.sh.prims.filter(keep); return v; }, deform: (sh, P, H) => deform(sh, P, H, m) });
+    const run = (keep) => F.render(doll, body, 0, 0, { scale, cv, shape: () => { const v = shape(); v.sh.prims = v.sh.prims.filter(keep); return v; }, deform: (sh, P, H) => deform(sh, P, H, m) });
     const hasU = base.sh.prims.some(p => p.cloth && p.under), hasO = base.sh.prims.some(p => p.cloth && !p.under);
     const r = run(p => !p.cloth);
     shade(r.pixels);
@@ -169,7 +211,7 @@
       F = box.RoomDoll;
       try {
         const code = `const F=(${F.factorySource})();const motion=${motion};const deform=${deform};const shade=${shade};const clothAt=${clothAt};const veil=${veil};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
-onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},CV);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
+onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},j.cv);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
         worker = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
         worker.onmessage = (e) => { const w = waiters.get(e.data.id); if (w) { waiters.delete(e.data.id); w(e.data); } };
       } catch { worker = null; }
@@ -181,9 +223,9 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   function renderFrame(doll, pose, f) {
     if (worker) {
       const id = ++seq;
-      return new Promise((res) => { waiters.set(id, res); worker.postMessage({ id, doll, pose, f, n: N }); });
+      return new Promise((res) => { waiters.set(id, res); worker.postMessage({ id, doll, pose, f, n: nOf(pose), cv: cvOf(doll) }); });
     }
-    const r = drawFrame(F, mainCache, doll, pose, f, N, SCALE, CV);
+    const r = drawFrame(F, mainCache, doll, pose, f, nOf(pose), SCALE, cvOf(doll));
     return Promise.resolve({ w: r.width, h: r.height, px: r.pixels });
   }
 
@@ -220,8 +262,11 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     doll.areola = areolaOf(s.look?.areola);
     // 穿著（使用者：一開始是 droom 那套白色 T 恤＋胸罩＋丁字褲；穿胸罩乳房變挺）：跟脫衣進度 undress.stage 走——
     //   0 白色 T 恤（裡面穿胸罩）＋丁字褲、1 胸罩＋丁字褲、2 只剩丁字褲、3 全裸。不畫她衣櫃裡的衣服（裙子也不畫）。
-    const st = Math.max(0, Math.min(3, Number(s.undressStage) || 0));
+    // 脫衣對話中（使用者）：美人魚坐姿；脫衣進度釘在 pinStage，脫衣動畫播完才換到下一階
+    const undressing = pinStage != null;
+    const st = Math.max(0, Math.min(3, Number(undressing ? pinStage : s.undressStage) || 0));
     doll.skirt = '';
+    if (undressing) doll._body = 'mermaid';
     if (st === 0) { doll.cloth = 'tee'; doll.underBra = true; }
     else if (st === 1) doll.cloth = 'bra';
     if (st <= 1) doll.braSupport = true;
@@ -229,9 +274,13 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const key = JSON.stringify(doll);
     if (cur && cur.key === key) return !!cur.sets.breathe[0];
     if (cur) cur.dead = true;
-    const job = cur = { key, sets: { breathe: [], talk: [] }, dead: false, P: F.proportions ? F.proportions(doll) : null };
+    if (canvas) canvas.dataset.f = '';   // 新的一組：格名跟上一組一樣（breathe0…）也要重畫
+    const job = cur = { key, sets: { breathe: [], talk: [] }, dead: false, P: F.proportions ? F.proportions(doll) : null, cv: cvOf(doll), stage: st };
     const todo = [];
-    for (let f = 0; f < N; f++) todo.push(['breathe', f]);
+    todo.push(['breathe', 0]);
+    // 脫衣對話：第一格呼吸之後馬上算下一件的脫衣動畫（她可能很快就脫），其他的呼吸、說話放後面
+    if (undressing && st < 3) { const a = ANIMS[st]; job.sets[a] = []; for (let f = 0; f < NA; f++) todo.push([a, f]); }
+    for (let f = 1; f < N; f++) todo.push(['breathe', f]);
     for (let f = 0; f < N; f++) todo.push(['talk', f]);
     (async () => {
       for (const [pose, f] of todo) {
@@ -246,19 +295,46 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     return false;
   }
 
-  function full(set) { if (set.length < N) return false; for (let i = 0; i < N; i++) if (!set[i]) return false; return true; }
+  function full(set, n = N) { if (!set || set.length < n) return false; for (let i = 0; i < n; i++) if (!set[i]) return false; return true; }
+  function draw(img, tag) {
+    if (canvas.width !== img.width || canvas.height !== img.height) { canvas.width = img.width; canvas.height = img.height; }   // 站著↔坐著畫布大小不同
+    ctx.putImageData(img, 0, 0); canvas.dataset.f = tag;
+  }
+
+  // ---------------------------------------------------------------- 脫衣（使用者：按下脫衣、她脫了 → 黑影表演脫衣動畫）
+  let pinStage = null, animPlay = null;   // pinStage：脫衣對話中畫的是哪一階；animPlay：{kind, to, t0, wait}
+  /** test_room_summon.js 在她決定脫一件時叫（from→to）。動畫還沒算好就等一下（最多 25 秒），算不出來就直接換。 */
+  function undress(from, to) {
+    if (pinStage == null || !cur || wrap.hidden || from >= 3) { if (pinStage != null) { pinStage = to; sync(); } return; }
+    animPlay = { kind: ANIMS[from], to, t0: 0, wait: performance.now() };
+    play();
+  }
 
   function tick(t) {
     raf = 0;
     if (!wrap || wrap.hidden || !cur) return;
     const dt = Math.min(.25, lastT ? (t - lastT) / 1000 : 0); lastT = t;
+    if (animPlay) {
+      const set = cur.sets[animPlay.kind];
+      if (!animPlay.t0) {
+        if (full(set, NA)) animPlay.t0 = t;
+        else if (t - animPlay.wait > 25000) { const to = animPlay.to; animPlay = null; pinStage = to; sync(); }   // 等太久（還沒算好）：不播，直接換
+      }
+      if (animPlay && animPlay.t0) {
+        const i = Math.floor((t - animPlay.t0) / 1000 * FPS[animPlay.kind]);
+        if (i >= NA) { const to = animPlay.to; animPlay = null; pinStage = to; sync(); }   // 播完：停在最後一格，等下一階的黑影算好再換
+        else if (canvas.dataset.f !== animPlay.kind + i) draw(set[i], animPlay.kind + i);
+      }
+      raf = requestAnimationFrame(tick);
+      return;
+    }
     const next = t < talkUntil && full(cur.sets.talk) ? 'talk' : 'breathe';
     if (next !== mode) { mode = next; clock = 0; }
     const set = cur.sets[mode];
     clock += dt * FPS[mode];
     let i = Math.floor(clock) % N;
     if (!set[i]) { i = 0; clock = 0; }   // 還沒算好的格：先停在第一格
-    if (set[i] && canvas.dataset.f !== mode + i) { ctx.putImageData(set[i], 0, 0); canvas.dataset.f = mode + i; }
+    if (set[i] && canvas.dataset.f !== mode + i) draw(set[i], mode + i);
     raf = requestAnimationFrame(tick);
   }
   function play() { if (!raf) { lastT = 0; raf = requestAnimationFrame(tick); } }
@@ -266,7 +342,6 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
 
   function wanted(sheet) {
     if (!sheet || sheet.hidden) return null;
-    if (sheet.classList.contains('undress-chat')) return null;
     const img = document.getElementById('portrait-img');
     if (img && img.dataset.sexStep) return null;   // 做愛對話：主圖是步驟圖
     if (document.getElementById('room-scene-overlay')?.hidden === false) return null;
@@ -282,9 +357,14 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const open = !!(sheet && !sheet.hidden);
     if (open && !wasOpen) portraitMode = false;
     wasOpen = open;
+    // 脫衣對話開始／結束：開始時釘住目前的脫衣進度（坐下）；結束就照實際進度（站起來）
+    const undressOn = open && !!sheet?.classList.contains('undress-chat');
+    if (undressOn && pinStage == null) { const sp = spec(); pinStage = Math.max(0, Math.min(3, Number(sp?.undressStage) || 0)); }
+    if (!undressOn && pinStage != null) { pinStage = null; animPlay = null; }
     const s = wanted(sheet);
     const want = !!s && !portraitMode;
-    const on = !!(s && prepare(s)) && !portraitMode;
+    // 換姿勢／換下一階時新的一組還在算：黑影留著（畫布停在上一格），不要閃掉
+    const on = !!s && !portraitMode && (prepare(s) || (open && !wrap.hidden && !wrap.classList.contains('cs-out')));
     sheet?.classList.toggle('portrait-mode', open && portraitMode);
     // 使用者：點房間的她先跑出立繪才生字不對 → 一打開就把立繪藏起來（不等黑影第一格算好）
     sheet?.classList.toggle('has-shadow', want);
@@ -321,13 +401,13 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const img = cur && cur.sets[mode] && cur.sets[mode].find(Boolean); if (!img) return false;
     const { width: w, height: h, data } = img, A = (xx, yy) => xx >= 0 && yy >= 0 && xx < w && yy < h && data[(yy * w + xx) * 4 + 3] > 0;
     let top = -1; for (let yy = 0; yy < h && top < 0; yy++) for (let xx = 0; xx < w; xx++) if (A(xx, yy)) { top = yy; break; }
-    if (top < 0 || y < top - 8 || y > top + (CV.ay * SCALE - top) * .16) return false;
+    if (top < 0 || y < top - 8 || y > top + ((cur.cv || CV).ay * SCALE - top) * .16) return false;
     for (let dy = -8; dy <= 8; dy += 2) for (let dx = -8; dx <= 8; dx += 2) if (A(Math.round(x + dx), Math.round(y + dy))) return true;
     return false;
   }
   /** 畫布像素 → 摸到哪一區（照她的身體比例 P：S 肩線、C 胯下、T 軀幹長；droom 橫向拉寬 1.1）。 */
   function zoneAt(px, py) {
-    const P = cur && cur.P; if (!P) return null;
+    const P = cur && cur.P; if (!P || cur.cv !== CV) return null;   // 只有站著時摸得到（脫衣對話坐著時本來就不能調戲）
     const x = Math.abs((px / SCALE - CV.ax) / 1.1), z = CV.ay - py / SCALE, S = P.S, C = P.C, T = P.T;
     if (z <= C + 4.5 && z >= C - 5 && x <= 5) return 'groin';
     if (z <= S - .06 * T && z >= S - .52 * T && x <= 11) return 'breast';
@@ -350,6 +430,12 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     });
     const img = document.getElementById('portrait-img');
     if (img) longPress(img, () => portraitMode, () => { portraitMode = false; sync(); });
+    // 使用者：立繪時按空白 → 回到黑影（不關聊天）；黑影時按空白 → 回房間（原本的關聊天）。捕獲階段先攔，蓋過 summon 的關閉
+    document.addEventListener('click', (ev) => {
+      if (!portraitMode || ev.target?.id !== 'portrait-backdrop') return;
+      ev.stopImmediatePropagation(); ev.preventDefault();
+      portraitMode = false; sync();
+    }, true);
     // 黑影畫布蓋住畫面中間：點到她旁邊透明的地方＝點背景（關掉聊天，跟原本一樣）；
     // 點在她身上＝摸她（使用者：調戲不用按鈕）：胸部／下體／腰部臀部 → test_room_summon.js 的 RoomTouch.zone 挑一個已解鎖的動作
     canvas.addEventListener('click', (ev) => {
@@ -385,5 +471,5 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
-  window.ChatShadow = { sync, shapeOf, areolaOf, motion, deform, shade };
+  window.ChatShadow = { sync, undress, shapeOf, areolaOf, motion, deform, shade };
 })();
