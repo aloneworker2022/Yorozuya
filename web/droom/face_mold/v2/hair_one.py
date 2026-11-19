@@ -16,14 +16,15 @@ def pm(pts):
   m=Image.new('L',(N,N),0);ImageDraw.Draw(m).polygon([(round(x),round(y)) for x,y in pts],fill=1);return np.array(m).astype(bool)
 def arc(r,a0,a1,n=80):return [(CX+r*math.cos(a0+(a1-a0)*k/n),CY+r*math.sin(a0+(a1-a0)*k/n)) for k in range(n+1)]
 RO=R+7
-BANG_Y=136                                  # 瀏海下緣（剛好在眼睛上面、蓋到眉毛）
+HS=os.environ.get('HS','hime')   # 髮型：hime 長直髮齊瀏海、bob 鮑伯
+BANG_Y=136 if os.environ.get('HS','hime')!='bob' else 133   # 瀏海下緣（剛好在眼睛上面、蓋到眉毛）
 def regions():
   # 瀏海：頭髮外緣的上半圈，往下到 BANG_Y；兩邊在太陽穴收進去
   top=pm(arc(RO,math.pi*1.06,math.pi*1.94)+[(CX+60,BANG_Y-4),(CX-60,BANG_Y-4)])
   bang=np.zeros((N,N),bool)
   for x in range(CX-62,CX+63):
     # 下緣一束束的：每 7 格一束，尖端上下錯開 0～3 格
-    k=(x-(CX-62))//7;tip=BANG_Y+[0,2,1,3,0,2,1][k%7]-(1 if (x-(CX-62))%7 in(0,6) else 0)
+    k=(x-(CX-62))//7;tip=BANG_Y+([0,2,1,3,0,2,1] if HS!='bob' else [0,4,1,5,2,4,0])[k%7]-(1 if (x-(CX-62))%7 in(0,6) else 0)
     if abs(x-CX)>52:tip-=int((abs(x-CX)-52)*.9)          # 兩端往上收、接到鬢角
     for y in range(int(CY-RO*0.6),tip):bang[y,x]=True
   cap=pm(arc(RO,math.pi,2*math.pi)+[(CX+RO,CY),(CX-RO,CY)])
@@ -32,17 +33,26 @@ def regions():
   yy,xx=np.mgrid[0:N,0:N]
   temple=cap&(np.abs(xx-CX)>50)&(yy<CY+8)                 # 太陽穴：瀏海兩端收上去的地方也要蓋滿，不能露頭皮
   bangs=(bang|front_top|temple)
-  # 兩側（鬢）：從太陽穴直直往下，內緣貼著臉頰外側、外緣在耳朵外面，尾端一束束
   sides=np.zeros((N,N),bool)
-  for s in(-1,1):
-    xin=CX+s*54;xout=CX+s*(RO+3)
-    p=[(xin,108),(xout,104)]
-    for y in range(110,240,6):p.append((xout+s*(1 if y>200 else 0),y))
-    tips=[(CX+s*(RO+2),246),(CX+s*72,238),(CX+s*66,244),(CX+s*60,236)]
-    p+=tips+[(xin+s*2,226),(xin,150)]
-    sides|=pm(p)
-  # 後髮：頭的後面一大片，比肩膀寬一點，一路到畫面下面
-  back=pm(arc(RO+2,math.pi,2*math.pi)+[(CX+RO+10,256),(CX-RO-10,256)])
+  if HS=='bob':
+    # 鮑伯：兩側到下巴，外緣有蓬度（往外鼓），髮尾往內捲（下緣往臉收）
+    for s in(-1,1):
+      xin=CX+s*54;p=[(xin,108),(CX+s*(RO+3),104)]
+      for y in range(110,212,4):p.append((CX+s*(RO+3+5*math.sin(math.pi*(y-110)/130)),y))
+      p+=[(CX+s*(RO+2),214),(CX+s*72,220),(CX+s*64,222),(CX+s*58,218),(CX+s*55,212),(xin+s*1,180),(xin,150)]
+      sides|=pm(p)
+    back=pm(arc(RO+3,math.pi,2*math.pi)+[(CX+RO+8,200),(CX+RO+2,216),(CX+46,222),(CX-46,222),(CX-RO-2,216),(CX-RO-8,200)])
+  else:
+    # 長直髮：兩側從太陽穴直直往下，內緣貼著臉頰外側、外緣在耳朵外面，尾端一束束
+    for s in(-1,1):
+      xin=CX+s*54;xout=CX+s*(RO+3)
+      p=[(xin,108),(xout,104)]
+      for y in range(110,240,6):p.append((xout+s*(1 if y>200 else 0),y))
+      tips=[(CX+s*(RO+2),246),(CX+s*72,238),(CX+s*66,244),(CX+s*60,236)]
+      p+=tips+[(xin+s*2,226),(xin,150)]
+      sides|=pm(p)
+    # 後髮：頭的後面一大片，比肩膀寬一點，一路到畫面下面
+    back=pm(arc(RO+2,math.pi,2*math.pi)+[(CX+RO+10,256),(CX-RO-10,256)])
   return bangs,sides,back
 def render(img,stage):
   white=(img==255).all(2);out=img.copy()
@@ -63,6 +73,9 @@ def render(img,stage):
   for s in(-1,1):
     inner=sides&(np.abs(xx-(CX+s*55))<=2)&(yy>118);out[inner]=C['sh']
   bot=bangs&~np.roll(bangs,-1,0);out[bot]=C['sh']
+  if HS=='bob':
+    curl=sides&~np.roll(sides,-6,0);out[curl&(yy>190)]=C['sh']
+    out[back&white&(yy>200)]=C['dk']
   # 瀏海在額頭上的影子（瀏海下緣下面一格）
   shadow=np.roll(bangs,1,0)&~bangs&~white&~sides&~back
   out[shadow]=SKSH
@@ -78,7 +91,7 @@ def render(img,stage):
       if bangs[py,px] and tuple(out[py,px])==C['mid']:out[py,px]=C['ln']
   for s in(-1,1):
     for x in(CX+s*62,CX+s*70):
-      for y in range(140,232):
+      for y in range(140,232 if HS!='bob' else 210):
         if sides[y,x] and (y//9)%3!=0:out[y,x]=C['ln']
   # 5＋8 亮：頭頂一圈寬的亮帶（光從左上，左邊亮一點），帶子裡再一條條白色高光（天使環，跟著髮束斷開）
   for y in range(N):
@@ -104,3 +117,4 @@ if __name__=='__main__':
     d.text((k*400+6,4),lab,fill='black',font=F)
     c.paste(Image.fromarray(render(img,st)).crop((28,20,228,256)).resize((338,400),Image.NEAREST),(k*400+30,44))
   c.save(sys.argv[2])
+  if len(sys.argv)>3:Image.fromarray(render(img,'final')).save(sys.argv[3])
