@@ -11,7 +11,8 @@ D=sys.argv[1];ES=1.35
 base=np.array(Image.open(D+'/front.png').convert('RGB'))
 F=ImageFont.truetype('/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',30)
 tiles=[];zooms=[]
-for key in ['N1','N2','N3','T1','T2','T3','T4','R1','R2','R3','R4']:
+KEYS=os.environ.get('KEYS','N1,N2,N3,T1,T2,T3,T4,R1,R2,R3,R4').split(',')
+for key in KEYS:
   fr=Frame(key);img=base.copy()
   for s in(1,-1):
     ex=128+s*30;ey=Y(539)
@@ -22,9 +23,12 @@ for key in ['N1','N2','N3','T1','T2','T3','T4','R1','R2','R3','R4']:
         if ch and tuple(img[Yp,X])!=(255,255,255):img[Yp,X]=EPAL[ch]
   im=Image.fromarray(img)
   tiles.append((TYPES[key]['name'],im.crop((40,80,216,230)).resize((352,300),Image.NEAREST)))
-  zooms.append((TYPES[key]['name'],im.crop((124,116,192,160)).resize((476,308),Image.NEAREST)))
-c=Image.new('RGB',(3*(352+476)+40,4*350+20),'white');d=ImageDraw.Draw(c)
+  zooms.append((TYPES[key]['name'],im.crop((122,122,194,178)).resize((432,336),Image.NEAREST)))
+NC=3 if len(KEYS)==11 else 2;NR=4 if len(KEYS)==11 else (len(KEYS)+1)//2
+c=Image.new('RGB',(NC*(352+476+20)+20,NR*350+20),'white');d=ImageDraw.Draw(c)
 for i,((n,t),(_,z)) in enumerate(zip(tiles,zooms)):
-  col,r=(0,i) if i<3 else divmod(i-3,4);col=col+ (1 if i>=3 else 0);x=col*(828+20);y=r*350
+  if len(KEYS)==11:col,r=(0,i) if i<3 else divmod(i-3,4);col=col+(1 if i>=3 and len(KEYS)==11 else 0)
+  else:col,r=divmod(i,NR)
+  x=col*(828+20);y=r*350
   d.text((x+10,y+2),n,fill='black',font=F);c.paste(t,(x,y+38));c.paste(z,(x+352,y+30))
 c.save(sys.argv[2])
