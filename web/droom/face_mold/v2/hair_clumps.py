@@ -97,14 +97,17 @@ def render(img,stage):
     edge=m&~np.roll(cl.mask,-1,1);out[edge]=C['sh']          # 每片右邊一格暗
   out[cap]=C['mid']
   hairmask=cap.copy()
+  rf=random.Random(13)
   for cl in sorted(sides+bangs,key=lambda c:c.layer):
     m=cl.mask
+    # 使用者 2026-11-19：有一些分界線要一路延伸到頭頂的髮旋，不是都只有一半
+    ylim=W[1]+5 if (cl.kind=='bang' and rf.random()<.45) else CY-46
     # 這片蓋上去之前：它在下面那層頭髮上投一道影子（往右下偏 1～2 格）
-    sh=np.roll(np.roll(m,1,0),2 if cl.kind=='bang' else 1,1)&~m&hairmask&(yy>CY-46)   # 影子只在中下段（頭頂不要一堆線）
+    sh=np.roll(np.roll(m,1,0),2 if cl.kind=='bang' else 1,1)&~m&hairmask&(yy>ylim)   # 影子：有的只在中下段、有的一路到髮旋
     out[sh]=C['sh']
     out[m]=C['mid'];hairmask|=m
     redge=m&~np.roll(m,-1,1)&~np.roll(m,-2,1)
-    out[redge&(yy>CY-50)]=C['sh']                            # 背光那側一格暗（只在中下段）
+    out[redge&(yy>ylim)]=C['sh']                             # 背光那側一格暗（跟影子同樣長）
   # 瀏海投在額頭的影子
   allb=np.zeros((N,N),bool)
   for cl in bangs:allb|=cl.mask
