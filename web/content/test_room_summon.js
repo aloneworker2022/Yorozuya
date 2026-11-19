@@ -335,7 +335,7 @@ import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
 import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, leaveLine, askLine, feelOf, workingNow,
   ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=5";
-import { openPeek } from "./escort_peek.js?v=27";
+import { openPeek, openWifepayPeek, buildWifepayPeekOpts } from "./escort_peek.js?v=28";
 import * as Preg from "./pregnancy.js?v=1";
 import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
@@ -1334,13 +1334,40 @@ async function escortApi(body) {
   try { applyLifeSnap(snap); } catch { /* */ }
   return snap;
 }
+/** 目前房間的妹子；沒有就用名冊下拉已選的那位（不必先召喚進房）。 */
+function wifepayTestWho() {
+  if (girl) return girl;
+  const id = $("roster-girl-pick")?.value || "";
+  if (id && Array.isArray(rosterGirlsCache)) {
+    const raw = rosterGirlsCache.find((g) => g && g.id === id);
+    if (raw) return raw;
+  }
+  return null;
+}
+/** 正式老婆還債開門偷看（與遊戲「去看她」同一套）。不扣錢、不看出勤。 */
+function testWifepayPeek({ pose, noticed = false } = {}) {
+  const who = wifepayTestWho();
+  if (!who) {
+    pushDebug("老婆還債測試：先抽／選一個妹子（房間裡的，或名冊下拉選一位）");
+    return;
+  }
+  const man = ESCORT_BUILDS[Math.floor(Math.random() * ESCORT_BUILDS.length)] || "average";
+  const poses = ESCORT_POSES && ESCORT_POSES.length ? ESCORT_POSES : ["cowgirl"];
+  const p = pose || poses[Math.floor(Math.random() * poses.length)];
+  const family = familyOfGirl(who);
+  const voice = moanVoiceId(who) || "";
+  pushDebug(`老婆還債測試：用 ${who.name || "她"}、${ESCORT_POSE_ZH[p] || p}、客人 ${man}（不扣錢、不看出勤）`);
+  openWifepayPeek(buildWifepayPeekOpts(who, {
+    doll: window.RoomDoll?.lookToDoll(who.look || null, { belly: Preg.bellyOf(who) }),
+    pose: p, man, noticed, cost: 0, family, voice,
+    stage: who.roomStage || who.stage || "",
+    ckpt: who.comfyCkpt || "",
+    comfy_url: typeof roomComfyUrl === "string" ? roomComfyUrl : "",
+    onClose: (st) => { if (st.opened && noticed) pushDebug("偷看：被她發現了（除錯）"); },
+  }));
+}
 function debugPeek(pose, noticed = false) {
-  if (!girl) return;
-  const man = ESCORT_BUILDS[Math.floor(Math.random() * ESCORT_BUILDS.length)];
-  openPeek({ who: girl, doll: window.RoomDoll?.lookToDoll(girl.look || null, { belly: Preg.bellyOf(girl) }), pose, noticed, cost: 0, man,
-    voice: moanVoiceId(girl) || "", family: familyOfGirl(girl),
-    wifepay: { character: girl, pose, build: man, family: familyOfGirl(girl), voice: moanVoiceId(girl) || "", stage: girl.roomStage || girl.stage || "" },
-    onClose: (st) => { if (st.opened && noticed) pushDebug("偷看：被她發現了（除錯）"); } });
+  testWifepayPeek({ pose, noticed });
 }
 function familyOfGirl(who) { try { return familyOf(who); } catch { return ""; } }
 function renderRentalDebug() {
@@ -1416,8 +1443,9 @@ function bindEscortDebug() {
   });
   onId("dbg-escort-back", "click", () => { if (girl) escortArrivalMood(girl, { clients: girl.world?.escort?.lastClients || 2, noticed: false }); renderDebug(); });
   onId("dbg-escort-noticed", "click", () => { if (girl) escortArrivalMood(girl, { noticed: true }); renderDebug(); });
+  onId("dbg-wifepay-peek", "click", () => testWifepayPeek());
   for (const p of ESCORT_POSES) onId(`dbg-peek-${p}`, "click", () => debugPeek(p, false));
-  onId("dbg-peek-noticed", "click", () => debugPeek(ESCORT_POSES[Math.floor(Math.random() * 4)], true));
+  onId("dbg-peek-noticed", "click", () => debugPeek(ESCORT_POSES[Math.floor(Math.random() * ESCORT_POSES.length)], true));
   renderEscortDebug();
 }
 

@@ -1,10 +1,56 @@
 /* 接客偷看畫面（2026-10-10 Al；樣板 mockups/peek/half4.py）。
- * 全螢幕：走廊、掛粉紅牌子「工作室・接客中」的門 → 點門 → 門往內開一半 → 門縫裡：床、暖黃燈、
- * 她（房間同一套人偶 RoomDoll，自己的身材／髮型／罩杯／乳搖，側面體位）＋藍色剪影客人（大半被門擋住，只露腰／手）。
- * 「她沒發現你……」。遊戲偷看（mode=peek）：點門後中央對話框先出（旁白→男→她），同時生 1～2 張圖生圖，圖好了淡入、對話框下移；失敗只留對話。日租 mode=door/room 仍用舊字幕。
+ * 全螢幕：走廊、掛粉紅牌子「工作室・接客中」的門 → 點門 → 門往內開一半。
+ * 老婆還債（mode=peek）一律走共用 wifepay 揭示：步驟設定的姿勢／圖庫／劇本／廣角正負提示／降噪、
+ * 同一側門縫切（1/2 或 3/5）、隨機 1～2 張、隔門聽不清、打字速度跟設定走、旁白→男人→老婆＋「下一句」。
+ * 生圖失敗只留對話。遊戲與 test_room 都經 openWifepayPeek／buildWifepayPeekOpts，不再走舊台詞氣泡或 /api/escort/peek-lines。
+ * 日租 mode=door/room 仍用舊字幕／紙娃娃路徑，與老婆還債無關。
  * 不扣錢、不決定發現與否：這些由呼叫端（app.js）先算好傳進來。 */
 import { peekLine, nextGapMs, flavorWife } from "./escort_voices.js?v=3";
 import { startWifepayPeek } from "./wifepay_reveal.js?v=8";
+
+/** 遊戲與 test_room 共用的正式老婆還債開門偷看參數（一律走 startWifepayPeek）。 */
+export function buildWifepayPeekOpts(who, extra = {}) {
+  const pose = extra.pose || "cowgirl";
+  const guest = extra.guest || null;
+  const man = extra.man || extra.build || guest?.build || "average";
+  const family = extra.family || "";
+  const voice = extra.voice || "";
+  const stage = extra.stage || who?.roomStage || who?.stage || "";
+  const guestName = extra.guestName || guest?.name || "";
+  const regular = extra.regular != null ? !!extra.regular : !!(guest && guest.named);
+  const out = {
+    who,
+    pose,
+    man,
+    noticed: !!extra.noticed,
+    cost: extra.cost ?? 0,
+    voice,
+    family,
+    wifepay: {
+      character: who,
+      guest,
+      family,
+      voice,
+      pose,
+      build: man,
+      stage,
+      guestName,
+      regular,
+      ckpt: extra.ckpt || who?.comfyCkpt || "",
+      comfy_url: extra.comfy_url || "",
+      script_id: extra.script_id || extra.script || "random",
+    },
+    onOpen: extra.onOpen,
+    onClose: extra.onClose,
+  };
+  if (extra.doll) out.doll = extra.doll;
+  return out;
+}
+
+/** 正式流程：開門偷看。圖庫／生圖失敗只留對話。租借門縫（mode=door/room）請用 openPeek。 */
+export function openWifepayPeek(opts = {}) {
+  return openPeek({ ...opts, mode: "peek" });
+}
 
 const LW = 195, LH = 422;                    // 邏輯像素（畫面 ×2 放大）
 const DX0 = 8, DX1 = 187, DY0 = 112, DY1 = 340;
@@ -342,15 +388,19 @@ const CSS = `
 .peek-bub.c{background:rgba(20,30,70,.82);color:#8fb2ff;border:1px solid #3f62c0}
 .peek-bub.w{background:rgba(60,20,40,.82);color:#ffb0cf;border:1px solid #c0608c}
 .peek-ov.door .peek-bub{opacity:0;filter:blur(.4px)}.peek-ov.door .peek-bub.on{opacity:.78}
-.peek-close{position:absolute;top:8px;right:8px;background:none;border:0;color:#998;font-size:22px;z-index:8}`;
+.peek-close{position:absolute;top:8px;right:8px;background:none;border:0;color:#998;font-size:22px;z-index:8}
+.peek-ov.peek-wifepay .peek-bub,.peek-ov.peek-wifepay .peek-talk{display:none !important}`;
 
 /**
- * 打開偷看。opts：{ who, doll, pose('missionary'…), man（客人體型，見 MAN_BUILDS）, lines（(more)=>Promise<[{side,text}]>，AI 台詞；失敗回 []）, noticed, cost, voice, family, onClose(state) }。
- * 回傳 { close() , state }（state.opened：真的開過門；state.lines：冒過的字幕，測試用）。
+ * 打開偷看。opts：{ who, doll, pose('missionary'…), man（客人體型，見 MAN_BUILDS）, noticed, cost, voice, family, wifepay, onOpen, onClose(state) }。
+ * mode=peek（預設，老婆還債）走 startWifepayPeek，忽略 opts.lines。mode=door/room（日租）仍用字幕氣泡，opts.lines 可補 AI 台詞。
+ * 回傳 { close(), state, open, ready, say }（state.opened：真的開過門；state.lines：日租冒過的字幕，測試用）。
  */
 export function openPeek(opts = {}) {
-  if (!document.getElementById("peek-css")) {
-    const s = document.createElement("style"); s.id = "peek-css"; s.textContent = CSS; document.head.append(s);
+  if (!document.getElementById("peek-css-2")) {
+    const old = document.getElementById("peek-css");
+    if (old) old.remove();
+    const s = document.createElement("style"); s.id = "peek-css-2"; s.textContent = CSS; document.head.append(s);
   }
   const pose = POSE_ID[opts.pose] ? opts.pose : "cowgirl";
   const ov = document.createElement("div");
@@ -367,6 +417,7 @@ export function openPeek(opts = {}) {
   // 日租女友（2026-10-13）：mode＝"room"（跟進旅館房間：一開始就看得到整間、沒有門可以點）／"door"（在門外：門關著、只聽得到）
   const mode = opts.mode === "room" || opts.mode === "door" ? opts.mode : "peek";
   ov.classList.toggle("door", mode === "door");
+  if (mode === "peek") ov.classList.add("peek-wifepay");
   if (mode === "room") { st.open = st.target = 1 / OPEN; st.opened = true; }
   if (mode === "door") st.opened = true;
   const man = MAN_BUILDS[opts.man] ? opts.man : "average", tempo = MAN_BUILDS[man].tempo;   // 客人體型：重的慢、瘦的快
@@ -384,7 +435,7 @@ export function openPeek(opts = {}) {
     Promise.resolve(opts.lines(more)).then((ls) => { if (Array.isArray(ls) && ls.length) ai.lines = ls; })
       .catch(() => {}).finally(() => { ai.busy = false; });
   };
-  aiFetch(false);
+  if (mode !== "peek") aiFetch(false);
   const say = () => {
     const side = st.side;
     st.side = side === "client" ? "wife" : "client";
@@ -426,7 +477,7 @@ export function openPeek(opts = {}) {
       while (acc >= D.SEX_FRAME_MS[st.fi] * tempo) { acc -= D.SEX_FRAME_MS[st.fi] * tempo; st.fi = (st.fi + 1) % st.frames.length; }
       st.anchor = { ...D.sexAnchor(doll, dpose, st.fi), man };
     }
-    if (!st.reveal && (st.open >= 0.98 || mode === "door") && (st.frames || mode === "door") && !st.closed && now >= talkAt) { say(); talkAt = now + nextGapMs(); }
+    if (mode !== "peek" && !st.reveal && (st.open >= 0.98 || mode === "door") && (st.frames || mode === "door") && !st.closed && now >= talkAt) { say(); talkAt = now + nextGapMs(); }
     drawScene(g, st);
     raf = requestAnimationFrame(tick);
   };
@@ -457,6 +508,8 @@ export function openPeek(opts = {}) {
       guest: wp.guest, guestName: wp.guestName || wp.guest?.name || "",
       regular: !!(wp.regular || wp.guest?.named),
       ckpt: wp.ckpt || "", comfy_url: wp.comfy_url || "",
+      script_id: wp.script_id || wp.script || "random",
+      denoise: wp.denoise, prompt: wp.prompt, negative: wp.negative, seed: wp.seed,
       onStatus: (m) => { hint.textContent = m || ""; },
     });
   };
