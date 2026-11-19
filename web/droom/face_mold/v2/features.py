@@ -110,7 +110,13 @@ def eye_px():
   return o
 NOSE=nose_px()
 EYES=eye_px()
-LAYERS=[brow_px(),EYES,NOSE,mouth_px()]
+# 眉毛高度：沒指定 BRY 就跟著眼睛走——眉毛底離上眼線最高點 BGAP 格（使用者 2026-11-19：眉毛位置錯了，離眼睛太遠）
+BGAP=float(os.environ.get('BGAP','4'))
+if 'BRY' not in os.environ and FR:
+  _lt=Y(EYEY)+min(p[1] for p in FR.up)*ES*EH        # 上眼線最高點（畫面 y）
+  BRY=CYR+(_lt-BGAP-1.2-CY)/S                         # 眉毛中線（眉峰再往上拱 5）
+BROWS=brow_px()
+LAYERS=[BROWS,EYES,NOSE,mouth_px()]
 def isface(img,X,Yp):
   return 0<=X<N and 0<=Yp<N and tuple(img[Yp,X])!=(255,255,255) and tuple(img[Yp,X])!=DK
 def paint_front(img):
@@ -121,6 +127,7 @@ def paint_turn(img,deg,cx):
   a=math.radians(deg);ca,sa=math.cos(a),math.sin(a);zbuf={}
   for L in LAYERS:
     if L is NOSE:continue          # 轉過去的鼻子另外畫（正面那條線投影過去會被壓扁）
+    if L is BROWS and deg>=90:continue   # 側臉的眉毛另外畫（在眼睛正上方）
     if L is EYES:continue   # 轉過去的眼睛另外畫（45°：近側菱形、遠側三角形；側臉：三角形）
     for (X,Yp),(c,dz) in L.items():
       for i in range(4):
@@ -229,9 +236,18 @@ def side_eye_at(u,v,flip=False):   # flip：左右鏡射時亮點仍放在左上
     if r>.82:return 'I'
     w=(v-lb(u))/(AY-lb(u));return 'I' if w<.38 else 'i' if w<.7 else 'j'
   return 'w' if v<lb(u)+1.8 else 'W'
+def side_brow(img,X0):
+  # 側臉眉毛：在眼睛正上方，從眼睛前端往前一點點開始、往後到眼睛 3/4，眉峰在 1/3，前粗後細
+  L=18*ES*.85
+  for k in range(301):
+    u=k/300;x=X0-1.5+L*u;y=Y(BRY)-3.2*math.sin(math.pi*min(1,u*1.3)*.9)+1.5*u;w=2.4+(1.0-2.4)*u;r=w/2
+    for yy in range(math.floor(y-r),math.ceil(y+r)+1):
+      for xx in range(math.floor(x-r),math.ceil(x+r)+1):
+        if math.hypot(xx+.5-x,yy+.5-y)<=r+.05 and isface(img,xx,yy):img[yy,xx]=BROWL if u>.72 else BROW
 def side_eye(img,cx):
   from shape3d import zp
   X0=cx-zp(545)*S+7;Y0=Y(EYEY-4)               # 眼睛前端：鼻樑往後 7 格、眼線上面一點
+  side_brow(img,X0)
   if FR:
     Yc=Y(EYEY);x0,x1,y0,y1=FR.box
     for Yp in range(math.floor(Yc+y0*ES*EH),math.ceil(Yc+y1*ES*EH)):
