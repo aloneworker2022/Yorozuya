@@ -79,12 +79,21 @@ def mouth_px():
   def nums(name):return [float(v) for v in re.search(name+r'=\[(.*?)\]',src).group(1).split(',')]
   MT=os.environ.get('MT','closed')
   SP,DZ=(arr('OPEN'),nums('DZ1')) if MT=='open' else (arr('LIPS'),nums('DZ0'))
+  # 大嘴（MS=大）用手點的一張（使用者 2026-11-19：放大的嘴角像分開的點）；左半 16 格（最後一格是中線），右半鏡射
+  if os.environ.get('MS','小')=='大':
+    mir=lambda rows:[h+h[:15][::-1] for h in rows]
+    if MT=='open':
+      SP=mir(["...........uubbb","......uuuUUUUbbH","....uuUUUUUUULLL","..uUUUULLLLLLTTT","CCLLLLLTTTTTTTTT",".C.LMTTTTTTTTTTT","...LMMMMMMMMMMMM","...lPPPPPPHHHHHH","....DPPPPPPHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
+      DZ=[0,0,0,0,-1.2,-3.2,-3.6,-1.8,-2.4,-3,-3.6]
+    else:
+      SP=mir(["..........uuu...","......uuuUUUUu.u","....uuUUUUUUUUUU","..uUUUUUUUUUUUUU","CCLLLLLLLLLLLLLL",".C.lPPPPPPPPPPPP","...lPPPHHHHHHHHH","....DPPPPHHHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
+      DZ=[0,0,0,0,-.6,-1.6,-2.2,-2.8,-3.2,-3.6]
   LINE=[i for i,r in enumerate(SP) if 'C' in r][0]
   # 唇色樣式（使用者 2026-11-19）：LIPS=全＝上下唇都上色（原本）；LIPS=下唇＝上唇不上色、只留嘴縫的線，下唇有顏色
   if os.environ.get('LIPS','全')=='下唇':
     SP=[''.join(ch if ch=='L' else '.' for ch in row) if r<LINE else row for r,row in enumerate(SP)]
   # 嘴巴大小（MS=小／中／大）：小＝原本 19 格寬；中、大照比例放大（最近鄰，奇數寬才置中）
-  sx,sy={'小':(1,1),'中':(1.32,1.15),'大':(1.65,1.32)}[os.environ.get('MS','小')]
+  sx,sy={'小':(1,1),'中':(1.32,1.15),'大':(1,1)}[os.environ.get('MS','小')]   # 大＝上面手點的，不再放大
   if sx!=1 or sy!=1:
     W0,H0=len(SP[0]),len(SP);W2=round(W0*sx)|1;H2=round(H0*sy)
     SP=[''.join(SP[min(H0-1,int((r+.5)/sy))][min(W0-1,int((c+.5)*W0/W2))] for c in range(W2)) for r in range(H2)]
