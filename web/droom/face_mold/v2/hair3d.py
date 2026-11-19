@@ -86,7 +86,8 @@ def render(img,deg,cx):
     if k not in zb_ or d>zb_[k]:zb_[k]=d;cat[k]=c;pt[k]=(x,y,z)
   out=img.copy();vis={}
   for (X,Yp),d in zb_.items():
-    if white[Yp,X] or d>=HD[Yp,X]-1.5:
+    near_side=cat[(X,Yp)]=='side' and pt[(X,Yp)][0]*sa>0   # 近側那片鬢髮垂在臉旁邊、蓋住耳朵和下顎角（使用者 2026-11-19：斜臉應該蓋住耳朵）
+    if white[Yp,X] or near_side or d>=HD[Yp,X]-1.5:
       c=cat[(X,Yp)]
       col=C['mid'] if c in('cap','bang','side') else C['mid']
       x,y,z=pt[(X,Yp)]
