@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
 from outline import N,SK,SH,DK,GL,R,CY,S,G,Y,LINES,cr,mask,edge
-DEG=float(os.environ.get('DEG','45'));A=math.radians(DEG);CA,SA=math.cos(A),math.sin(A)
+DEG=float(os.environ.get('DEG','30'));A=math.radians(DEG);CA,SA=math.cos(A),math.sin(A)
 CX=126
 out=sys.argv[1] if len(sys.argv)>1 else '.'
 from shape3d import *
@@ -55,7 +55,7 @@ sh=neck&~head&np.roll(head,3,0);img[sh]=SH      # 下巴壓在脖子上：影子
 img[head]=SK
 # 近側耳朵（側臉的耳朵貼在頭的側面 x≈球半徑，轉 45° 投影）
 EAR=[(329,546),(336,540),(345,539),(352,547),(352,560),(346,572),(337,580),(327,584),(324,575),(326,560)]
-EDZ=float(os.environ.get("EDZ","20"))
+EDZ=float(os.environ.get("EDZ",str(20*max(0,min(1,(DEG-30)/15)))))   # 45° 才往前收 20；30° 以下照側臉位置（山田式：斜臉耳朵在頭的輪廓邊上）
 def earpt(xs,y):
   return scr(54,y,322-xs+EDZ)   # 耳朵貼在頭的側面（x＝54）；45° 往前移 EDZ，整個收進頭裡（使用者 2026-11-18）
 em=mask([earpt(x,y) for x,y in cr([(x,y) for x,y in EAR],True,6)])

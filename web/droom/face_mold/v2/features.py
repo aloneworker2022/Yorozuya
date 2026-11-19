@@ -143,20 +143,18 @@ def nose_turn(img,sa,cx):
 # 近側：正面那隻往橫向壓窄（菱形往外拉），黑眼珠往內（鼻子那邊）靠，看的方向兩眼一致
 # 遠側：臉是圓的，轉過去變三角形——用側臉那隻左右鏡射、橫向再壓窄；內眼角藏在鼻樑後面，外側被臉的輪廓切掉
 def eyes_turn(img,ca,sa,cx):
-  from shape3d import zp
-  xr=30/S;yr=545;z=surf(xr,yr)
-  Xc=cx+(xr*ca-z*sa)*S;Yc=Y(yr)
-  kx=float(os.environ.get('K45','.8'))
-  for Yp in range(math.floor(Yc-16*ES),math.ceil(Yc+10*ES)):
-    for X in range(math.floor(Xc-20*ES),math.ceil(Xc+20*ES)):
-      ch=eyeAt((X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/ES,1,IC=(-1.3,.3))
-      if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
-  X0=cx-zp(545)*sa*S-1;Y0=Y(541)             # 遠側：前端貼著鼻樑（山根）左邊
-  kf=float(os.environ.get('KFAR','.6'))
-  for Yp in range(math.floor(Y0-8*ES),math.ceil(Y0+13*ES)):
-    for X in range(math.floor(X0-25*ES*kf),math.ceil(X0+6*ES)):
-      ch=side_eye_at((X0-X-.5)/(ES*kf),(Yp+.5-Y0)/ES,flip=True)
-      if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
+  # 2026-11-19 改（使用者給山田式教學：斜臉兩隻眼睛都還是橢圓，遠側那隻比較窄、在臉的輪廓和中線中間，不會被切掉）
+  # 兩隻都用正面那隻眼睛，橫向壓的倍率＝臉表面在那裡的縮短量（ca－斜率×sa），黑眼珠往臉朝的那邊（左）靠一點
+  for s in(1,-1):
+    xr=s*30/S;yr=545;z=surf(xr,yr)
+    Xc=cx+(xr*ca-z*sa)*S;Yc=Y(yr)
+    zx=(surf(xr+.5,yr)-surf(xr-.5,yr))
+    kx=max(.35,min(1,ca-zx*sa))
+    ic=(-1.3,.3) if s==1 else (1.3*kx,.3)     # 往畫面左邊（她看的方向）
+    for Yp in range(math.floor(Yc-16*ES),math.ceil(Yc+10*ES)):
+      for X in range(math.floor(Xc-20*ES),math.ceil(Xc+20*ES)):
+        ch=eyeAt(s*(X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/ES,s,IC=ic)
+        if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
 # ── 側臉的眼睛（使用者給的教學：臉是圓的，側面看眼睛是三角形）──
 # 上眼線厚、橫的、眼尾往後收成一個尖角（下面一小撇）；前緣斜斜往後下到底下的尖；黑眼珠是窄窄的直橢圓、貼在前緣；
 # 前面幾根睫毛往前刺出去（トゲトゲ）；雙眼皮線往前淡掉；眼睛前緣離鼻樑往後縮
@@ -203,5 +201,6 @@ def side_eye(img,cx):
 
 out=os.environ.get('OUT',D)
 f=np.array(Image.open(f'{D}/front.png').convert('RGB'));paint_front(f);Image.fromarray(f).save(f'{out}/front_f.png')
-t=np.array(Image.open(f'{D}/turn45.png').convert('RGB'));paint_turn(t,45,126);Image.fromarray(t).save(f'{out}/turn45_f.png')
+DEG=float(os.environ.get('DEG','30'))   # 斜臉預設 30°（山田式教學量出來的中線位置）
+t=np.array(Image.open(f'{D}/turn45.png').convert('RGB'));paint_turn(t,DEG,126);Image.fromarray(t).save(f'{out}/turn45_f.png')
 s=np.array(Image.open(f'{D}/side.png').convert('RGB'));paint_turn(s,90,140);Image.fromarray(s).save(f'{out}/side_f.png')
