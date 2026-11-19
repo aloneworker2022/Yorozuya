@@ -229,7 +229,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const key = JSON.stringify(doll);
     if (cur && cur.key === key) return !!cur.sets.breathe[0];
     if (cur) cur.dead = true;
-    const job = cur = { key, sets: { breathe: [], talk: [] }, dead: false };
+    const job = cur = { key, sets: { breathe: [], talk: [] }, dead: false, P: F.proportions ? F.proportions(doll) : null };
     const todo = [];
     for (let f = 0; f < N; f++) todo.push(['breathe', f]);
     for (let f = 0; f < N; f++) todo.push(['talk', f]);
@@ -283,8 +283,11 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (open && !wasOpen) portraitMode = false;
     wasOpen = open;
     const s = wanted(sheet);
+    const want = !!s && !portraitMode;
     const on = !!(s && prepare(s)) && !portraitMode;
     sheet?.classList.toggle('portrait-mode', open && portraitMode);
+    // 使用者：點房間的她先跑出立繪才生字不對 → 一打開就把立繪藏起來（不等黑影第一格算好）
+    sheet?.classList.toggle('has-shadow', want);
     if (on && (wrap.hidden || wrap.classList.contains('cs-out'))) {
       clearTimeout(fadeT); fadeT = 0;
       if (wrap.hidden) canvas.dataset.f = '';
@@ -299,7 +302,6 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       } else { wrap.hidden = true; wrap.classList.remove('cs-in', 'cs-out'); }
     }
     if (on) play(); else stop();
-    sheet?.classList.toggle('has-shadow', on);
   }
 
   // ---------------------------------------------------------------- 長按切換（黑影的頭 ↔ 半身立繪）
@@ -323,6 +325,15 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     for (let dy = -8; dy <= 8; dy += 2) for (let dx = -8; dx <= 8; dx += 2) if (A(Math.round(x + dx), Math.round(y + dy))) return true;
     return false;
   }
+  /** 畫布像素 → 摸到哪一區（照她的身體比例 P：S 肩線、C 胯下、T 軀幹長；droom 橫向拉寬 1.1）。 */
+  function zoneAt(px, py) {
+    const P = cur && cur.P; if (!P) return null;
+    const x = Math.abs((px / SCALE - CV.ax) / 1.1), z = CV.ay - py / SCALE, S = P.S, C = P.C, T = P.T;
+    if (z <= C + 4.5 && z >= C - 5 && x <= 5) return 'groin';
+    if (z <= S - .06 * T && z >= S - .52 * T && x <= 11) return 'breast';
+    if (z < S - .52 * T && z >= C - 9 && x <= 13) return 'waist';
+    return null;
+  }
   function longPress(el, test, fire) {
     let t = 0, x0 = 0, y0 = 0;
     const cancel = () => { clearTimeout(t); t = 0; };
@@ -339,13 +350,16 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     });
     const img = document.getElementById('portrait-img');
     if (img) longPress(img, () => portraitMode, () => { portraitMode = false; sync(); });
-    // 黑影畫布蓋住畫面中間：點到她旁邊透明的地方＝點背景（關掉聊天，跟原本一樣）
+    // 黑影畫布蓋住畫面中間：點到她旁邊透明的地方＝點背景（關掉聊天，跟原本一樣）；
+    // 點在她身上＝摸她（使用者：調戲不用按鈕）：胸部／下體／腰部臀部 → test_room_summon.js 的 RoomTouch.zone 挑一個已解鎖的動作
     canvas.addEventListener('click', (ev) => {
       const [x, y] = toCanvas(ev), f = cur && cur.sets[mode] && (cur.sets[mode].find(Boolean));
       if (!f) return;
       const xi = Math.round(x), yi = Math.round(y);
       const solid = xi >= 0 && yi >= 0 && xi < f.width && yi < f.height && f.data[(yi * f.width + xi) * 4 + 3] > 0;
-      if (!solid) document.getElementById('portrait-backdrop')?.click();
+      if (!solid) { document.getElementById('portrait-backdrop')?.click(); return; }
+      const zone = zoneAt(x, y);
+      if (zone) window.RoomTouch?.zone(zone);
     });
   }
 

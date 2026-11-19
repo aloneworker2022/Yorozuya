@@ -10342,6 +10342,28 @@ async function sendTalkAct(actId) {
   await deliverUserTalk(act.text, { actId });
 }
 
+// 2026-11-19 使用者：調戲不用按鈕——在聊天的黑影上摸（chat_shadow.js 判斷摸到哪裡）：
+//   胸部 → 奶子類隨機一個、下體 → 陰唇類、腰部 → 腰部／臀部。只從已解鎖的挑；那一區都沒解鎖＝摸了沒用。
+//   插入手指、扣陰道、揉子宮口、抽出還是按鈕（使用者：先這樣）。
+const TOUCH_ZONES = {
+  breast: ["breast", "breast_knead", "breast_suck", "nipple_lick"],
+  groin: ["labia", "labia_rub"],
+  waist: ["waist", "butt"],
+};
+const TOUCH_ACTS = new Set(Object.values(TOUCH_ZONES).flat());
+/** 摸黑影的某一區 → 送出一個動作；沒送（沒解鎖、忙、不是一般聊天）回 false。 */
+function touchZone(zone) {
+  const ids = TOUCH_ZONES[zone];
+  if (!ids || !girl || !sheetOpen() || talkBusy || sceneOpen()) return false;
+  if (undressChatActive() || sexChatActive() || begDialogActive() || escortDialogActive()) return false;
+  player = ensurePlayer(player);
+  const ok = availableActs(girl, { canTease: canTease(player) }).map((a) => a.id).filter((id) => ids.includes(id));
+  if (!ok.length) return false;
+  void sendTalkAct(ok[Math.floor(Math.random() * ok.length)]);
+  return true;
+}
+window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES };
+
 function undressPlayOpen() {
   if (undressChatActive()) return sheetOpen();
   return activeRoomScene === "undress-play" && !!undressPlay && !$("room-scene-overlay")?.hidden;
@@ -10707,6 +10729,7 @@ function refreshTalkActs() {
   if (!girl || !sheetOpen() || sceneOpen()) return;
   const acts = availableActs(girl, { canTease: canTease(player) });
   for (const act of acts) {
+    if (TOUCH_ACTS.has(act.id)) continue;   // 這些改成摸黑影（touchZone），不出按鈕
     const btn = document.createElement("button");
     btn.type = "button";
     btn.dataset.act = act.id;
