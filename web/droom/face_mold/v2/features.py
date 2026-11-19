@@ -191,6 +191,9 @@ def eyes_turn(img,ca,sa,cx):
   # 2026-11-19 改（使用者給山田式教學：斜臉兩隻眼睛都還是橢圓，遠側那隻比較窄、在臉的輪廓和中線中間，不會被切掉）
   # 兩隻都用正面那隻眼睛，橫向壓的倍率＝臉表面在那裡的縮短量（ca－斜率×sa），黑眼珠往臉朝的那邊（左）靠一點
   BR=bridge_pts(sa,cx)
+  from eyeframe import Frame
+  LF=float(os.environ.get('LASHFWD','1.1'))   # 睫毛往前倒的強度（× sin 角度）
+  FRS={1:Frame(EYET,fwd=-min(.9,LF*sa)),-1:Frame(EYET,fwd=min(.9,LF*sa))} if FR else {}
   for s in(1,-1):
     xr=s*EYEX/S;yr=EYEY;z=surf(xr,yr)
     Xc=cx+(xr*ca-z*sa)*S;Yc=Y(yr)
@@ -201,7 +204,7 @@ def eyes_turn(img,ca,sa,cx):
     for Yp in range(math.floor(Yc-16*ES*EH),math.ceil(Yc+10*ES*EH)):
       for X in range(math.floor(Xc-24*ES),math.ceil(Xc+24*ES)):
         if s<0 and Yp in BR and X>=min(BR[Yp]):continue   # 遠側內眼角藏在鼻樑後面
-        if FR:ch=FR.at(s*(X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/(ES*EH),s,idx=(-1.3 if s==1 else 1.3))
+        if FR:ch=FRS[s].at(s*(X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/(ES*EH),s,idx=(-1.3 if s==1 else 1.3))
         else:ch=eyeAt(s*(X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/(ES*EH),s,IC=ic)
         if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
 # ── 側臉的眼睛（使用者給的教學：臉是圓的，側面看眼睛是三角形）──
@@ -252,10 +255,12 @@ def side_eye(img,cx):
   from shape3d import zp
   X0=cx-zp(545)*S+7;Y0=Y(EYEY-4)               # 眼睛前端：鼻樑往後 7 格、眼線上面一點
   if FR:
-    Yc=Y(EYEY);x0,x1,y0,y1=FR.box
+    from eyeframe import Frame
+    FS=Frame(EYET,fwd=-.85)   # 側臉：睫毛往前（畫面左＝眼睛的 -x）
+    Yc=Y(EYEY);x0,x1,y0,y1=FS.box
     for Yp in range(math.floor(Yc+y0*ES*EH),math.ceil(Yc+y1*ES*EH)):
       for X in range(math.floor(X0-4*ES),math.ceil(X0+20*ES)):
-        ch=FR.at_side((X+.5-X0)/ES,(Yp+.5-Yc)/(ES*EH))
+        ch=FS.at_side((X+.5-X0)/ES,(Yp+.5-Yc)/(ES*EH))
         if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
     side_brow(img,X0)   # 眉毛最後畫（眼影不能蓋到眉毛）
     return

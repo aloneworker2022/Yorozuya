@@ -124,7 +124,9 @@ def _seg_d(px,py,a,b):
   t=0 if L==0 else max(0,min(1,((px-ax)*dx+(py-ay)*dy)/L))
   return math.hypot(px-ax-t*dx,py-ay-t*dy),t
 class Frame:
-  def __init__(s,key):
+  def __init__(s,key,fwd=0.0):
+    # fwd：轉過去的臉，睫毛要往臉朝的方向（往前）倒；正值＝往眼睛自己的 +x 倒、負值＝往 -x，大小 0～1（使用者 2026-11-19）
+    s.fwd=fwd
     T=TYPES[key];s.T=T
     s.up=_cr(T['up']);s.lo=_cr(T['lo']);s.crease=_cr(T['crease_pts']) if 'crease_pts' in T else []
     side=_cr(T['side'],6) if 'side' in T else []
@@ -146,17 +148,22 @@ class Frame:
       hw=(s.upw[i]/2 if LASH else .6);bx,by=x0+nx*hw*.8,y0+ny*hw*.8   # 從上眼線的上緣長出來（法線朝上）
       # 扇形：內側那根比較直立、越外越往外倒（從上眼線的法線往外眼角轉 12°～62°）
       th=math.radians(12+50*q);fx,fy=nx*math.cos(th)+tx*math.sin(th),ny*math.cos(th)+ty*math.sin(th)
+      if fwd:
+        w=abs(fwd);fx,fy=fx*(1-w)+math.copysign(.8,fwd)*w,fy*(1-w)-.6*w;D=math.hypot(fx,fy);fx/=D;fy/=D   # 往前上（約 37°）
       if LASH=='短':     # 短睫毛：一根根短短的小刺
         ln=(1.8+.6*q)*alt;s.lashsegs.append([(bx,by),(bx+fx*ln,by+fy*ln)])
       elif LASH=='長':   # 長睫毛：直的、長、扇形散開
         ln=(3.0+1.8*q)*alt;s.lashsegs.append([(bx,by),(bx+fx*ln,by+fy*ln)])
       elif LASH=='翹':   # 長又翹：先照扇形往外、尾巴往上彎
         ln=(3.4+2.2*q)*alt;pts=[(bx,by)];px,py=bx,by;a=math.atan2(fy,fx)
+        tgt=-math.pi/2 if not fwd else math.atan2(-1,math.copysign(1,fwd)*abs(fwd)*1.2)   # 往上翹；轉過去時往前上翹
         for k in range(8):
-          a+=(-math.pi/2-a)*.14
+          a+=(tgt-a)*.14
           px+=math.cos(a)*ln/8;py+=math.sin(a)*ln/8;pts.append((px,py))
         s.lashsegs.append(pts)
       else:
+        if fwd:
+          w=abs(fwd);dx,dy=dx*(1-w)+math.copysign(.8,fwd)*w,dy*(1-w)-.6*w;D=math.hypot(dx,dy);dx/=D;dy/=D
         ln=LASHL*(.75+.45*q);s.lashsegs.append([(bx,by),(bx+dx*ln,by+dy*ln)])
     if LASH:
       for t in(.9,.94,.97,.99):
@@ -308,8 +315,21 @@ class Frame:
     vm=(uy+ly)/2;hh=max(1,(ly-uy)/2)
     t=(v-vm)/hh
     cut=SBULGE*min(1,t*t)          # 中間最前、上下往後收（拋物線圓弧）
-    if u<cut:
-      # 前緣前面：只留上眼線往前刺出去的那一小段（睫毛）
-      if u>-1.4 and v<uy+.3 and v>uy-1.4:return 'K'
-      return None
-    return s.at(x,v,1,idx=-.8)
+    # 側臉睫毛（使用者：轉過去睫毛要往前，不是往上）：從上眼線前段長出來、往前上方刺出去，越前面越長
+    if not hasattr(s,'_sidelash'):
+      s._sidelash=[];nl={'短':4,'長':5,'翹':5}.get(LASH,3 if T.get('lash',LASHN) else 0)
+      for j in range(nl):
+        q=j/max(1,nl-1);bu=.3+6.5*q;bv=uy-.7
+        a=math.radians(198+48*q)            # 前面那根幾乎水平往前、越後面越往上（扇形）
+        ln=({'短':1.8,'長':3.2,'翹':3.6}.get(LASH,2.4))*(1.15-.35*q)
+        pts=[(bu,bv)]
+        for k in range(1,7):
+          aa=a+(math.radians(-25) if LASH=='翹' else 0)*k/6   # 翹：尾巴再往上彎
+          px,py=pts[-1];pts.append((px+math.cos(aa)*ln/6,py+math.sin(aa)*ln/6))
+        s._sidelash.append(pts)
+    for seg in s._sidelash:
+      if s._near(u,v,seg,.8):return 'K'
+    if u<cut:return None
+    keep=s.lashsegs;s.lashsegs=[]          # 正面那套睫毛側臉不用
+    ch=s.at(x,v,1,idx=-.8);s.lashsegs=keep
+    return ch
