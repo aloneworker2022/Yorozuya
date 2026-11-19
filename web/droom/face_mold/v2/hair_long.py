@@ -14,7 +14,8 @@ from PIL import Image,ImageDraw,ImageFont
 sys.path.insert(0,os.path.dirname(os.path.abspath(__file__)))
 from hair3d import head_depth
 N=256;CY=112;R=72;RO=79;BACK=1.08
-C=dict(hi=(246,228,170),li=(222,192,124),mid=(190,152,90),sh=(150,114,64),dk=(112,82,48))
+C=dict(hi=(246,228,170),li=(222,192,124),mid=(190,152,90),ms=(170,133,77),sh=(150,114,64),dk=(112,82,48))
+TONE=['li','mid','ms','sh','dk']   # 明暗五階（使用者 2026-11-19：頭髮很假、沒有層次感）
 SKSH=(222,178,152)
 XP=-5                                   # 分線在她右邊一點（正面看畫面左邊）
 PHF,PHC=math.radians(46),math.radians(-30)   # 分線：從頭頂往前 46°（前額髮際）到往後 30°（頭頂後面）
@@ -147,7 +148,7 @@ def base_cap(S):
     keep=(y<hl)&((y<CY)|(z<-6)|((np.abs(x)>66)&(y<CY+14)))   # 耳朵上面那圈也有頭髮
     for xx,zz in zip(x[keep],z[keep]):P.append((xx,y,zz))
   P=np.array(P);NN=P-np.array([0,CY,0]);NN[:,1]=np.where(P[:,1]>CY,0,NN[:,1]);NN/=np.linalg.norm(NN,axis=1,keepdims=True)
-  return P,NN,np.full(len(P),k)
+  return np.asarray(P),np.concatenate([NN,np.zeros((len(NN),4))],1),np.full(len(P),k)
 def samples(S,step=.4):
   out=[]
   S[:]=[st for st in S if st.kind!='base']
@@ -163,8 +164,8 @@ def samples(S,step=.4):
     b/=np.linalg.norm(b,axis=1,keepdims=True)+1e-9
     hw=st.hw(l);K=int(2*hw.max()/.35)+2;w=np.linspace(-1,1,K)[None,:]*hw[:,None]
     Q=P[:,None,:]+b[:,None,:]*w[...,None]
-    NN=np.repeat(nr[:,None,:],K,1)
-    Q=Q.reshape(-1,3);NN=NN.reshape(-1,3)
+    NN=np.concatenate([np.repeat(nr[:,None,:],K,1),np.repeat(np.linspace(-1,1,K)[None,:,None],len(P),0),np.repeat(b[:,None,:],K,1)],2)
+    Q=Q.reshape(-1,3);NN=NN.reshape(-1,7)                # 每點：法線、在這束橫向的位置（-1～1）、橫向方向
     out.append((Q,NN,np.full(len(Q),k)))
   if any(st.kind=='bang' for st in S) and len(S)>12:out.append(base_cap(S))
   Q=np.concatenate([o[0] for o in out]);NN=np.concatenate([o[1] for o in out]);ID=np.concatenate([o[2] for o in out])
@@ -189,7 +190,9 @@ def project(S,Q,NN,ID,img,deg,cx):
     if ear and Q2[j,2]<-6:continue                        # 塞在耳後的頭髮不蓋耳朵
     if white[Yj,Xj] or ear or d[j]>=hd-1.5:
       inside=(NN2[j,0]*sa+NN2[j,2]*ca)<-.15               # 看到的是頭髮內面（後髮從前面看）
-      vis[(Xj,Yj)]=(ID2[j],S[ID2[j]].layer,Q2[j,0],Q2[j,1],Q2[j,2],inside)
+      bxs=NN2[j,4]*ca-NN2[j,6]*sa                          # 這束的橫向在畫面上往右還是往左
+      lft=-NN2[j,3]*np.sign(bxs) if abs(bxs)>.2 else 0.  # >0＝這束的左邊（受光）、<0＝右邊（背光）
+      vis[(Xj,Yj)]=(ID2[j],S[ID2[j]].layer,Q2[j,0],Q2[j,1],Q2[j,2],inside,lft)
   return vis
 def paint(S,vis,img,stage):
   out=img.copy();white=(img==255).all(2)
@@ -201,10 +204,22 @@ def paint(S,vis,img,stage):
     for (X,Y),(i,*_) in vis.items():
       out[Y,X]=pal.setdefault(i,tuple(rp.randint(60,240) for _ in range(3)))
     return out
-  for (X,Y),v in vis.items():out[Y,X]=C['sh'] if v[5] else C['mid']
+  # 明暗（層次）：每一束左亮右暗（有體積）；疊在下面那層暗一階；後髮暗一階；看到內面更暗
+  tone={}
+  for (X,Y),(i,layer,x,y,z,ins,lft) in vis.items():
+    st=S[i];t=1.
+    if ins:t=3
+    else:
+      if st.mass=='back':t+=1
+      if st.kind in('curtain','lock','back') and layer==0:t+=.6
+      if lft<-.45:t+=1
+      elif lft>.5 and y<CY+24 and st.mass!='back':t-=1
+    tone[(X,Y)]=t
+  T={k:int(min(4,max(0,round(v)))) for k,v in tone.items()}
+  for (X,Y),t in T.items():out[Y,X]=C[TONE[t]]
   # 片的邊：右邊或下面換片 → 這格暗；疊在別片上 → 右下投影子；分線兩邊一定畫；約 45% 一路到分線，其他只畫中下段
   rf=random.Random(13);full={};E={}
-  for (X,Y),(i,layer,x,y,z,ins) in vis.items():
+  for (X,Y),(i,layer,x,y,z,ins,*_) in vis.items():
     for nb in((X+1,Y),(X,Y+1)):
       r=vis.get(nb)
       if r is None or r[0]==i:continue
@@ -233,20 +248,25 @@ def paint(S,vis,img,stage):
     if len(cc)<5:continue
     for (X,Y) in cc:
       out[Y,X]=C['dk'] if vis[(X,Y)][5] else C['sh']
-      if E[(X,Y)] and (X+1,Y+1) in vis:out[Y+1,X+1]=C['sh']
+      if E[(X,Y)]:                                       # 上面那塊投在下面那塊的影子：2～3 格寬、越遠越淡
+        m=S[vis[(X,Y)][0]].mass
+        for dx,dy,tt in((1,1,3),(2,1,2),(1,2,2),(2,2,2),(3,1,2),(3,2,2)):
+          q=(X+dx,Y+dy)
+          if q in vis and S[vis[q][0]].mass!=m and T[q]<tt:T[q]=tt;out[q[1],q[0]]=C[TONE[tt]]
   # 前髮投在額頭的影子
   for (X,Y),(i,*_) in vis.items():
     if S[i].kind=='bang' and (X,Y+1) not in vis and Y+1<N and not white[Y+1,X]:out[Y+1,X]=SKSH
   if stage=='base':return out
   # 高光：殼上一圈（前面往下彎），每片上下錯開，在片的邊上斷開
   rnd=random.Random(3);off={}
-  for (X,Y),(i,layer,x,y,z,ins) in vis.items():
+  for (X,Y),(i,layer,x,y,z,ins,*_) in vis.items():
     if ins or y>CY or z<-RO*.25:continue
     o=off.setdefault(i,rnd.uniform(-2,2))
     ring=CY-34+15*(max(0,z)/RO)**2+o;dd=y-ring
-    same=vis.get((X-1,Y),(None,))[0]==i and vis.get((X+1,Y),(None,))[0]==i
+    mm=S[i].mass;nl=vis.get((X-1,Y));nr=vis.get((X+1,Y))
+    same=nl is not None and nr is not None and S[nl[0]].mass==mm and S[nr[0]].mass==mm   # 高光只在大塊的邊上斷開
     if abs(dd)<1.3 and same:out[Y,X]=C['hi']
-    elif abs(dd)<2.6 and tuple(out[Y,X])==C['mid']:out[Y,X]=C['li']
+    elif abs(dd)<2.6 and tuple(out[Y,X]) in(C['mid'],C['ms']):out[Y,X]=C['li']
   return out
 def strays(rnd):
   # 遊び毛：幾根離開主要髮束、飄在外面的細毛（3D 曲線）
