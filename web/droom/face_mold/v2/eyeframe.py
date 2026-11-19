@@ -30,7 +30,7 @@ IRCENTER=os.environ.get('IRCENTER','1')=='1';IRIN=float(os.environ.get('IRIN','.
 # 2026-11-19 第二本教學（普通／つり目／たれ目各 6 個）：上眼線外半段長出一根根細睫毛、下眼線外側幾根小短毛、
 # 雙眼皮線拉長貼著上眼線、黑眼珠改成直的橢圓（比較高、比較窄）
 LASH=os.environ.get('LASH','')   # 睫毛種類（使用者 2026-11-19）：短／長／翹（長又翹）；空的＝教學量的原樣
-LASHCNT={'短':11,'長':10,'翹':9}
+LASHCNT={'短':15,'長':13,'翹':12}
 LASHN=4;LASHL=3.0;IRISW,IRISH=5.6,7.8
 TYPES={
  # ── 2026-11-19 第二本教學「普通」那 6 個，照圖量的（眼寬當 27，原點在開口中央）──
@@ -127,7 +127,7 @@ class Frame:
     if LASH:nl=LASHCNT.get(LASH,8)   # 選了睫毛種類就用固定根數（使用者：太疏了 → 密一點）
     for j in range(nl):
       q=j/max(1,nl-1)
-      t=(.3+.68*q) if LASH else (.58+.36*q);i=min(n-2,int(t*(n-1)))
+      t=(.22+.76*(1-(1-q)**1.8)) if LASH else (.58+.36*q);i=min(n-2,int(t*(n-1)))   # 越往眼尾越密（使用者範本：眼尾濃）
       alt=(1 if j%2 else .78) if LASH else 1   # 長短交錯，看起來比較自然
       (x0,y0),(x1,y1)=s.up[i],s.up[i+1];tx,ty=x1-x0,y1-y0;L=math.hypot(tx,ty) or 1;tx/=L;ty/=L
       nx,ny=ty,-tx;dx,dy=nx*.75+tx*.65,ny*.75+ty*.65;D=math.hypot(dx,dy);dx/=D;dy/=D
@@ -146,12 +146,18 @@ class Frame:
         s.lashsegs.append(pts)
       else:
         ln=LASHL*(.75+.45*q);s.lashsegs.append([(bx,by),(bx+dx*ln,by+dy*ln)])
+    if LASH:
+      for t in(.9,.94,.97,.99):
+        i=min(n-2,int(t*(n-1)));(x0,y0),(x1,y1)=s.up[i],s.up[i+1];tx,ty=x1-x0,y1-y0;L=math.hypot(tx,ty) or 1;tx/=L;ty/=L
+        nx,ny=ty,-tx;th=math.radians(55+20*(t-.9)*10);fx,fy=nx*math.cos(th)+tx*math.sin(th),ny*math.cos(th)+ty*math.sin(th)
+        ln=1.6 if LASH=='短' else 2.4;s.lashsegs.append([(x0,y0),(x0+fx*ln,y0+fy*ln)])
     # 下睫毛：下眼線外側 2～3 根小短毛（淡色）
     s.lolash=[]
     if T['lod'][1]>T['lod'][0]:
       lo=s.lo;n2=len(lo)
       nn=T.get('lolashn',3);a0=.5 if nn<=3 else .3
-      for t in[a0+(.88-a0)*q/max(1,nn-1) for q in range(nn)]:
+      if LASH:nn=7;a0=.4
+      for t in[a0+(.92-a0)*(1-(1-q/max(1,nn-1))**1.6) for q in range(nn)]:   # 下睫毛也是眼尾密
         i=min(n2-2,int(t*(n2-1)))
         if not(T['lod'][0]<=t<=T['lod'][1]):continue
         (x0,y0),(x1,y1)=lo[i],lo[i+1];tx,ty=x1-x0,y1-y0;L=math.hypot(tx,ty) or 1;tx/=L;ty/=L
