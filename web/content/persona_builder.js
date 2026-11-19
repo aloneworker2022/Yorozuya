@@ -238,9 +238,9 @@ function lookText(c, { intimate = false } = {}) {
     const hasOwned = !!(L.owned && typeof L.owned === "object" && !Array.isArray(L.owned));
     const owns = (k) => !hasOwned || (Array.isArray(L.owned.wardrobe) && L.owned.wardrobe.map(Number).includes(k));
     const named = String(c.outfitName || "").trim();
-    const worn = named || (c.outfitPick === "base" ? "白色 T 恤配三角褲"
+    const worn = named || (c.outfitPick === "base" ? "白色 T 恤配胸罩和丁字褲"
       : (Number.isInteger(i) && i >= 0 && i < wardrobe.length && owns(i))
-        ? wardrobe[i] : (L.career_outfit || (hasOwned ? "白色 T 恤配三角褲" : (wardrobe[0] || ""))));
+        ? wardrobe[i] : (L.career_outfit || (hasOwned ? "白色 T 恤配胸罩和丁字褲" : (wardrobe[0] || ""))));
     const bits = [
       L.height_cm ? `${L.height_cm}cm` : null,
       L.build,

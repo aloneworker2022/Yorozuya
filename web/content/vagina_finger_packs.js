@@ -3,7 +3,7 @@
  *  無組或生圖失敗時，房間才退回借用「扣陰道」的快取圖（見 test_room_summon.js maybeGenOwnActionShot）。 */
 
 import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=8";
-import { wornOutfitOf } from "./outfit_pick.js?v=2";
+import { wornOutfitOf } from "./outfit_pick.js?v=3";
 
 export const VAGINA_VAGINA_FINGER_SHOT = "tease_vagina_finger";
 /** x-ray 剖面＝穿衣／裸體同一張；房間 ACTION_PACK_JOBS 以 noNude 跳過裸體預產。 */

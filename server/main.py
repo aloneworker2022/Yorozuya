@@ -1732,7 +1732,7 @@ def _outfit_of(ch: dict) -> str:
     if isinstance(pick, bool):
         pick = None   # True/False 不是索引
     if pick == "base":
-        return "白色 T 恤配三角褲"
+        return "白色 T 恤配胸罩和丁字褲"
     if isinstance(pick, str):
         kind = pick[:1]
         try:
@@ -1761,7 +1761,7 @@ def _outfit_of(ch: dict) -> str:
     if career:
         return career
     if _has_owned(look):
-        return "白色 T 恤配三角褲"   # 新制：沒擁有的不穿，style 是衣櫃第一套（品味）不算
+        return "白色 T 恤配胸罩和丁字褲"   # 新制：沒擁有的不穿，style 是衣櫃第一套（品味）不算
     return str(look.get("style") or "")
 
 

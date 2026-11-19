@@ -6,10 +6,10 @@
      breathe：吸氣吐氣（胸廓由下往上抬、胸部往前往外、肩膀／手／頭跟著上去）、頭微歪；
      talk：短氣、頭歪＋點頭、空著的手從肩膀和手肘抬起來比劃。
    一組 16 格在 Web Worker 算（droom 一格要 0.1～0.4 秒），第一格到了就先顯示。
-   有立繪的話立繪縮小、靠左下。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
+   顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=4', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=5', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, FPS = { breathe: 4, talk: 7 };
   const SCALE = 2, CV = { w: 84, h: 134, ax: 42, ay: 131, tMax: 40, tMin: -45 };   // 手抬起來也在框內；腳底固定在 ay
 
@@ -116,13 +116,28 @@
       else if (r === 150 && g === 100 && b === 128) o = [72, 58, 84];
       else if (r === 205 && g === 150 && b === 175) o = [88, 72, 100];
       else if ((r === 90 && g === 60 && b === 60) || (r === 110 && g === 75 && b === 75)) o = [51, 45, 64];
-      // 衣服（白襯衫、白胸罩、白蕾絲丁字褲）：布 (250,250,252) 照舊；滾邊／領片／門襟／扣子（紅標記）→ 淺灰；蕾絲（青）→ 白、暗面淺灰；褲頭（橘）→ 白
-      else if (r === 255 && g === 0 && b === 0) o = [176, 178, 192];
-      else if (r === 0 && g === 255 && b === 255) o = [240, 240, 246];
-      else if (r === 0 && g === 170 && b === 170) o = [198, 198, 210];
-      else if (r === 255 && g === 128 && b === 0) o = [232, 232, 240];
-      else if (r === 0 && g === 255 && b === 0) o = [128, 130, 146];   // 襯衫扣子
       if (o) { px[i] = o[0]; px[i + 1] = o[1]; px[i + 2] = o[2]; }
+    }
+  }
+  /** 衣服的部位標記色：1＝布（T 恤布、胸罩布、蕾絲、褲頭）、2＝滾邊／扣子；0＝不是衣服。 */
+  function clothAt(px, i) {
+    if (!px[i + 3]) return 0;
+    const r = px[i], g = px[i + 1], b = px[i + 2];
+    if ((r === 250 && g === 250 && b === 252) || (r === 214 && g === 216 && b === 228) || (r === 0 && g === 255 && b === 255) || (r === 0 && g === 170 && b === 170) || (r === 255 && g === 128 && b === 0)) return 1;
+    if ((r === 255 && g === 0 && b === 0) || (r === 0 && g === 255 && b === 0)) return 2;
+    return 0;
+  }
+  /** 衣服（使用者：灰色、微微透明，黑影模式）：身體那層上面，內衣、外衣各疊一層灰；看得到底下的身體輪廓，T 恤底下隱約看到胸罩。 */
+  function veil(out, layer) {
+    const GRAY = { 1: [168, 168, 180], 2: [124, 124, 138] }, K = { 1: .72, 2: .82 }, OUT = { 1: [118, 116, 130, 200], 2: [96, 94, 110, 220] };
+    for (let i = 0; i < out.length; i += 4) {
+      const c = clothAt(layer, i); if (!c) continue;
+      const g = GRAY[c], k = K[c];
+      if (out[i + 3]) {
+        // 衣服底下不透出乳暈、乳頭（只透出身體輪廓）
+        if ((out[i] === 72 && out[i + 1] === 58 && out[i + 2] === 84) || (out[i] === 88 && out[i + 1] === 72 && out[i + 2] === 100)) { out[i] = 51; out[i + 1] = 45; out[i + 2] = 64; }
+        for (let j = 0; j < 3; j++) out[i + j] = out[i + j] * (1 - k) + g[j] * k; out[i + 3] = Math.max(out[i + 3], 220);
+      } else { const q = OUT[c]; out[i] = q[0]; out[i + 1] = q[1]; out[i + 2] = q[2]; out[i + 3] = q[3]; }   // 身體外面的布（袖口、褲頭兩側、胯下細繩）：深一點的半透明灰，淺色背景上才不會像白線
     }
   }
 
@@ -133,8 +148,13 @@
     const base = cache.base;
     const shape = () => ({ P: base.P, sh: Object.assign({}, base.sh, { prims: base.sh.prims.map(p => Object.assign({}, p)), areolaStamps: (base.sh.areolaStamps || []).map(q => Object.assign({}, q)) }) });
     const m = motion(pose, f, n);
-    const r = F.render(doll, 'idle', 0, 0, { scale, cv, shape, deform: (sh, P, H) => deform(sh, P, H, m) });
+    // 分三次畫：只有身體 → 身體＋內衣（胸罩、丁字褲）→ 身體＋外衣（T 恤），再一層層疊灰色上去
+    const run = (keep) => F.render(doll, 'idle', 0, 0, { scale, cv, shape: () => { const v = shape(); v.sh.prims = v.sh.prims.filter(keep); return v; }, deform: (sh, P, H) => deform(sh, P, H, m) });
+    const hasU = base.sh.prims.some(p => p.cloth && p.under), hasO = base.sh.prims.some(p => p.cloth && !p.under);
+    const r = run(p => !p.cloth);
     shade(r.pixels);
+    if (hasU) veil(r.pixels, run(p => !p.cloth || p.under).pixels);
+    if (hasO) veil(r.pixels, run(p => !p.cloth || !p.under).pixels);
     return r;
   }
 
@@ -148,7 +168,7 @@
       new Function('globalThis', 'module', src)(box, undefined);   // 兩個人偶檔都叫 RoomDoll → 另外裝，不蓋掉房間用的
       F = box.RoomDoll;
       try {
-        const code = `const F=(${F.factorySource})();const motion=${motion};const deform=${deform};const shade=${shade};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
+        const code = `const F=(${F.factorySource})();const motion=${motion};const deform=${deform};const shade=${shade};const clothAt=${clothAt};const veil=${veil};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
 onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},CV);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
         worker = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
         worker.onmessage = (e) => { const w = waiters.get(e.data.id); if (w) { waiters.delete(e.data.id); w(e.data); } };
@@ -254,11 +274,17 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     return s && s.look !== undefined ? s : null;
   }
 
+  // 2026-11-19 使用者：聊天先出現黑影；長按黑影的頭 → 半身立繪；長按立繪 → 回到黑影。每次打開聊天都從黑影開始。
+  let portraitMode = false, wasOpen = false;
   function sync() {
     const sheet = document.getElementById('portrait-sheet');
     if (!ensureEl()) return;
+    const open = !!(sheet && !sheet.hidden);
+    if (open && !wasOpen) portraitMode = false;
+    wasOpen = open;
     const s = wanted(sheet);
-    const on = !!(s && prepare(s));
+    const on = !!(s && prepare(s)) && !portraitMode;
+    sheet?.classList.toggle('portrait-mode', open && portraitMode);
     if (on && wrap.hidden) {
       canvas.dataset.f = '';
       wrap.hidden = false;
@@ -273,13 +299,52 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     sheet?.classList.toggle('has-shadow', on);
   }
 
+  // ---------------------------------------------------------------- 長按切換（黑影的頭 ↔ 半身立繪）
+  const LONG_MS = 500, SLOP = 10;
+  function tip(text) {
+    let el = document.getElementById('chat-shadow-tip');
+    if (!el) { el = document.createElement('div'); el.id = 'chat-shadow-tip'; el.setAttribute('role', 'status'); document.getElementById('portrait-sheet')?.appendChild(el); }
+    el.textContent = text; el.hidden = false; clearTimeout(tip.t); tip.t = setTimeout(() => { el.hidden = true; }, 1800);
+  }
+  /** 畫面座標 → 黑影畫布的像素（canvas 是 object-fit: contain、靠右下）。 */
+  function toCanvas(ev) {
+    const r = canvas.getBoundingClientRect(), k = Math.min(r.width / canvas.width, r.height / canvas.height);
+    return [(ev.clientX - (r.right - canvas.width * k)) / k, (ev.clientY - (r.bottom - canvas.height * k)) / k];
+  }
+  /** 按在她的頭上嗎：畫布最上面有東西的那一列往下約 16% 身高、附近有像素。 */
+  function onHead(x, y) {
+    const img = cur && cur.sets[mode] && cur.sets[mode].find(Boolean); if (!img) return false;
+    const { width: w, height: h, data } = img, A = (xx, yy) => xx >= 0 && yy >= 0 && xx < w && yy < h && data[(yy * w + xx) * 4 + 3] > 0;
+    let top = -1; for (let yy = 0; yy < h && top < 0; yy++) for (let xx = 0; xx < w; xx++) if (A(xx, yy)) { top = yy; break; }
+    if (top < 0 || y < top - 8 || y > top + (CV.ay * SCALE - top) * .16) return false;
+    for (let dy = -8; dy <= 8; dy += 2) for (let dx = -8; dx <= 8; dx += 2) if (A(Math.round(x + dx), Math.round(y + dy))) return true;
+    return false;
+  }
+  function longPress(el, test, fire) {
+    let t = 0, x0 = 0, y0 = 0;
+    const cancel = () => { clearTimeout(t); t = 0; };
+    el.addEventListener('pointerdown', (ev) => { if (!test(ev)) return; x0 = ev.clientX; y0 = ev.clientY; cancel(); t = setTimeout(() => { t = 0; fire(); }, LONG_MS); });
+    el.addEventListener('pointermove', (ev) => { if (t && Math.hypot(ev.clientX - x0, ev.clientY - y0) > SLOP) cancel(); });
+    for (const k of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(k, cancel);
+    el.addEventListener('contextmenu', (ev) => ev.preventDefault());
+  }
+  function bindSwitch() {
+    longPress(canvas, (ev) => { const [x, y] = toCanvas(ev); return onHead(x, y); }, () => {
+      const img = document.getElementById('portrait-img');
+      if (!img || !img.getAttribute('src')) { tip('她還沒有立繪'); return; }
+      portraitMode = true; sync();
+    });
+    const img = document.getElementById('portrait-img');
+    if (img) longPress(img, () => portraitMode, () => { portraitMode = false; sync(); });
+  }
+
   /** 她的字一個一個出來 → 說話動作；停下來 0.9 秒後回到呼吸。 */
   function talking() { talkUntil = performance.now() + 900; }
 
   function boot() {
     const sheet = document.getElementById('portrait-sheet');
     if (!sheet) return;
-    ensureEl();
+    if (ensureEl()) bindSwitch();
     const mo = new MutationObserver(sync);
     mo.observe(sheet, { attributes: true, attributeFilter: ['hidden', 'class'] });
     const img = document.getElementById('portrait-img');

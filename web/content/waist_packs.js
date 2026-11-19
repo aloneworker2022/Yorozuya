@@ -2,7 +2,7 @@
 
 import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=5";
 import { deriveNudePrompt, mountNudeVariantToggle, nudeActionNegative, nudeActionPrompt, nudeFields, nudeShot } from "./nude_action.js?v=1";
-import { wornOutfitOf } from "./outfit_pick.js?v=2";
+import { wornOutfitOf } from "./outfit_pick.js?v=3";
 
 const API = "/api/waist-packs";
 

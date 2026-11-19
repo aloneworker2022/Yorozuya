@@ -159,7 +159,7 @@ import {
   SEX_SUMMON_ANIM_FRAMES,
   planSexSummonSet,
   sexSummonImageCount,
-} from "./sex_pose_packs.js?v=11";
+} from "./sex_pose_packs.js?v=12";
 import { buildSexAnimFrames, SEX_ANIM_SIZE } from "./sex_anim.js";
 import { packFrameUrl } from "./frame_pack.js";
 import {
@@ -232,14 +232,14 @@ import {
   loadButtDoc,
   generateButtPackImage,
   buildButtImgBody,
-} from "./butt_packs.js?v=7";
+} from "./butt_packs.js?v=8";
 import {
   mountWaistPackEditor,
   pickRuntimeWaistPack,
   loadWaistDoc,
   generateWaistPackImage,
   buildWaistImgBody,
-} from "./waist_packs.js?v=6";
+} from "./waist_packs.js?v=7";
 import {
   mountBreastPackEditor,
   pickRuntimeBreastPack,
@@ -247,7 +247,7 @@ import {
   generateBreastPackImage,
   buildBreastImgBody,
   isBreastDefaultPrompt,
-} from "./breast_packs.js?v=4";
+} from "./breast_packs.js?v=5";
 import {
   mountKneadPackEditor,
   pickRuntimeKneadPack,
@@ -255,7 +255,7 @@ import {
   generateKneadPackImage,
   buildKneadImgBody,
   isKneadDefaultPrompt,
-} from "./knead_packs.js?v=4";
+} from "./knead_packs.js?v=5";
 import {
   mountUndressPackEditor,
   listUndressScenes,
@@ -263,7 +263,7 @@ import {
   presetByShot,
   SUMMON_UNDRESS_SHOTS,
   DROPPED_UNDRESS_SHOTS,
-} from "./undress_packs.js?v=8";
+} from "./undress_packs.js?v=9";
 import {
   mountSuckPackEditor,
   pickRuntimeSuckPack,
@@ -271,7 +271,7 @@ import {
   generateSuckPackImage,
   buildSuckImgBody,
   isSuckDefaultPrompt,
-} from "./suck_packs.js?v=5";
+} from "./suck_packs.js?v=6";
 import {
   mountLickPackEditor,
   pickRuntimeLickPack,
@@ -279,28 +279,28 @@ import {
   generateLickPackImage,
   buildLickImgBody,
   isLickDefaultPrompt,
-} from "./lick_packs.js?v=5";
+} from "./lick_packs.js?v=6";
 import {
   mountLabiaPackEditor,
   pickRuntimeLabiaPack,
   loadLabiaDoc,
   generateLabiaPackImage,
   buildLabiaImgBody,
-} from "./labia_packs.js?v=3";
+} from "./labia_packs.js?v=4";
 import {
   mountLabiaRubPackEditor,
   pickRuntimeLabiaRubPack,
   loadLabiaRubDoc,
   generateLabiaRubPackImage,
   buildLabiaRubImgBody,
-} from "./labia_rub_packs.js?v=3";
+} from "./labia_rub_packs.js?v=4";
 import {
   mountFingerPackEditor,
   pickRuntimeFingerPack,
   loadFingerDoc,
   generateFingerPackImage,
   buildFingerImgBody,
-} from "./finger_packs.js?v=3";
+} from "./finger_packs.js?v=4";
 import {
   mountVaginaFingerPackEditor,
   pickRuntimeVaginaFingerPack,
@@ -308,14 +308,14 @@ import {
   generateVaginaFingerPackImage,
   buildVaginaFingerImgBody,
   XRAY_ACTION_PACKS_ON,
-} from "./vagina_finger_packs.js?v=3";
+} from "./vagina_finger_packs.js?v=5";
 import {
   mountCervixRubPackEditor,
   pickRuntimeCervixRubPack,
   loadCervixRubDoc,
   generateCervixRubPackImage,
   buildCervixRubImgBody,
-} from "./cervix_rub_packs.js?v=3";
+} from "./cervix_rub_packs.js?v=4";
 import {
   mountStandeePackEditor,
   loadStandeeDoc,
@@ -323,14 +323,14 @@ import {
   generateStandeePackImage,
   buildStandeeImgBody,
   standeeUrlFor,
-} from "./standee_packs.js?v=2";
+} from "./standee_packs.js?v=3";
 import { SUMMON_RITUAL_LINES, startSummonRitualStatus, paintRitualBlocks } from "./summon_ritual.js?v=4";
 import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_action.js?v=1";
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
 import { neglectMs, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=13";
-import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit, wornOutfitOf } from "./outfit_pick.js?v=2";
+import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit, wornOutfitOf } from "./outfit_pick.js?v=3";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
 import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, leaveLine, askLine, feelOf, workingNow,
@@ -340,11 +340,11 @@ import * as Preg from "./pregnancy.js?v=1";
 import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
 import { openDrive as openRentalDrive, getRunner as getRentalRunner } from "./rental_flow.js?v=3";
-import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=39";
+import { bindSwapCafePanel } from "./swap_cafe_gen.js?v=40";
 import { openSwapSelect, isSwapAsk, swapDecide, actLine as swapActLine } from "./swap_select.js?v=75";
 import { bindSwapBookmark } from "./swap_bookmark.js?v=15";
 import { canRental as swapCanAsk } from "./rental.js?v=7";
-import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=17";
+import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=18";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
 import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=21";
 import { moanVoiceId } from "./stun_speech.js?v=25";

@@ -805,6 +805,8 @@
     pointers.delete(event.pointerId);
     if (!pointers.size) canvas.classList.remove('dragging');
     if (drag && was) { endDrag(event.type === 'pointerup'); return; }
+    // 2026-11-19 使用者：點房間裡的她 → 聊天（出現黑影，chat_shadow.js）；長按照舊也會開。
+    if (was && event.type === 'pointerup' && !was.moved && !was.longFired && was.actor && !editing && !placing) { openPortrait(); return; }
     // Tap the desk (not editing): her work log / report; the bookshelf: what she finished (room_desk.js).
     if (was && event.type === 'pointerup' && !was.moved && !was.longFired && !was.actor && !editing && !placing) {
       const fam = hitFamiliar(localPoint(event));

@@ -4,9 +4,9 @@
  * 模型：用對方丈夫的 comfyCkpt／ckpt（沒綁才退全域）。2026-10-26 Al：女模容易把男方畫成咖啡色阿三臉，改男模；
  *       她的長相仍靠 character＋lock_identity＋人設 tags；男女各段描述加 male／her 前綴以免特徵混。
  * 存：owner＝「她 id.couple id」（一對夫妻配一個老婆），key＝pair~<act>（交配三個動作 pair~<act>~1／~2，存 seed，第 2 格沿用第 1 格的 seed）；已有的不重生（missingPairs）。 */
-import { gameEngine } from "./rental_scene_gen.js?v=17";
-import { api, wornOutfit, waitImg, chromaKeyData, CHROMA, manInfo } from "./swap_cafe_gen.js?v=39";
-import { dateOutfitOf, withDateOutfit } from "./swap_outfit.js?v=8";
+import { gameEngine } from "./rental_scene_gen.js?v=18";
+import { api, wornOutfit, waitImg, chromaKeyData, CHROMA, manInfo } from "./swap_cafe_gen.js?v=40";
+import { dateOutfitOf, withDateOutfit } from "./swap_outfit.js?v=9";
 import { husbandLookEn } from "./husband_gen.js?v=1";
 
 // 2026-10-23 Al 核可：雙人圖預設 prompt 全部改結構（只有雙人圖）。前端給「每段要什麼 tag」（pair 物件），伺服器組成

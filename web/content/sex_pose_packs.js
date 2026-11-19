@@ -14,7 +14,7 @@
  *   高潮／潮吹／內射變成事件圖（sex_thrust.js 判定），不再是「下一步」順序。
  *   flow2（2026-10-04）：抽插可多張（每組一個變體格 thrust／thrust2…6）；潮吹不進自動流程（THRUST.SQUIRT_IN_FLOW），分頁保留。
  * open 以外有男人 → 走 tease（雙人／POV）管線，但伺服器 garment=nude：不套服裝、負向擋衣物。存在同一組的 pack[step]。 */
-import { wornOutfitOf } from "./outfit_pick.js?v=2";
+import { wornOutfitOf } from "./outfit_pick.js?v=3";
 
 export const SEX_POSES = {
   missionary: {

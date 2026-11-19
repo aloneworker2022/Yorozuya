@@ -3,11 +3,11 @@
  * 對方妻子（generateGirl 全套＋role=other_wife，不進玩家名冊）。對方夫妻存在伺服器（/api/swap/cafe），可重抽。
  * 每個角色 × 表情（一般／害羞）＝一張卡：縮圖、自己的正／負向（預設＋佔位符）、圖生圖（預設關）＋denoise、產生／存／回預設。
  * 生圖：綠幕半身 → /api/cutout mode=chroma 色鍵 → 不行就瀏覽器自己色鍵；預覽＝去背圖疊在咖啡廳背景上。 */
-import { gameEngine } from "./rental_scene_gen.js?v=17";
+import { gameEngine } from "./rental_scene_gen.js?v=18";
 import { createStage, SWAP_INTERACTIONS } from "./swap_stage.js?v=5";
 import { bindPairBox } from "./swap_pair_gen.js?v=29";
-import { wornOutfitOf } from "./outfit_pick.js?v=2";
-import { dateOutfitOf, withDateOutfit, lookCharacter, lookFor } from "./swap_outfit.js?v=8";
+import { wornOutfitOf } from "./outfit_pick.js?v=3";
+import { dateOutfitOf, withDateOutfit, lookCharacter, lookFor } from "./swap_outfit.js?v=9";
 import { loadPools, generateGirl, POOLS as _poolsRef } from "./girl_gen.js?v=7";
 import { rollHusband, enrichHusband, husbandLookEn } from "./husband_gen.js?v=1";
 

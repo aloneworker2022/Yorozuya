@@ -804,7 +804,7 @@ body.room-home.kb-open #talk-box { bottom: calc(var(--talk-bottom) + var(--kb, 0
 body.room-ship.kb-open #talk-panel { padding-bottom: calc(8px + var(--kb, 0px)); }
 body.room-home.kb-open #talk-acts { display: none; }
 
-/* ===== 聊天時放大的她（chat_shadow.js，2026-11-19）：右側正面全身黑影；有立繪就縮小靠左下 ===== */
+/* ===== 聊天時放大的她（chat_shadow.js，2026-11-19）：右側正面全身黑影；長按黑影的頭換半身立繪 ===== */
 #chat-shadow{position:fixed;right:max(2vw,env(safe-area-inset-right));bottom:calc(var(--talk-bottom,8px) + var(--talk-box-h,120px) + 58px);z-index:0;
   height:calc(100svh - var(--talk-box-h,120px) - 140px);max-height:640px;width:min(60vw,340px);display:flex;align-items:flex-end;justify-content:flex-end;
   pointer-events:none;opacity:0;transform:translateX(24vw);transition:transform .55s cubic-bezier(.2,.85,.2,1),opacity .45s ease-out}
@@ -812,6 +812,9 @@ body.room-home.kb-open #talk-acts { display: none; }
 #chat-shadow.cs-in{opacity:1;transform:none}
 #chat-shadow canvas{display:block;height:100%;width:auto;max-width:100%;object-fit:contain;object-position:bottom right;image-rendering:pixelated;filter:drop-shadow(0 10px 18px rgba(0,0,0,.35))}
 @media(prefers-reduced-motion:reduce){#chat-shadow{transition:none;opacity:1;transform:none}}
-#portrait-sheet.has-shadow #portrait-img{left:max(4px,env(safe-area-inset-left));bottom:calc(var(--talk-bottom,8px) + var(--talk-box-h,120px) + 58px);height:min(42svh,400px);max-width:52vw;object-position:bottom left;transform:translateX(-40vw)}
-#portrait-sheet.has-shadow #portrait-img.portrait-in{transform:none}
-@media(prefers-reduced-motion:reduce){#portrait-sheet.has-shadow #portrait-img{transform:none}}
+/* 2026-11-19 使用者：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 半身立繪；長按立繪 → 回到黑影 */
+#portrait-sheet.has-shadow #portrait-img{visibility:hidden}
+#chat-shadow canvas{pointer-events:auto;touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+#portrait-sheet.portrait-mode #portrait-img{pointer-events:auto;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
+#chat-shadow-tip{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:80;padding:8px 14px;background:rgba(20,24,44,.86);color:#f4fbff;border-radius:6px;font-size:.9em;pointer-events:none}
+#chat-shadow-tip[hidden]{display:none}

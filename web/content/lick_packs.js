@@ -2,7 +2,7 @@
 
 import { composeTeaseExtra, teaseFraming, NIPPLE_SHADOW_NEGATIVE, canonTags, migrateLegacyText } from "./tease_shots.js?v=7";
 import { deriveNudePrompt, mountNudeVariantToggle, nudeActionNegative, nudeActionPrompt, nudeFields, nudeShot } from "./nude_action.js?v=1";
-import { wornOutfitOf } from "./outfit_pick.js?v=2";
+import { wornOutfitOf } from "./outfit_pick.js?v=3";
 
 const API = "/api/lick-packs";
 

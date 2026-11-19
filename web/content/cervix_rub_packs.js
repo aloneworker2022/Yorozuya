@@ -3,13 +3,13 @@
  *  無組或生圖失敗時，房間才退回借用「揉子宮口」的快取圖（見 test_room_summon.js maybeGenOwnActionShot）。 */
 
 import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=8";
-import { wornOutfitOf } from "./outfit_pick.js?v=2";
+import { wornOutfitOf } from "./outfit_pick.js?v=3";
 
 export const CERVIX_RUB_SHOT = "tease_cervix_rub";
 /** x-ray 剖面＝穿衣／裸體同一張；房間 ACTION_PACK_JOBS 以 noNude 跳過裸體預產。 */
 export const SHARED_NUDE = true;
 /** 總開關在 vagina_finger_packs.js（兩組一起開關）。 */
-export { XRAY_ACTION_PACKS_ON } from "./vagina_finger_packs.js?v=3";
+export { XRAY_ACTION_PACKS_ON } from "./vagina_finger_packs.js?v=5";
 
 const SHOT = "tease_cervix_rub";
 const API = "/api/cervix-rub-packs";

@@ -2,7 +2,7 @@
  * 對方妻子：有完整日常衣櫃 → 依 outfitPick（沒有就用 id 雜湊）挑一套外出服。
  * 你老婆：她擁有的日常衣服裡有像樣的外出服就穿那套；沒有 → 換妻專用的體面預設（上衣＋裙／牛仔褲），不加進 owned。
  * 內衣／睡衣／情趣／白 T 三角褲這類一律不算外出服。 */
-import { ownedOf } from "./outfit_pick.js?v=2";
+import { ownedOf } from "./outfit_pick.js?v=3";
 
 export const NOT_OUTING_RE = /內衣|內褲|三角褲|胸罩|睡衣|睡袍|浴袍|情趣|吊帶襪|比基尼|泳裝|丁字褲|馬甲|透視|網襪|bra|panties|lingerie|underwear|pajama|bikini/i;
 export const DATE_DEFAULTS = [

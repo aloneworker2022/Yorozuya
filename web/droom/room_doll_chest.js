@@ -968,7 +968,7 @@
     }
     // 2026-11-19 o.shirt（聊天黑影的白襯衫）：下襬長到大腿根、V 字領（第一顆扣子沒扣）、尖領片、正中門襟＋扣子；其他照 T 恤
     function tee(sh, P, doll, tor, o = {}) {
-      const S = tor.S, top = S + 1.2, hem = o.shirt ? tor.C - 3 : tor.C + 5.5, K = 32, nz = Math.max(8, Math.round((top - hem) / 1.15)), RC = 1.0, RR = .8;   // 2026-11-19 聊天黑影：織粗一點（零件少一半，一格才畫得快），管子加粗補縫（原本 K 44、每 .8 一層、.75／.55）
+      const S = tor.S, top = S + 1.2, hem = o.shirt ? tor.C - 3 : tor.C + 5.5, K = o.shirt ? 32 : 44, nz = Math.max(8, Math.round((top - hem) / (o.shirt ? 1.15 : .8))), RC = o.shirt ? 1.0 : .75, RR = o.shirt ? .8 : .55;   // T 恤照 droom 原本（跟 sheets 的樣本一樣）；襯衫織粗一點
       const vBot = S - 10;   // 襯衫：V 字領的底（最上面兩顆沒扣，看得到胸罩和乳溝）
       const Zs = [], G = [];   // G[j][k]＝第 j 層、第 k 角的布面點
       for (let j = 0; j <= nz; j++) {
@@ -1041,15 +1041,17 @@
       // 下襬、圓領滾邊
       sh.cloth = 2;
       const last = o.shirt ? Array.from({ length: K }, (_, k) => { let q = null; for (const r of G) if (r && r[k]) q = r[k]; return q; }) : G.filter(Boolean).pop(), first = G.find(Boolean);
-      if (last && last.every(Boolean)) sh.chain(BODY, last.concat([last[0]]).map(q => [q[0], q[1], q[2] + .1]), last.map(() => RC + .15).concat([RC + .15]));   // 滾邊比布粗一點才看得到
-      if (first && !o.shirt) { const nk = first.filter(q => q && Math.abs(q[0]) < 4.5); if (nk.length > 1) sh.chain(BODY, nk, nk.map(() => RC + .1)); }
+      if (last && last.every(Boolean)) sh.chain(BODY, last.concat([last[0]]).map(q => [q[0], q[1], q[2] + .1]), last.map(() => o.shirt ? RC + .15 : .7).concat([o.shirt ? RC + .15 : .7]));   // 襯衫的滾邊要比加粗的布再粗一點才看得到
+      if (first && !o.shirt) { const nk = first.filter(q => q && Math.abs(q[0]) < 4.5); if (nk.length > 1) sh.chain(BODY, nk, nk.map(() => .5)); }
       sh.cloth = 0;
     }
     function dress(sh, P, doll, tor) {
       const c = String(doll.cloth || '');
-      if (doll.underBra && c !== 'bra') bra(sh, P, doll, tor);   // pt78u：外衣裡面穿胸罩
+      // 2026-11-19 聊天黑影：內衣（胸罩）的零件標 under，外衣疊在上面時分層畫（灰色半透明）
+      const under = (f) => { const i0 = sh.prims.length; f(); for (let i = i0; i < sh.prims.length; i++) sh.prims[i].under = 1; };
+      if (doll.underBra && c !== 'bra') under(() => bra(sh, P, doll, tor));   // pt78u：外衣裡面穿胸罩
       if (c.startsWith('napkin')) napkin(sh, P, doll, tor, c.split('_')[1] || 'bell');
-      else if (c === 'bra') bra(sh, P, doll, tor);
+      else if (c === 'bra') under(() => bra(sh, P, doll, tor));
       else if (c === 'tee') tee(sh, P, doll, tor);
       else if (c === 'shirt') tee(sh, P, doll, tor, { shirt: true });
     }
@@ -1635,7 +1637,7 @@
         }
         if (front) { sh.off = o; definition(sh, P, tor); }
         sh.off = o;
-        if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
+        if (doll.pubic || doll.labia || doll.pants) { const i0 = sh.prims.length; groin(sh, P, doll, tor); for (let i = i0; i < sh.prims.length; i++) if (sh.prims[i].cloth) sh.prims[i].under = 1; }   // 丁字褲＝內層
         if (doll.cloth || doll.underBra) dress(sh, P, doll, tor);
         hair(sh, P, doll, tor, ({ pony_hi: 3.5, pony_lo: 2.5 }[doll.hair] || 0) * w);
         sh.off = [0, 0, 0];
@@ -1678,7 +1680,7 @@
         }
         if (front) { definition(sh, P, tor); if (!doll.skirt) inguinal(sh, P, tor); }
         if (FOOT_HD && Math.cos(yaw * Math.PI / 180) < .35) hdBackLines(sh, P, tor);
-        if (doll.pubic || doll.labia || doll.pants) groin(sh, P, doll, tor);
+        if (doll.pubic || doll.labia || doll.pants) { const i0 = sh.prims.length; groin(sh, P, doll, tor); for (let i = i0; i < sh.prims.length; i++) if (sh.prims[i].cloth) sh.prims[i].under = 1; }   // 丁字褲＝內層
         if (doll.cloth || doll.underBra) dress(sh, P, doll, tor);
         hair(sh, P, doll, tor, -sway);
         return { sh, P };

@@ -23,38 +23,38 @@ import {
   pickRuntimeButtPack,
   buildButtImgBody,
   getButtPacksCached,
-} from "./content/butt_packs.js?v=7";
+} from "./content/butt_packs.js?v=8";
 import {
   pickRuntimeBreastPack,
   buildBreastImgBody,
-} from "./content/breast_packs.js?v=4";
+} from "./content/breast_packs.js?v=5";
 import {
   pickRuntimeKneadPack,
   buildKneadImgBody,
-} from "./content/knead_packs.js?v=4";
+} from "./content/knead_packs.js?v=5";
 import {
   pickRuntimeSuckPack,
   buildSuckImgBody,
-} from "./content/suck_packs.js?v=5";
+} from "./content/suck_packs.js?v=6";
 import {
   pickRuntimeLickPack,
   buildLickImgBody,
-} from "./content/lick_packs.js?v=5";
+} from "./content/lick_packs.js?v=6";
 import {
   pickRuntimeLabiaPack,
   buildLabiaImgBody,
-} from "./content/labia_packs.js?v=3";
+} from "./content/labia_packs.js?v=4";
 import {
   pickRuntimeLabiaRubPack,
   buildLabiaRubImgBody,
-} from "./content/labia_rub_packs.js?v=3";
+} from "./content/labia_rub_packs.js?v=4";
 import {
   pickRuntimeFingerPack,
   buildFingerImgBody,
-} from "./content/finger_packs.js?v=3";
+} from "./content/finger_packs.js?v=4";
 // 扣陰道／揉子宮口 x-ray 剖面圖組（主遊戲沒有這兩個動作；只為重產／圖鑑同契約）
-import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody, XRAY_ACTION_PACKS_ON } from "./content/vagina_finger_packs.js?v=3";
-import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=3";
+import { pickRuntimeVaginaFingerPack, buildVaginaFingerImgBody, XRAY_ACTION_PACKS_ON } from "./content/vagina_finger_packs.js?v=5";
+import { pickRuntimeCervixRubPack, buildCervixRubImgBody } from "./content/cervix_rub_packs.js?v=4";
 import * as SexAnim from "./content/sex_anim.js";
 import * as Daydream from "./content/daydream.js";
 import { lifeMemoryPromptLines } from "./content/life_memory.js?v=8";
@@ -66,7 +66,7 @@ import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStre
 import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, scrubHusband, isWifeStage, isDatingPlus } from "./content/girl_voice.js?v=1";
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
-import { BASE_OUTFIT, ownsOutfit, hasOwnedList } from "./content/outfit_pick.js?v=2";
+import { BASE_OUTFIT, ownsOutfit, hasOwnedList } from "./content/outfit_pick.js?v=3";
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)

@@ -1,22 +1,22 @@
 /* 換妻・玩家對對方妻子的動作圖＋做愛步驟圖（2026-10-23）。
  * 共用房間那套 *_packs 的 build／generate（同一份圖組 prompt），魅子換成「對方妻子」：她自己的 ckpt＋補成房間 look 格式。
  * 結果存在換妻伺服器狀態 images[couple.id]["tease~<動作>(~nude)" | "sex~<姿勢>~<步驟>"]，之後直接用、不重生。 */
-import { api } from "./swap_cafe_gen.js?v=39";
-import { gameEngine } from "./rental_scene_gen.js?v=17";
+import { api } from "./swap_cafe_gen.js?v=40";
+import { gameEngine } from "./rental_scene_gen.js?v=18";
 import { teaseGirlOf, teaseKey, sexKey, teaseNude, teaseUnder, sexPoseFor, pregenKeys, SEX_PREGEN_STEPS } from "./swap_tease_rules.js?v=11";
-import { UNDER_OUTFIT } from "./swap_outfit.js?v=8";
-import { pickRuntimeWaistPack, generateWaistPackImage } from "./waist_packs.js?v=6";
-import { pickRuntimeButtPack, generateButtPackImage } from "./butt_packs.js?v=7";
-import { pickRuntimeBreastPack, generateBreastPackImage, buildBreastImgBody } from "./breast_packs.js?v=4";
-import { pickRuntimeKneadPack, generateKneadPackImage } from "./knead_packs.js?v=4";
-import { pickRuntimeSuckPack, generateSuckPackImage } from "./suck_packs.js?v=5";
-import { pickRuntimeLickPack, generateLickPackImage } from "./lick_packs.js?v=5";
-import { pickRuntimeLabiaPack, generateLabiaPackImage } from "./labia_packs.js?v=3";
-import { pickRuntimeLabiaRubPack, generateLabiaRubPackImage } from "./labia_rub_packs.js?v=3";
-import { pickRuntimeFingerPack, generateFingerPackImage } from "./finger_packs.js?v=3";
-import { pickRuntimeVaginaFingerPack, generateVaginaFingerPackImage } from "./vagina_finger_packs.js?v=3";
-import { pickRuntimeCervixRubPack, generateCervixRubPackImage } from "./cervix_rub_packs.js?v=3";
-import { pickRuntimeSexPosePack, generateSexStepImage } from "./sex_pose_packs.js?v=11";
+import { UNDER_OUTFIT } from "./swap_outfit.js?v=9";
+import { pickRuntimeWaistPack, generateWaistPackImage } from "./waist_packs.js?v=7";
+import { pickRuntimeButtPack, generateButtPackImage } from "./butt_packs.js?v=8";
+import { pickRuntimeBreastPack, generateBreastPackImage, buildBreastImgBody } from "./breast_packs.js?v=5";
+import { pickRuntimeKneadPack, generateKneadPackImage } from "./knead_packs.js?v=5";
+import { pickRuntimeSuckPack, generateSuckPackImage } from "./suck_packs.js?v=6";
+import { pickRuntimeLickPack, generateLickPackImage } from "./lick_packs.js?v=6";
+import { pickRuntimeLabiaPack, generateLabiaPackImage } from "./labia_packs.js?v=4";
+import { pickRuntimeLabiaRubPack, generateLabiaRubPackImage } from "./labia_rub_packs.js?v=4";
+import { pickRuntimeFingerPack, generateFingerPackImage } from "./finger_packs.js?v=4";
+import { pickRuntimeVaginaFingerPack, generateVaginaFingerPackImage } from "./vagina_finger_packs.js?v=5";
+import { pickRuntimeCervixRubPack, generateCervixRubPackImage } from "./cervix_rub_packs.js?v=4";
+import { pickRuntimeSexPosePack, generateSexStepImage } from "./sex_pose_packs.js?v=12";
 import { buildProneImgBody } from "./swap_prone.js?v=1";
 import { composeTeaseExtra, teaseFraming } from "./tease_shots.js?v=8";
 

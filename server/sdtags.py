@@ -341,6 +341,7 @@ STYLE = {
     "輕熟女風": "chic blouse, midi skirt, heels",
     # 房間進房的預設套，不是抽卡池裡的個人風格。
     "白色 T 恤配三角褲": "white t-shirt, panties",
+    "白色 T 恤配胸罩和丁字褲": "white t-shirt, bra, thong",   # 2026-11-19 新的預設衣服
 }
 
 # 女友／妻子解鎖的色情裝

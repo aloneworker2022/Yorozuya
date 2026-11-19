@@ -1,5 +1,5 @@
 /** 房間半身立繪表情組：9 固定槽（性奮 4 + 失神路徑 5），單一 JSON／單一「立繪」編輯面板。 */
-import { wornOutfitOf } from "./outfit_pick.js?v=2";
+import { wornOutfitOf } from "./outfit_pick.js?v=3";
 
 const API = "/api/standee-packs";
 

@@ -1,5 +1,5 @@
 /** 房間脫衣用的全身圖。玩家不選景：幫她脫／叫她脫依階段用圖。自己脫上衣、幫忙脫上衣已取消。 */
-import { wornOutfitOf } from "./outfit_pick.js?v=2";
+import { wornOutfitOf } from "./outfit_pick.js?v=3";
 
 const API = "/api/undress-packs";
 

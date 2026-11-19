@@ -1,7 +1,7 @@
 // 2026-10-26 pt285u：床鋪背後組（prone）——她趴在床上，他從背後壓著肏，鏡頭在兩人後面（從背後看）。
 //   五步同旅館做愛：open 準備／tip 頂住／thrust 做愛／cum 射（內射）／orgasm 她高潮。伺服器 shot＝sex_prone_<step>。
 //   走 tease 雙人管線（借 doggy 的下單骨架，換 shot＋prompt）；局部動圖用背後（doggy）。
-import { buildSexStepImgBody } from "./sex_pose_packs.js?v=11";
+import { buildSexStepImgBody } from "./sex_pose_packs.js?v=12";
 
 export const PRONE_STEPS = ["open", "tip", "thrust", "cum", "orgasm"];
 export const proneShot = (step) => `sex_prone_${PRONE_STEPS.includes(step) ? step : "thrust"}`;

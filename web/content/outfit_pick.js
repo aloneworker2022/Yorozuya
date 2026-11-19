@@ -3,7 +3,7 @@
  * look.owned = { wardrobe:[], erotic:[], sleep:[] }（索引）才是衣櫃裡真的有的。
  * 新召喚 owned 全空＝只有白 T 加三角褲；舊存檔沒有 owned 欄位＝全部都有（照舊）。 */
 
-export const BASE_OUTFIT = "白色 T 恤配三角褲";
+export const BASE_OUTFIT = "白色 T 恤配胸罩和丁字褲";   // 2026-11-19 使用者：一開始穿白 T＋胸罩＋丁字褲（原「白色 T 恤配三角褲」）
 
 const OWN_KEY = { w: "wardrobe", e: "erotic", s: "sleep" };
 const LIST_KEY = { w: "wardrobe", e: "eroticOutfits", s: "sleepOutfits" };

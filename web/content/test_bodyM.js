@@ -1,6 +1,6 @@
 /** test_bodyM：抽妹子 → 選喜怒哀樂 → 由上往下加幀。每一幀可先生圖查看；播放才把已畫好的幀放大到畫面中央。 */
 import { setPools, generateGirl } from "./girl_gen.js";
-import { wornOutfitOf } from "./outfit_pick.js?v=2";
+import { wornOutfitOf } from "./outfit_pick.js?v=3";
 
 // 與 testword 立繪 PO_DEFS 的半身喜怒哀樂同一句（不含害羞）。
 const EMOTIONS = [
