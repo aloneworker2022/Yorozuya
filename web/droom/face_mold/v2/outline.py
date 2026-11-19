@@ -50,13 +50,18 @@ def front():
   # 耳朵（左邊量的，右邊鏡射）：耳朵頂在眼線上面一點，底接在鼻線
   # 耳朵（參考圖：正面只露出細細一條）：上端在眼線上面一點、凸出臉 3～4 格，往下貼著臉收，尖端接在鼻線的下顎上
   hwat=lambda yr:next(h0+(h1-h0)*(yr-y0)/(y1-y0) for (y0,h0),(y1,h1) in zip(jaw,jaw[1:]) if y0<=yr<=y1)
-  ear=[(134.5-hwat(536)+1,536),(134.5-hwat(536)-3,538),(134.5-hwat(545)-4,545),(134.5-hwat(556)-4,556),(134.5-hwat(567)-2.5,567),(134.5-hwat(578)+1,578),(134.5-hwat(565)+3,565),(134.5-hwat(545)+3,545)]
+  K=float(os.environ.get('EARK','1'))   # 正面耳朵往外凸的倍率（使用者 2026-11-19：耳朵不見了）
+  ear=[(134.5-hwat(536)+1,536),(134.5-hwat(536)-3*K,538),(134.5-hwat(545)-4*K,545),(134.5-hwat(556)-4*K,556),(134.5-hwat(567)-2.5*K,567),(134.5-hwat(578)+1,578),(134.5-hwat(565)+3,565),(134.5-hwat(545)+3,545)]
   img=np.full((N,N,3),255,np.uint8)
   img[neck]=SK
   # 下巴壓在脖子上：脖子上一條影子（不描線）
   sh=neck&~face&np.roll(face,3,0);img[sh]=SH
   for s in(1,-1):
     em=mask([(cx+s*(x-134.5)*S,Y(y)) for x,y in cr(ear[:6],False,6)+ear[6:]]);img[em]=SK;img[em&edge(em)&~face]=DK
+    if K>1.4:   # 耳朵大到看得見：耳內一道 C 形淡影
+      for x,y in cr([(134.5-hwat(541)-1.6*K,541),(134.5-hwat(548)-2.6*K,548),(134.5-hwat(558)-2.4*K,558),(134.5-hwat(566)-1.2*K,566)],n=6):
+        X,Yp=round(cx+s*(x-134.5)*S),round(Y(y))
+        if em[Yp,X] and not face[Yp,X]:img[Yp,X]=SH
   img[face]=SK
   return img,face,cx
 # ── 側臉（面向左）──
