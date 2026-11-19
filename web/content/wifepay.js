@@ -4,7 +4,7 @@ import { familyOf } from "./girl_voice.js?v=1";
 import {
   apiJson, fetchGalleryDoc, fetchDialog, fetchScripts, generateFromItem, mountWifepayReveal, startWifepayPeek,
   fetchConfig, saveConfig, pickPeek, pickItems, itemsForPose,
-} from "./wifepay_reveal.js?v=12";
+} from "./wifepay_reveal.js?v=13";
 
 const $ = (id) => document.getElementById(id);
 const ENG_KEY = "yorozuya_eng";
