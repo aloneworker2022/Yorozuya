@@ -1,12 +1,12 @@
 /* 接客偷看畫面（2026-10-10 Al；樣板 mockups/peek/half4.py）。
  * 全螢幕：走廊、掛粉紅牌子「工作室・接客中」的門 → 點門 → 門往內開一半。
- * 老婆還債（mode=peek）一律走共用 wifepay 揭示：不先播開門動畫，直接出台詞；圖好了對話框先下滑，再用門縫拉開顯示。
+ * 老婆還債（mode=peek）一律走共用 wifepay 揭示：不先播開門動畫，直接出台詞；圖好了對話框先下滑，再把切好的門縫圖從該側邊緣移入；有第二張時點圖再移入蓋上去。
  * 步驟設定的姿勢／圖庫／劇本／廣角正負提示／降噪、同一側門縫切（1/2 或 3/5）、隨機 1～2 張、隔門聽不清、打字速度跟設定走、旁白→男人→老婆＋「下一句」。
  * 生圖失敗只留對話。遊戲與 test_room 都經 openWifepayPeek／buildWifepayPeekOpts，不再走舊台詞氣泡或 /api/escort/peek-lines。
  * 日租 mode=door/room 仍用舊字幕／紙娃娃路徑，與老婆還債無關。
  * 不扣錢、不決定發現與否：這些由呼叫端（app.js）先算好傳進來。 */
 import { peekLine, nextGapMs, flavorWife } from "./escort_voices.js?v=3";
-import { startWifepayPeek } from "./wifepay_reveal.js?v=10";
+import { startWifepayPeek } from "./wifepay_reveal.js?v=11";
 
 /** 遊戲與 test_room 共用的正式老婆還債開門偷看參數（一律走 startWifepayPeek）。 */
 export function buildWifepayPeekOpts(who, extra = {}) {

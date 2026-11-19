@@ -4,7 +4,7 @@ import { familyOf } from "./girl_voice.js?v=1";
 import {
   apiJson, fetchGalleryDoc, fetchDialog, fetchScripts, generateFromItem, mountWifepayReveal, startWifepayPeek,
   fetchConfig, saveConfig, pickPeek, pickItems, itemsForPose,
-} from "./wifepay_reveal.js?v=10";
+} from "./wifepay_reveal.js?v=11";
 
 const $ = (id) => document.getElementById(id);
 const ENG_KEY = "yorozuya_eng";
@@ -245,7 +245,7 @@ function syncPoseCount() {
   }
   const n = selectedForPose(selectedPose).length;
   const name = poseLabel(selectedPose);
-  el.textContent = `「${name}」已選 ${n} 張（不限張數）。開門時會從已選的裡面隨機抽 1 或 2 張` + (n <= 1 ? "（目前只會出 1 張）。" : "，不是必定兩張。");
+  el.textContent = `「${name}」已選 ${n} 張（不限張數）。使用時會從已選的裡面隨機抽 1 或 2 張` + (n <= 1 ? "（目前只會出 1 張）。" : "，不是必定兩張。");
 }
 
 async function togglePoseUse(it, on) {

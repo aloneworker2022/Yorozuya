@@ -335,7 +335,7 @@ import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
 import { canEscort, autoDue, askable, debtOf, limitOk, escortLog, askChanceFor, leaveLine, askLine, feelOf, workingNow,
   ASK_COOL_MS, POSES as ESCORT_POSES, POSE_ZH as ESCORT_POSE_ZH, noticedMood, returnMood as escortReturnMood, CLIENT_BUILDS as ESCORT_BUILDS } from "./escort.js?v=5";
-import { openPeek, openWifepayPeek, buildWifepayPeekOpts } from "./escort_peek.js?v=30";
+import { openPeek, openWifepayPeek, buildWifepayPeekOpts } from "./escort_peek.js?v=31";
 import * as Preg from "./pregnancy.js?v=1";
 import { createRental } from "./rental_ui.js?v=36";
 import { planSession as planRentalSession, ownersOf as rentalOwnersOf } from "./rental_session.js?v=8";
@@ -1344,7 +1344,7 @@ function wifepayTestWho() {
   }
   return null;
 }
-/** 正式老婆還債開門偷看（與遊戲「去看她」同一套）。不扣錢、不看出勤。 */
+/** 正式老婆還債偷看（與遊戲「去看她」同一套：對話先出，圖好了再移入）。不扣錢、不看出勤。 */
 function testWifepayPeek({ pose, noticed = false } = {}) {
   const who = wifepayTestWho();
   if (!who) {
