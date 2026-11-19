@@ -1,6 +1,7 @@
 /* 聊天時放大的她（2026-11-19，使用者：按房間裡的黑影聊天時，把黑影放大、視角改成水平）。
-   v3（使用者：乳型不對，套 droom 的）：人偶改用 droom/room_doll_full.js（新身材、v8 胸型、乳暈），正面平視、黑影配色。
-   胸型照 look.breast_shape（11 種 → droom 的 round／bell／pendulous／dome）、乳暈照 look.areola（small／medium／large／huge）。
+   v3（使用者：乳型不對，套 droom 的）：人偶改用 droom 人偶，正面平視、黑影配色。
+   v4（使用者：用 droom-chest-model 分支的新乳房，只換聊天）：載 droom/room_doll_chest.js（分支的 room_doll_full.js），
+   胸型照 look.breast_shape（使用者確認的表，見 SHAPE_OF）、乳暈照 look.areola（small／medium／large／huge）。
    動作是 3D 人偶逐格算出來的：droom render 的 opts.deform 在畫之前照部位動零件——
      breathe：吸氣吐氣（胸廓由下往上抬、胸部往前往外、肩膀／手／頭跟著上去）、頭微歪；
      talk：短氣、頭歪＋點頭、空著的手從肩膀和手肘抬起來比劃。
@@ -8,13 +9,15 @@
    有立繪的話立繪縮小、靠左下。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_full.js?v=18', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=1', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, FPS = { breathe: 4, talk: 7 };
   const SCALE = 2, CV = { w: 84, h: 134, ax: 42, ay: 131, tMax: 40, tMin: -45 };   // 手抬起來也在框內；腳底固定在 ay
 
-  // look 文字 → droom 胸型／乳暈
-  const SHAPE_OF = [[/下垂|母乳/, 'pendulous'], [/鐘|水滴|木瓜/, 'bell'], [/饅頭|平坦|微隆/, 'dome']];
-  function shapeOf(t) { t = String(t || ''); for (const [re, v] of SHAPE_OF) if (re.test(t)) return v; return 'round'; }
+  // look.breast_shape → 模型乳型（照 droom-chest-model 備忘錄 MEMO-2026-11-18、使用者確認的表）；外擴／八字使用者取消 → 先用自然圓潤
+  const SHAPE_OF = [[/母乳|沉重/, { shape: 'heavy' }], [/木瓜/, { shape: 'pendulous' }], [/鐘/, { shape: 'bell' }], [/水滴/, { shape: 'teardrop' }],
+    [/深溝|極密/, { shape: 'round', gap: 'close' }], [/半球/, { shape: 'round', braSupport: true }], [/挺俏|上挺/, { shape: 'perky' }],
+    [/饅頭/, { shape: 'dome' }], [/平坦|微隆/, { shape: 'flat' }]];
+  function shapeOf(t) { t = String(t || ''); for (const [re, v] of SHAPE_OF) if (re.test(t)) return v; return { shape: 'round' }; }
   function areolaOf(t) {
     t = String(t || '');
     if (/佔滿|誇張/.test(t)) return 'huge';
@@ -149,9 +152,9 @@ onmessage=(e)=>{const j=e.data;try{const m=motion(j.pose,j.f,j.n);const r=F.rend
   function prepare(s) {
     if (!F) { loadDroom().then(sync).catch(e => console.warn('chat_shadow', e)); return false; }
     const doll = F.lookToDoll(s.look || null, { outfit: s.outfit, undressStage: s.undressStage, belly: s.belly });
-    doll.shape = shapeOf(s.look?.breast_shape);
+    Object.assign(doll, shapeOf(s.look?.breast_shape));
     doll.areola = areolaOf(s.look?.areola);
-    const key = F.dollKey(doll) + '|' + doll.shape + '|' + doll.areola;
+    const key = F.dollKey(doll) + '|' + doll.shape + '|' + (doll.gap || '') + '|' + (doll.braSupport ? 'sup' : '') + '|' + doll.areola;
     if (cur && cur.key === key) return !!cur.sets.breathe[0];
     if (cur) cur.dead = true;
     const job = cur = { key, sets: { breathe: [], talk: [] }, dead: false };
