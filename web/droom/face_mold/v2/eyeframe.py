@@ -111,7 +111,7 @@ class Frame:
       d,t=_seg_d(x,y,pts[i],pts[i+1]);ww=w[i]+(w[i+1]-w[i])*t if isinstance(w,list) else w
       if d<=ww/2 and (best is None or d<best):best=d
     return best is not None
-  def at(s,x,y,sgn=1):
+  def at(s,x,y,sgn=1,idx=0):
     T=s.T
     # 雙眼皮線：上眼線往上 3.6，只畫中段
     if T.get('crease'):
@@ -136,7 +136,7 @@ class Frame:
       if s._near(x,y,seg,.7):return LOWC
     if not _inpoly(x,y,s.poly):return None
     # 眼睛裡面（同舊眼睛的配色）
-    ic=(.5+T['iris'][0],.3+T['iris'][1]);k=T.get('irs',1);IRX,IRY=IRISW*k,IRISH*k
+    ic=(.5+T['iris'][0]+idx,.3+T['iris'][1]);k=T.get('irs',1);IRX,IRY=IRISW*k,IRISH*k
     r=math.hypot((x-ic[0])/IRX,(y-ic[1])/IRY)
     uy=min((p[1] for p in s.up if abs(p[0]-x)<.6),default=-9)
     if r<1:
@@ -147,3 +147,19 @@ class Frame:
       if r>.86:return 'I'
       v=(y-ic[1]+IRY)/(2*IRY);return 'I' if v<.42 else 'i' if v<.72 else 'j'
     return 'w' if y<uy+2.2 else 'W'
+
+  # 側臉：只看得到黑眼珠前緣以後那一段（臉是圓的，內眼角那半轉到後面去），橫向壓成 KS；
+  # 前緣斜斜往後下（教學：側面的眼睛是三角形），前緣畫一條細線，上眼線往前多伸一點（睫毛刺出去）
+  def at_side(s,u,v,KS=.85):
+    T=s.T;k=T.get('irs',1)
+    xf=.5+T['iris'][0]-IRISW*k*.55
+    x=xf+u/KS
+    uy=min((p[1] for p in s.up if abs(p[0]-xf)<.7),default=v)
+    cut=(v-uy)*.45
+    if u<cut-.9/KS*.5:
+      # 前緣前面：只留上眼線往前刺出去的那一小段
+      if u>cut-1.6 and v<uy+.3 and v>uy-1.6 and u>-1.6:return 'K'
+      return None
+    ch=s.at(x,v,1,idx=-.8)
+    if ch and u<cut+.35 and ch not in('K','c'):return 'k'
+    return ch

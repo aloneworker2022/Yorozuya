@@ -82,8 +82,22 @@ def mouth_px():
       if ch!='.':o[(CXF+c-SC,y0+r-LINE)]=(PAL[ch],DZ[r])
   return o
 ES=float(os.environ.get('ES','1.35'))   # 眼睛放大倍率（使用者：眼睛大一點）
+EYET=os.environ.get('EYET','')   # 眼眶種類（eyeframe.TYPES 的 key，例如 N1、T3、R2）；空的＝舊眼睛
+FR=None
+if EYET:
+  from eyeframe import Frame
+  FR=Frame(EYET)
 def eye_px():
   o={}
+  if FR:
+    x0,x1,y0,y1=FR.box
+    for s in(1,-1):
+      ex=CXF+s*30;ey=Y(EYEY)
+      for yy in range(math.floor(ey+y0*ES*EH),math.ceil(ey+y1*ES*EH)):
+        for xx in range(math.floor(ex-x1*ES),math.ceil(ex+x1*ES)):
+          ch=FR.at(s*(xx+.5-ex)/ES,(yy+.5-ey)/(ES*EH),s)
+          if ch:o[(xx,yy)]=(EPAL[ch],0)
+    return o
   for s in(1,-1):
     ex=CXF+s*30;ey=Y(EYEY)
     for yy in range(math.floor(ey-16*ES*EH),math.ceil(ey+10*ES*EH)):
@@ -171,9 +185,10 @@ def eyes_turn(img,ca,sa,cx):
     kx=max(.35,min(1,ca-zx*sa))
     ic=(-1.3,.3) if s==1 else (1.3*kx,.3)     # 往畫面左邊（她看的方向）
     for Yp in range(math.floor(Yc-16*ES*EH),math.ceil(Yc+10*ES*EH)):
-      for X in range(math.floor(Xc-20*ES),math.ceil(Xc+20*ES)):
+      for X in range(math.floor(Xc-24*ES),math.ceil(Xc+24*ES)):
         if s<0 and Yp in BR and X>=min(BR[Yp]):continue   # 遠側內眼角藏在鼻樑後面
-        ch=eyeAt(s*(X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/(ES*EH),s,IC=ic)
+        if FR:ch=FR.at(s*(X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/(ES*EH),s,idx=(-1.3 if s==1 else 1.3))
+        else:ch=eyeAt(s*(X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/(ES*EH),s,IC=ic)
         if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
 # ── 側臉的眼睛（使用者給的教學：臉是圓的，側面看眼睛是三角形）──
 # 上眼線厚、橫的、眼尾往後收成一個尖角（下面一小撇）；前緣斜斜往後下到底下的尖；黑眼珠是窄窄的直橢圓、貼在前緣；
@@ -214,6 +229,13 @@ def side_eye_at(u,v,flip=False):   # flip：左右鏡射時亮點仍放在左上
 def side_eye(img,cx):
   from shape3d import zp
   X0=cx-zp(545)*S+7;Y0=Y(EYEY-4)               # 眼睛前端：鼻樑往後 7 格、眼線上面一點
+  if FR:
+    Yc=Y(EYEY);x0,x1,y0,y1=FR.box
+    for Yp in range(math.floor(Yc+y0*ES*EH),math.ceil(Yc+y1*ES*EH)):
+      for X in range(math.floor(X0-4*ES),math.ceil(X0+20*ES)):
+        ch=FR.at_side((X+.5-X0)/ES,(Yp+.5-Yc)/(ES*EH))
+        if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
+    return
   for Yp in range(math.floor(Y0-8*ES*EH),math.ceil(Y0+13*ES*EH)):
     for X in range(math.floor(X0-6*ES),math.ceil(X0+25*ES)):
       ch=side_eye_at((X+.5-X0)/ES,(Yp+.5-Y0)/(ES*EH))
