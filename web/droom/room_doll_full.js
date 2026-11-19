@@ -2152,6 +2152,9 @@
     function render(doll, pose = 'idle', frame = 0, yaw = 0, opts = {}) {
       let cv = CANVAS[(POSES[pose] && POSES[pose].canvas) || 'std'];
       const { sh, P } = build(doll, pose, frame, yaw, opts);
+      // 2026-11-19 聊天正面（chat_shadow.js）：opts.cv＝自訂畫布（手抬起來不會被切掉）；opts.deform(sh, P, H)＝畫之前照部位動零件（呼吸、歪頭、比劃）
+      if (opts.cv) cv = opts.cv;
+      if (opts.deform) opts.deform(sh, P, { mulV, mulR, rotX, rotY, compose, about });
       // 2026-11-06 opts.lit：體位（側面畫布）也走一般（遠景）算法——有明暗、線條、白邊，接客偷看用 droom 遠景的樣子。
       //   畫布換成同樣像素大小、同樣錨點，K＝側面的 1.28（像素／單位，可以不是整數），人物大小跟原本側面圖一樣。
       let KL = 0;

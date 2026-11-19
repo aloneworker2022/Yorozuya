@@ -806,11 +806,11 @@ body.room-home.kb-open #talk-acts { display: none; }
 
 /* ===== 聊天時放大的她（chat_shadow.js，2026-11-19）：右側正面全身黑影；有立繪就縮小靠左下 ===== */
 #chat-shadow{position:fixed;right:max(2vw,env(safe-area-inset-right));bottom:calc(var(--talk-bottom,8px) + var(--talk-box-h,120px) + 58px);z-index:0;
-  height:calc(100svh - var(--talk-box-h,120px) - 140px);max-height:640px;width:min(46vw,300px);display:flex;align-items:flex-end;justify-content:center;
+  height:calc(100svh - var(--talk-box-h,120px) - 140px);max-height:640px;width:min(60vw,340px);display:flex;align-items:flex-end;justify-content:flex-end;
   pointer-events:none;opacity:0;transform:translateX(24vw);transition:transform .55s cubic-bezier(.2,.85,.2,1),opacity .45s ease-out}
 #chat-shadow[hidden]{display:none!important}
 #chat-shadow.cs-in{opacity:1;transform:none}
-#chat-shadow canvas{display:block;height:calc(100% * var(--cs-h,1));width:auto;max-width:100%;object-fit:contain;image-rendering:pixelated;filter:drop-shadow(0 10px 18px rgba(0,0,0,.35))}
+#chat-shadow canvas{display:block;height:100%;width:auto;max-width:100%;object-fit:contain;object-position:bottom right;image-rendering:pixelated;filter:drop-shadow(0 10px 18px rgba(0,0,0,.35))}
 @media(prefers-reduced-motion:reduce){#chat-shadow{transition:none;opacity:1;transform:none}}
 #portrait-sheet.has-shadow #portrait-img{left:max(4px,env(safe-area-inset-left));bottom:calc(var(--talk-bottom,8px) + var(--talk-box-h,120px) + 58px);height:min(42svh,400px);max-width:52vw;object-position:bottom left;transform:translateX(-40vw)}
 #portrait-sheet.has-shadow #portrait-img.portrait-in{transform:none}
