@@ -1,10 +1,10 @@
-/* Wife Pay 編輯頁 v11：視線看著男子；圖以門縫拉開；步驟精靈。 */
+/* Wife Pay 編輯頁 v12：同姿勢可存多張、使用時隨機抽 1～2 張、可選姿勢測試。 */
 import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES } from "./girl_gen.js";
 import { familyOf } from "./girl_voice.js?v=1";
 import {
   apiJson, fetchGalleryDoc, fetchDialog, fetchScripts, generateFromItem, mountWifepayReveal, startWifepayPeek,
-  fetchConfig, saveConfig, pickPeek, POSE_SELECT_MAX, itemsForPose,
-} from "./wifepay_reveal.js?v=9";
+  fetchConfig, saveConfig, pickPeek, pickItems, itemsForPose,
+} from "./wifepay_reveal.js?v=10";
 
 const $ = (id) => document.getElementById(id);
 const ENG_KEY = "yorozuya_eng";
@@ -25,6 +25,7 @@ let scripts = [];
 let selectedScriptId = "";
 let poseCatalog = [];
 let selectedPose = "";
+let testPick = [];
 let extraPoses = [];
 let currentStep = 1;
 let charSec = 0.9;
@@ -231,29 +232,8 @@ function itemHasPose(it, pose) {
   return tags.includes(String(pose).toLowerCase());
 }
 
-function poseIdSet() {
-  return new Set((poseCatalog || []).map((p) => String(p.id)));
-}
-
 function selectedForPose(pose) {
   return itemsForPose(items, pose || selectedPose);
-}
-
-function canAssignPose(itemId, pose) {
-  const p = String(pose || "");
-  if (!p) return true;
-  const cur = selectedForPose(p);
-  if (cur.some((x) => x.id === itemId)) return true;
-  return cur.length < POSE_SELECT_MAX;
-}
-
-function formatTrimWarn(trimmed) {
-  if (!trimmed || !trimmed.length) return "";
-  return trimmed.map((w) => {
-    const name = poseLabel(w.pose) || w.pose;
-    const n = (w.dropped || []).length;
-    return `姿勢「${name}」原本選了超過 ${POSE_SELECT_MAX} 張，已自動只留 ${POSE_SELECT_MAX} 張（多的 ${n} 張還在圖庫，只是拿掉這個姿勢）。`;
-  }).join(" ");
 }
 
 function syncPoseCount() {
@@ -265,7 +245,63 @@ function syncPoseCount() {
   }
   const n = selectedForPose(selectedPose).length;
   const name = poseLabel(selectedPose);
-  el.textContent = `「${name}」已選 ${n}／${POSE_SELECT_MAX} 張。開門時會從裡面隨機抽 1 或 2 張` + (n <= 1 ? "（目前只會出 1 張）。" : "，不是必定兩張。");
+  el.textContent = `「${name}」已選 ${n} 張（不限張數）。開門時會從已選的裡面隨機抽 1 或 2 張` + (n <= 1 ? "（目前只會出 1 張）。" : "，不是必定兩張。");
+}
+
+async function togglePoseUse(it, on) {
+  if (!it || !selectedPose) return;
+  const tags = new Set(it.tags || []);
+  if (on) tags.add(selectedPose);
+  else tags.delete(selectedPose);
+  const j = await apiJson(`/api/wifepay/gallery/${encodeURIComponent(it.id)}`, "PATCH", { tags: [...tags] });
+  await reloadGallery(j.item?.id || it.id);
+  setStatus("gal-status", on ? `✓ 已選用這張（「${poseLabel(selectedPose)}」）` : "✓ 已取消選用這張");
+  rollTestPick();
+}
+
+function fillTestPoseSelect() {
+  const sel = $("ig-test-pose");
+  if (!sel) return;
+  const cur = sel.value || selectedPose;
+  sel.innerHTML = (poseCatalog || []).map((p) =>
+    `<option value="${esc(p.id)}">${esc(p.name || p.id)}</option>`
+  ).join("") || `<option value="">（尚未有姿勢）</option>`;
+  const want = (cur && (poseCatalog || []).some((p) => p.id === cur)) ? cur : selectedPose;
+  if (want) sel.value = want;
+}
+
+function renderTestPick() {
+  const el = $("ig-pick-preview");
+  if (!el) return;
+  const pose = $("ig-test-pose")?.value || selectedPose || "";
+  const pool = itemsForPose(items, pose);
+  if (!pose) {
+    el.textContent = "先選一個姿勢，會從已選底圖隨機抽 1 或 2 張。";
+    return;
+  }
+  if (!pool.length) {
+    el.textContent = `「${poseLabel(pose)}」還沒有已選底圖。請到第 2 步上傳或勾「選用」。`;
+    return;
+  }
+  const names = (testPick || []).map((x) => x.id).join("、");
+  const thumbs = (testPick || []).map((x) =>
+    `<img src="${esc(x.url)}" alt="${esc(x.id)}" title="${esc(x.id)}">`
+  ).join("");
+  el.innerHTML = `「${esc(poseLabel(pose))}」共 ${pool.length} 張已選，這次抽出 ${testPick.length} 張：${esc(names) || "（無）"}`
+    + (thumbs ? `<span class="pick-thumbs">${thumbs}</span>` : "");
+}
+
+function rollTestPick() {
+  const pose = $("ig-test-pose")?.value || selectedPose || "";
+  testPick = pickItems(items, pose);
+  renderTestPick();
+  return testPick;
+}
+
+function onTestPoseChange() {
+  const pose = $("ig-test-pose")?.value || "";
+  if (pose && pose !== selectedPose) selectPose(pose);
+  else rollTestPick();
 }
 
 function scriptHasPose(s, pose) {
@@ -347,6 +383,7 @@ function goStep(n) {
   renderSteps();
   if (t === 2) renderThumbs();
   if (t === 3) { renderScriptSelects(); fillScriptForm(currentScript()); }
+  if (t === 6) { fillTestPoseSelect(); rollTestPick(); }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -374,9 +411,11 @@ function renderPoseGrid() {
 function selectPose(id) {
   selectedPose = String(id || "");
   if ($("ig-pose")) $("ig-pose").value = selectedPose;
+  if ($("ig-test-pose") && selectedPose) $("ig-test-pose").value = selectedPose;
   renderPoseGrid();
   setStatus("pose-status", selectedPose ? `已選「${poseLabel(selectedPose)}」` : "");
   syncPoseCount();
+  if ($("ig-test-pose")) rollTestPick();
   renderThumbs();
   renderScriptSelects();
   renderSteps();
@@ -569,9 +608,25 @@ function renderThumbs() {
     btn.type = "button";
     const inPose = !!(selectedPose && itemHasPose(it, selectedPose));
     btn.className = (it.id === selectedId ? "sel" : "") + (inPose ? " in-pose" : "");
-    btn.title = it.id + (inPose ? "（已選進目前姿勢）" : "");
+    btn.title = it.id + (inPose ? "（已選用）" : "");
     const tag = (it.tags || [])[0] || "";
     btn.innerHTML = `<img src="${esc(it.url)}" alt="">${tag ? `<span class="tag">${esc(tag)}</span>` : ""}`;
+    if (selectedPose) {
+      const lab = document.createElement("label");
+      lab.className = "use";
+      lab.title = inPose ? "取消選用（這張不會被隨機抽到）" : "選用（加入這個姿勢的抽選池）";
+      const ck = document.createElement("input");
+      ck.type = "checkbox";
+      ck.checked = inPose;
+      ck.addEventListener("click", (ev) => ev.stopPropagation());
+      ck.addEventListener("change", (ev) => {
+        ev.stopPropagation();
+        togglePoseUse(it, ck.checked).catch((e) => { setStatus("gal-status", e.message, true); setStatus("gen-status", e.message, true); });
+      });
+      lab.append(ck, document.createTextNode(" 選用"));
+      lab.addEventListener("click", (ev) => ev.stopPropagation());
+      btn.appendChild(lab);
+    }
     btn.onclick = () => {
       selectedId = it.id;
       fillItemForm(it);
@@ -592,10 +647,9 @@ async function reloadGallery(preferId) {
   fillItemForm(selectedItem());
   renderThumbs();
   renderSteps();
-  const warn = formatTrimWarn(doc.trimmed);
-  if (warn) {
-    setStatus("gal-status", warn, true);
-    setStatus("gen-status", warn, true);
+  if ($("ig-test-pose")) {
+    fillTestPoseSelect();
+    if (currentStep === 6) rollTestPick();
   }
   return doc;
 }
@@ -613,60 +667,30 @@ async function uploadGallery() {
   $("gal-file").value = "";
   const item = j.item;
   if (item?.id && selectedPose) {
-    if (!canAssignPose(item.id, selectedPose)) {
-      await reloadGallery(item.id);
-      const msg = `這個姿勢最多只能選 ${POSE_SELECT_MAX} 張底圖。圖已上傳，但沒有套上「${poseLabel(selectedPose)}」。請先拿掉其中一張的姿勢 tag，再指定。`;
-      setStatus("gal-status", msg, true);
-      setStatus("gen-status", msg, true);
-      return;
-    }
     const tags = Array.from(new Set([...(item.tags || []), selectedPose]));
     try {
-      const patched = await apiJson(`/api/wifepay/gallery/${encodeURIComponent(item.id)}`, "PATCH", { tags });
-      if (patched?.rejected_poses?.length) {
-        await reloadGallery(item.id);
-        const msg = `這個姿勢最多只能選 ${POSE_SELECT_MAX} 張底圖，沒有套上「${poseLabel(selectedPose)}」。`;
-        setStatus("gal-status", msg, true);
-        setStatus("gen-status", msg, true);
-        return;
-      }
+      await apiJson(`/api/wifepay/gallery/${encodeURIComponent(item.id)}`, "PATCH", { tags });
     } catch { /* 圖已上傳，tag 失敗也不擋 */ }
   }
   await reloadGallery(item?.id);
-  setStatus("gal-status", "✓ 已上傳");
-  setStatus("gen-status", "✓ 已上傳");
+  setStatus("gal-status", "✓ 已上傳並選用");
+  setStatus("gen-status", "✓ 已上傳並選用");
 }
 
 async function saveItem() {
   const it = selectedItem();
   if (!it) throw new Error("先選一張圖");
-  let tags = $("item-tags").value.split(/[,，]/).map((t) => t.trim()).filter(Boolean);
-  const blocked = tags.filter((tag) => poseIdSet().has(tag) && !canAssignPose(it.id, tag));
-  if (blocked.length) {
-    tags = tags.filter((tag) => !blocked.includes(tag));
-    const names = blocked.map((t) => `「${poseLabel(t)}」`).join("、");
-    const msg = `${names}最多只能選 ${POSE_SELECT_MAX} 張底圖，沒有套上這個姿勢。請先拿掉其中一張的姿勢 tag。`;
-    setStatus("gal-status", msg, true);
-    setStatus("gen-status", msg, true);
-    $("item-tags").value = tags.join(", ");
-  }
+  const tags = $("item-tags").value.split(/[,，]/).map((t) => t.trim()).filter(Boolean);
   const j = await apiJson(`/api/wifepay/gallery/${encodeURIComponent(it.id)}`, "PATCH", {
     prompt: $("item-prompt").value,
     negative: $("item-neg").value,
     denoise: Number($("item-denoise").value || 0.55),
     tags,
   });
-  if (j?.rejected_poses?.length && !blocked.length) {
-    const names = j.rejected_poses.map((t) => `「${poseLabel(t)}」`).join("、");
-    setStatus("gal-status", `${names}最多只能選 ${POSE_SELECT_MAX} 張底圖，沒有套上這個姿勢。`, true);
-    setStatus("gen-status", `${names}最多只能選 ${POSE_SELECT_MAX} 張底圖，沒有套上這個姿勢。`, true);
-  }
   await reloadGallery(j.item?.id || it.id);
-  if (!blocked.length && !(j?.rejected_poses || []).length) {
-    setStatus("gal-status", "✓ 已儲存這張");
-    setStatus("denoise-status", "✓ 已儲存這張");
-    setStatus("gen-status", "✓ 已儲存這張");
-  }
+  setStatus("gal-status", "✓ 已儲存這張");
+  setStatus("denoise-status", "✓ 已儲存這張");
+  setStatus("gen-status", "✓ 已儲存這張");
 }
 
 async function deleteItem() {
@@ -719,7 +743,7 @@ function genInfo() {
   return {
     character: currentGirl,
     name: currentGirl?.name || "",
-    pose: selectedPose || $("ig-pose")?.value || "",
+    pose: $("ig-test-pose")?.value || selectedPose || $("ig-pose")?.value || "",
     build: $("ig-build")?.value || "average",
     stage: currentGirl?.roomStage || currentGirl?.stage || "wife",
     family: currentGirl?.family || (currentGirl ? familyOf(currentGirl) : ""),
@@ -966,10 +990,16 @@ async function testAll() {
     startWifepayPeek(revealHost(), { ...genInfo(), ...revealOpts(), onStatus: (m) => setStatus("gen-status", m) });
     return;
   }
-  setStatus("gen-status", "全部一起測試…");
+  const pose = $("ig-test-pose")?.value || selectedPose || "";
+  const drawn = (testPick && testPick.length) ? testPick : rollTestPick();
+  setStatus("gen-status", drawn.length
+    ? `全部一起測試（「${poseLabel(pose) || pose}」抽出 ${drawn.length} 張）…`
+    : "全部一起測試…");
   startWifepayPeek(revealHost(), {
     ...genInfo(),
     ...revealOpts(),
+    pose,
+    items: drawn,
     onStatus: (m) => setStatus("gen-status", m),
   });
 }
@@ -1070,6 +1100,8 @@ function bind() {
   $("btn-test-img")?.addEventListener("click", () => testOneImage());
   $("btn-test-img-5")?.addEventListener("click", () => testOneImage());
   $("btn-test-all")?.addEventListener("click", () => testAll());
+  $("ig-test-pose")?.addEventListener("change", () => onTestPoseChange());
+  $("btn-reroll-pick")?.addEventListener("click", () => rollTestPick());
   $("btn-prev")?.addEventListener("click", () => goStep(currentStep - 1));
   $("btn-next")?.addEventListener("click", () => { if (currentStep < 6) goStep(currentStep + 1); });
   const syncChar = (from) => {
@@ -1095,5 +1127,6 @@ Promise.all([
   loadEngDefaults(),
 ]).then(() => {
   renderSteps();
+  fillTestPoseSelect();
   setStatus("gen-status", items.length ? `圖庫 ${items.length} 張` : "圖庫是空的，請先上傳底圖");
 });

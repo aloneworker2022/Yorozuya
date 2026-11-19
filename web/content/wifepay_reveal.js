@@ -67,16 +67,13 @@ async function apiJson(url, method, body) {
   return j;
 }
 
-export const POSE_SELECT_MAX = 2;
+/** 使用時一次隨機抽最多這麼多張；同一姿勢圖庫張數不限。 */
+export const PICK_MAX = 2;
 
 export async function fetchGalleryDoc() {
   const j = await apiJson("/api/wifepay/gallery");
   const items = Array.isArray(j?.items) ? j.items : (Array.isArray(j) ? j : []);
-  return {
-    items,
-    trimmed: Array.isArray(j?.trimmed) ? j.trimmed : [],
-    pose_max: Number(j?.pose_max) || POSE_SELECT_MAX,
-  };
+  return { items };
 }
 
 export async function fetchGallery() {
@@ -90,19 +87,18 @@ export function itemsForPose(items, pose) {
   return pool.filter((x) => (x.tags || []).includes(p));
 }
 
-/** 從該姿勢已選的底圖抽 1 或 2 張（各半）。只選 1 張就固定 1；沒選就空。不會從其他姿勢補張。 */
+/** 從該姿勢已選的底圖抽 1 或 2 張（各半）。只選 1 張就固定 1；沒選就空。不會從其他姿勢補張。池子可超過 2 張。 */
 export function pickItems(items, pose, count, rnd) {
   const poseId = String(pose || "").trim();
-  let pool = poseId
+  const pool = poseId
     ? itemsForPose(items, poseId)
     : (items || []).filter((x) => x && x.id && x.url);
   if (!pool.length) return [];
-  if (poseId && pool.length > POSE_SELECT_MAX) pool = pool.slice(0, POSE_SELECT_MAX);
   const roll = typeof rnd === "function" ? rnd : (rnd && typeof rnd.random === "function" ? () => rnd.random() : Math.random);
   let n;
   if (pool.length === 1) n = 1;
-  else if (count === 1 || count === 2) n = Math.min(count, POSE_SELECT_MAX, pool.length);
-  else n = Math.min(roll() < 0.5 ? 1 : 2, POSE_SELECT_MAX, pool.length);
+  else if (count === 1 || count === 2) n = Math.min(count, PICK_MAX, pool.length);
+  else n = Math.min(roll() < 0.5 ? 1 : 2, PICK_MAX, pool.length);
   if (pool.length <= n) return pool.slice();
   const copy = pool.slice();
   const out = [];
@@ -117,7 +113,7 @@ export async function pickGallery(pose, count) {
   const body = { pose: pose || "" };
   if (count === 1 || count === 2) body.count = count;
   const j = await apiJson("/api/wifepay/pick", "POST", body);
-  const items = Array.isArray(j.items) ? j.items.slice(0, POSE_SELECT_MAX) : [];
+  const items = Array.isArray(j.items) ? j.items.slice(0, PICK_MAX) : [];
   return { ...j, items };
 }
 
@@ -837,6 +833,10 @@ export function startWifepayPeek(host, opts = {}) {
   let peek = opts.peek || null;
   const pickP = (async () => {
     try {
+      if (Array.isArray(opts.items) && opts.items.length) {
+        const given = opts.items.filter((x) => x && x.id && x.url).slice(0, PICK_MAX);
+        return { items: given, peek: opts.peek || pickPeek(given.length || 1), empty: !given.length };
+      }
       return await pickGallery(info.pose, opts.count);
     } catch (err) {
       return { items: [], empty: true, peek: null, error: err };
