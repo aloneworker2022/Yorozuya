@@ -9,7 +9,7 @@
    有立繪的話立繪縮小、靠左下。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=3', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=4', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, FPS = { breathe: 4, talk: 7 };
   const SCALE = 2, CV = { w: 84, h: 134, ax: 42, ay: 131, tMax: 40, tMin: -45 };   // 手抬起來也在框內；腳底固定在 ay
 
@@ -198,14 +198,14 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const doll = F.lookToDoll(s.look || null, { outfit: s.outfit, undressStage: s.undressStage, belly: s.belly });
     Object.assign(doll, shapeOf(s.look?.breast_shape));
     doll.areola = areolaOf(s.look?.areola);
-    // 穿著（使用者：一開始是白襯衫＋胸罩＋丁字褲；穿胸罩乳房變挺）：跟脫衣進度 undress.stage 走——
-    //   0 襯衫（裡面穿胸罩）＋丁字褲、1 胸罩＋丁字褲、2 只剩丁字褲、3 全裸。不畫她衣櫃裡的衣服（裙子也不畫）。
+    // 穿著（使用者：一開始是 droom 那套白色 T 恤＋胸罩＋丁字褲；穿胸罩乳房變挺）：跟脫衣進度 undress.stage 走——
+    //   0 白色 T 恤（裡面穿胸罩）＋丁字褲、1 胸罩＋丁字褲、2 只剩丁字褲、3 全裸。不畫她衣櫃裡的衣服（裙子也不畫）。
     const st = Math.max(0, Math.min(3, Number(s.undressStage) || 0));
     doll.skirt = '';
-    if (st === 0) { doll.cloth = 'shirt'; doll.underBra = true; }
+    if (st === 0) { doll.cloth = 'tee'; doll.underBra = true; }
     else if (st === 1) doll.cloth = 'bra';
     if (st <= 1) doll.braSupport = true;
-    if (st === 1 || st === 2) doll.pants = 'lace_thong';   // 穿襯衫時下襬蓋住，不畫（不然會從布裡透出來）
+    if (st <= 2) doll.pants = 'lace_thong';
     const key = JSON.stringify(doll);
     if (cur && cur.key === key) return !!cur.sets.breathe[0];
     if (cur) cur.dead = true;

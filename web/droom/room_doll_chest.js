@@ -968,7 +968,7 @@
     }
     // 2026-11-19 o.shirt（聊天黑影的白襯衫）：下襬長到大腿根、V 字領（第一顆扣子沒扣）、尖領片、正中門襟＋扣子；其他照 T 恤
     function tee(sh, P, doll, tor, o = {}) {
-      const S = tor.S, top = S + 1.2, hem = o.shirt ? tor.C - 3 : tor.C + 5.5, K = o.shirt ? 32 : 44, nz = Math.max(8, Math.round((top - hem) / (o.shirt ? 1.15 : .8))), RC = o.shirt ? 1.0 : .75, RR = o.shirt ? .8 : .55;   // 襯衫：織粗一點（零件少一半，聊天黑影一格才畫得快），管子加粗補縫
+      const S = tor.S, top = S + 1.2, hem = o.shirt ? tor.C - 3 : tor.C + 5.5, K = 32, nz = Math.max(8, Math.round((top - hem) / 1.15)), RC = 1.0, RR = .8;   // 2026-11-19 聊天黑影：織粗一點（零件少一半，一格才畫得快），管子加粗補縫（原本 K 44、每 .8 一層、.75／.55）
       const vBot = S - 10;   // 襯衫：V 字領的底（最上面兩顆沒扣，看得到胸罩和乳溝）
       const Zs = [], G = [];   // G[j][k]＝第 j 層、第 k 角的布面點
       for (let j = 0; j <= nz; j++) {
@@ -1034,14 +1034,15 @@
       }
       for (const [s0, e] of o.shirt ? [] : sh._arms || []) {
         const m = s0.map((v, i) => v + (e[i] - v) * .45), up = [s0[0] * .75, s0[1], s0[2] + 1.6];
-        sh.cone(BODY, up, s0, 3.2 * wA + .5, 3.3 * wA + .6); sh.cone(BODY, s0, m, 3.3 * wA + .6, 2.9 * wA + .7);
-        sh.cloth = 2; sh.cone(BODY, m, m.map((v, i) => v + (e[i] - s0[i]) * .04), 3.0 * wA + .75, 3.0 * wA + .75); sh.cloth = 1;
+        const tag = () => { sh.prims[sh.prims.length - 1].sleeve = 1; };   // 聊天黑影：袖子跟上臂走
+        sh.cone(BODY, up, s0, 3.2 * wA + .5, 3.3 * wA + .6); tag(); sh.cone(BODY, s0, m, 3.3 * wA + .6, 2.9 * wA + .7); tag();
+        sh.cloth = 2; sh.cone(BODY, m, m.map((v, i) => v + (e[i] - s0[i]) * .04), 3.0 * wA + .75, 3.0 * wA + .75); tag(); sh.cloth = 1;
       }
       // 下襬、圓領滾邊
       sh.cloth = 2;
       const last = o.shirt ? Array.from({ length: K }, (_, k) => { let q = null; for (const r of G) if (r && r[k]) q = r[k]; return q; }) : G.filter(Boolean).pop(), first = G.find(Boolean);
-      if (last && last.every(Boolean)) sh.chain(BODY, last.concat([last[0]]).map(q => [q[0], q[1], q[2] + .1]), last.map(() => .7).concat([.7]));
-      if (first && !o.shirt) { const nk = first.filter(q => Math.abs(q[0]) < 4.5); if (nk.length > 1) sh.chain(BODY, nk, nk.map(() => .5)); }
+      if (last && last.every(Boolean)) sh.chain(BODY, last.concat([last[0]]).map(q => [q[0], q[1], q[2] + .1]), last.map(() => RC + .15).concat([RC + .15]));   // 滾邊比布粗一點才看得到
+      if (first && !o.shirt) { const nk = first.filter(q => q && Math.abs(q[0]) < 4.5); if (nk.length > 1) sh.chain(BODY, nk, nk.map(() => RC + .1)); }
       sh.cloth = 0;
     }
     function dress(sh, P, doll, tor) {
