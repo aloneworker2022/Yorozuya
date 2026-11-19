@@ -75,6 +75,7 @@ def nose_px():
 def mouth_px():
   src=open(os.path.join(HERE,'..','mouth.cjs'),encoding='utf8').read()
   PAL={k:tuple(map(int,v.split(','))) for k,v in re.findall(r"(\w):\[(\d+,\d+,\d+)\]",src.split('\n')[1])}
+  PAL['e']=PAL['b'];PAL['h']=PAL['H']
   def arr(name):return re.findall(r'"([^"]+)"',re.search(name+r'=\[(.*?)\];',src,re.S).group(1))
   def nums(name):return [float(v) for v in re.search(name+r'=\[(.*?)\]',src).group(1).split(',')]
   MT=os.environ.get('MT','closed')
@@ -83,15 +84,16 @@ def mouth_px():
   if os.environ.get('MS','小')=='大':
     mir=lambda rows:[h+h[:15][::-1] for h in rows]
     if MT=='open':
-      SP=mir(["...........ubbbb","......uuuUUbbbHH","....uuUUUUUUbbbb","..uUUUULLLLLLLLL","CCLLLLLTTTTTTTTT","...LMTTTTTTTTTTT","...LMMMMMMMMMMMM","...lPPPPPPHHHHHH","....DPPPPPPHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
-      DZ=[0,0,0,0,-1.2,-3.2,-3.6,-1.8,-2.4,-3,-3.6]
+      # 唇珠（使用者畫的紅線）：上唇下緣兩邊高、中間往下垂成一顆圓圓的珠子壓在牙齒上；e＝唇珠、h＝唇珠亮點
+      SP=mir([".........uuu....","......uuuUUUuuuu","...uuUUUUUUUUUUU","..LLLLLLLLLUUUUU","CCLTTTTTTTTLeeeh","...LTTTTTTTTTTLL","...LMMMMMMMMMMMM","...lPPPPPPHHHHHH","....DPPPPPPHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
+      DZ=[0,0,0,0,-.4,-1.6,-3.6,-1.8,-2.4,-3,-3.6]
     else:
       SP=mir(["..........uuu...","......uuuUUUUu.u","....uuUUUUUUUbbb","..uUUUUUUUUUbbHH","CCLLLLLLLLLLLLLL","...lPPPPPPPPPPPP","...lPPPHHHHHHHHH","....DPPPPHHHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
       DZ=[0,0,0,0,-.6,-1.6,-2.2,-2.8,-3.2,-3.6]
   LINE=[i for i,r in enumerate(SP) if 'C' in r][0]
   # 唇色樣式（使用者 2026-11-19）：LIPS=全＝上下唇都上色（原本）；LIPS=下唇＝上唇不上色、只留嘴縫的線，下唇有顏色
   if os.environ.get('LIPS','全')=='下唇':
-    SP=[''.join(ch if ch=='L' else '.' for ch in row) if r<LINE else row for r,row in enumerate(SP)]
+    SP=[''.join(ch if ch=='L' else '.' for ch in row) if r<LINE else row.replace('e','.').replace('h','.') for r,row in enumerate(SP)]   # 唇珠也不上色、只留框線
   # 嘴巴大小（MS=小／中／大）：小＝原本 19 格寬；中、大照比例放大（最近鄰，奇數寬才置中）
   sx,sy={'小':(1,1),'中':(1.32,1.15),'大':(1,1)}[os.environ.get('MS','小')]   # 大＝上面手點的，不再放大
   if sx!=1 or sy!=1:
