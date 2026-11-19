@@ -16,7 +16,7 @@ from hair3d import head_depth
 N=256;CY=112;R=72;RO=79;BACK=1.08
 C=dict(hi=(246,228,170),li=(222,192,124),mid=(190,152,90),sh=(150,114,64),dk=(112,82,48))
 SKSH=(222,178,152)
-XP=-9                                   # 分線在她右邊一點（正面看畫面左邊）
+XP=-5                                   # 分線在她右邊一點（正面看畫面左邊）
 PHF,PHC=math.radians(46),math.radians(-30)   # 分線：從頭頂往前 46°（前額髮際）到往後 30°（頭頂後面）
 BROW=36                                 # 眉尾：中心左右 36 格 → 前髮寬度
 def part_pt(ph,r=RO):
@@ -26,6 +26,8 @@ class Strand:
   def __init__(s,kind,sid,layer,f,L,hw):
     # f(l)→(x,y,z)（l＝沿中心線的長度，向量化）；hw(l)→半寬
     s.kind,s.sid,s.layer,s.f,s.L,s.hw=kind,sid,layer,f,L,hw
+    # 大塊（使用者 2026-11-19：①前髮＝分線左右兩半 ②兩邊各一大片長髮 ③後髮 ④遊び毛）
+    s.mass={'curtain':'side','lock':'side'}.get(kind,kind)+(str(sid[1]) if kind in('curtain','lock') else '')
 def shell_r(y,layer):
   # 殼的半徑：頭頂＝RO（比頭大一層）；赤道以下往臉那邊收到 R+4（前髮貼著額頭，不要飄太遠）
   r0=RO+.8*layer
@@ -39,10 +41,10 @@ def push_out(x,y,z,layer):
 def curtain(s,z0,hw0,layer,tip,rnd):
   # 從分線往 s 那邊、在 z=z0 這個平面上順著殼的圓弧下來，然後直直垂下；耳朵那段塞到耳後
   rl=RO+.8*layer;rz=math.sqrt(rl*rl-z0*z0)
-  xh=min(rz,64 if z0>30 else 70) if z0>14 else rz                         # 耳朵前面的幾束：垂在臉旁邊（不蓋耳朵）
+  xh=min(rz,64) if z0>30 else rz                         # 耳朵前面的幾束：垂在臉旁邊（不蓋耳朵）
   p0=math.asin(max(-1,min(1,XP/rz)));p1=s*math.asin(min(1,xh/rz))
   ye=CY-rz*math.cos(p1);La=rz*abs(p1-p0);L=La+(tip-ye)
-  tuck=-24 if -28<z0<=14 else None
+  tuck=-24 if -28<z0<=30 else None   # 使用者教學圖：近側那大片從耳朵後面過去，耳朵露出來
   fl=rnd.uniform(3,7)
   def f(l):
     l=np.asarray(l,float);a=np.clip(l/La,0,1);ps=p0+(p1-p0)*a
@@ -55,7 +57,8 @@ def curtain(s,z0,hw0,layer,tip,rnd):
     else:z=z0+(min(z0,18)-z0)*sm((y-CY)/80)                # 耳朵前面那幾束：往下慢慢往後退（側面看不會擋在臉前面）
     z=push_out(x,y,z,layer)
     return x,y,z
-  hw=lambda l:hw0*np.clip((L-l)/18,.12,1)               # 髮尾收尖
+  pt=rnd.random()<.35
+  hw=lambda l:hw0*(np.clip((L-l)/18,.12,1) if pt else np.clip((L-l)/6,.6,1))   # 髮尾：大多剪齊，少數收尖
   return Strand('curtain',('c',s,round(z0)),layer,f,L,hw)
 def bang(xt,yt,hw0,layer,i):
   # 前髮：從分線前端散開往下，尖尖的髮尾
@@ -68,7 +71,7 @@ def bang(xt,yt,hw0,layer,i):
   def hw(l):
     u=np.asarray(l,float)/L
     return hw0*(.3+.7*sm(u/.45))*np.clip((1-u)/.3,.06,1)
-  return Strand('bang',('b',i),layer,f,L,hw)
+  st=Strand('bang',('b',i),layer,f,L,hw);st.mass='bangL' if xt<XP else 'bangR';return st
 def lock(s,xs,hw0,layer,tip,rnd,i,dx=12):
   # 鬢髮：從分線前段斜斜下來，到眉尾高度在眉尾外面（蓋住太陽穴）→ 沿著臉的輪廓往外、往後滑到眼睛後面 → 垂下（耳朵前面），髮尾往外一點
   P=part_pt(PHF-.12-.1*i,RO+.8*layer);y0=P[1]
@@ -94,7 +97,7 @@ def back(th,hw0,layer,tip,rnd,i):
   # 後腦：從頭頂後面（分線尾端）散開，順著殼下來再垂下
   rl=RO+.8*layer;P=part_pt(PHC,rl);Q=np.array([rl*math.sin(th),CY,rl*math.cos(th)])
   c=np.array([0,CY,0]);a=(P-c)/rl;b=(Q-c)/rl;om=math.acos(np.clip(a@b,-1,1))
-  La=rl*om;L=La+(tip-CY);fl=rnd.uniform(2,6)
+  La=rl*om;L=La+(tip-CY);fl=rnd.uniform(6,12)             # 後髮髮尾往外散開，從兩邊長髮外面露出來
   def f(l):
     l=np.asarray(l,float);t=np.clip(l/La,0,1)[:,None]
     d=(np.sin((1-t)*om)*a+np.sin(t*om)*b)/math.sin(om)
@@ -104,9 +107,10 @@ def back(th,hw0,layer,tip,rnd,i):
     flare=fl*np.clip((yh-150)/(tip-150),0,1)**2
     x=np.where(hang,Q[0]+fx*flare,p[:,0]);y=np.where(hang,yh,p[:,1]);z=np.where(hang,Q[2]+fz*flare,p[:,2])
     return x,y,z
+  pt=rnd.random()<.35
   def hw(l):
     l=np.asarray(l,float)
-    return hw0*(.25+.75*sm(l/(La*.7)))*np.clip((L-l)/18,.12,1)
+    return hw0*(.25+.75*sm(l/(La*.7)))*(np.clip((L-l)/18,.12,1) if pt else np.clip((L-l)/6,.6,1))
   return Strand('back',('k',i),layer,f,L,hw)
 def build(seed=7):
   rnd=random.Random(seed);S=[]
@@ -120,7 +124,7 @@ def build(seed=7):
   for s in(-1,1):
     z=55;k=0
     while z>-36:
-      w=rnd.uniform(10,15);tip=rnd.uniform(228,250)
+      w=rnd.uniform(10,15);tip=rnd.uniform(236,248)
       S.append(curtain(s,z,w/2+1,k%2,tip,rnd));z-=w*.8;k+=1
   # 鬢髮：每邊兩束
   for s in(-1,1):
@@ -166,6 +170,8 @@ def samples(S,step=.4):
   Q=np.concatenate([o[0] for o in out]);NN=np.concatenate([o[1] for o in out]);ID=np.concatenate([o[2] for o in out])
   Q[:,2]=np.where(Q[:,2]<0,Q[:,2]*BACK,Q[:,2])
   return Q,NN,ID
+RANK={'bangL':3,'bangR':3,'side-1':2,'side1':2,'back':1,'base':0}
+MCOL={'bangL':(240,150,150),'bangR':(150,190,240),'side-1':(240,200,110),'side1':(150,210,140),'back':(190,150,220),'base':(205,170,110)}
 BIAS={'bang':2.5,'lock':1.5,'curtain':0,'back':-3,'base':-4}
 def project(S,Q,NN,ID,img,deg,cx):
   a=math.radians(deg);ca,sa=math.cos(a),math.sin(a)
@@ -187,6 +193,9 @@ def project(S,Q,NN,ID,img,deg,cx):
   return vis
 def paint(S,vis,img,stage):
   out=img.copy();white=(img==255).all(2)
+  if stage=='mass':
+    for (X,Y),(i,*_) in vis.items():out[Y,X]=MCOL[S[i].mass]
+    return out
   if stage=='pieces':
     rp=random.Random(1);pal={}
     for (X,Y),(i,*_) in vis.items():
@@ -201,11 +210,13 @@ def paint(S,vis,img,stage):
       if r is None or r[0]==i:continue
       a,b=S[i],S[r[0]]
       if 'base' in(a.kind,b.kind):continue                # 底層和束之間不畫線
-      key=tuple(sorted([i,r[0]]))
-      partline=a.kind==b.kind=='curtain' and a.sid[1]!=b.sid[1] and y<CY
-      f=full.setdefault(key,rf.random()<.3)
-      if not(f or partline) and y<CY-30:continue
-      E[(X,Y)]=(r[1]<layer)
+      if a.mass!=b.mass:                                  # 大塊和大塊之間：一定畫；上面那塊在下面那塊投影子
+        E[(X,Y)]=RANK[a.mass]>RANK[b.mass];continue
+      key=tuple(sorted([i,r[0]]))                         # 同一大塊裡面：只挑一些當髮絲（約 35%），有的到分線、有的只在中下段
+      g=full.setdefault(key,(rf.random()<.35,rf.random()<.4))
+      if not g[0]:continue
+      if not g[1] and y<CY-30:continue
+      E[(X,Y)]=False
   # 連起來不到 5 格的不畫（取樣跳動的雜點）
   seen={};comp=[]
   for p in E:
@@ -282,15 +293,16 @@ if __name__=='__main__':
   for ph in np.linspace(PHC,PHF,200):
     p=part_pt(ph,R);X,Y=proj(p)
     if p[0]*sa+p[2]*ca>-20:s1[Y,X]=(220,60,60)          # 1. 分線（畫在頭上）
-  bangs=[st for st in S if st.kind=='bang']
-  s2=render(turn,DEG,126,'pieces',bangs,samples(bangs))
+  bangs=[st for st in S if st.kind=='bang'];sides=[st for st in S if st.kind in('bang','curtain','lock')]
+  s2=render(turn,DEG,126,'mass',bangs,samples(bangs))
   def brow(img,deg,cx):
     al=math.radians(deg)
     for xx in np.linspace(-BROW,BROW,120):
       z=math.sqrt(R*R-xx*xx-14*14)+3;X=int(cx+xx*math.cos(al)-z*math.sin(al));img[CY+15:CY+17,X]=(230,40,40)
   brow(s2,DEG,126)
-  s3=render(turn,DEG,126,'pieces',S,QNI);s4=render(turn,DEG,126,'base',S,QNI);s5=render(turn,DEG,126,'final',S,QNI)
-  labs=['1. 頭頂先畫分線','2. 前髮寬到兩邊眉尾','3. 主要髮束（一束束）','4. 上色＋束和束的邊','5. 遊び毛＋高光']
+  s3=render(turn,DEG,126,'mass',sides,samples(sides))
+  s4=render(turn,DEG,126,'mass',S,QNI);s5=render(turn,DEG,126,'final',S,QNI)
+  labs=['1. 頭頂先畫分線','2. 前髮：分線左右兩半','3. 兩邊各一大片長髮','4. 後髮','5. 邊＋髮絲＋遊び毛＋高光']
   c=Image.new('RGB',(5*300,380),'white');d=ImageDraw.Draw(c)
   for k,(im,lab) in enumerate(zip([s1,s2,s3,s4,s5],labs)):
     d.text((k*300+6,4),lab,fill='black',font=F)
