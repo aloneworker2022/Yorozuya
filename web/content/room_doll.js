@@ -1350,6 +1350,54 @@
       return lam > .8 ? 3 : lam < .3 ? 1 : 2;
     }
     /** 乳房邊緣：這格是乳房，旁邊是身體（比它遠 ≥ thr）或外面 → 描線。 */
+    /** 正面平視（2026-11-19，聊天時放大的她）：正交投影、視線沿 −y（她面向鏡頭），螢幕 x＝世界 x、螢幕 y＝−z。
+     *  顏色跟房間的半透明黑影一樣（BODY_RGB／HAIR_RGB…）；畫布依身形自動定大小，腳底＝anchor。k＝每模型單位幾像素。 */
+    function renderFront(doll, pose = 'idle', frame = 0, k = 1.2) {
+      const { sh } = build(doll, pose, frame, 0);
+      const prims = sh.prims, np = prims.length;
+      const wb = prims.map(p => { let q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]]; if (p.xf) { const w = mulV(p.xf.R, q); q = [w[0] + p.xf.t[0], w[1] + p.xf.t[1], w[2] + p.xf.t[2]]; } return q; });
+      let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, z1 = -1e9;
+      for (let i = 0; i < np; i++) {
+        const r = prims[i].br;
+        x0 = Math.min(x0, wb[i][0] - r); x1 = Math.max(x1, wb[i][0] + r);
+        y0 = Math.min(y0, wb[i][1] - r); y1 = Math.max(y1, wb[i][1] + r); z1 = Math.max(z1, wb[i][2] + r);
+      }
+      const half = Math.ceil(Math.max(-x0, x1) * k) + 2;
+      const width = half * 2, ax = half, ay = Math.ceil(Math.min(z1, 140) * k) + 2, height = ay + 3;
+      const n = width * height, hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n);
+      const dist = [0, 0, 0];
+      for (let py = 0; py < height; py++) {
+        const Z = (ay - py - .5) / k;
+        for (let px = 0; px < width; px++) {
+          const X = (px + .5 - ax) / k;
+          const cand = [];
+          for (let i = 0; i < np; i++) { const r = prims[i].br, dx = X - wb[i][0], dz = Z - wb[i][2]; if (dx * dx + dz * dz < r * r) cand.push(i); }
+          if (!cand.length) continue;
+          const idx = py * width + px;
+          let Y = y1;
+          for (let it = 0; it < 160 && Y >= y0; it++) {
+            dist[0] = dist[1] = dist[2] = 1e3;
+            let bb = 0;
+            for (const i of cand) { const m = prims[i].mat, d = primDist(prims[i], X, Y, Z); if (d < dist[m]) { dist[m] = d; if (m === 0) bb = prims[i].bust ? 1 : 0; } }
+            const d = Math.min(dist[0], dist[1], dist[2]);
+            if (d < .05) { hit[idx] = 1; tt[idx] = Y; let mm = dist[1] < dist[0] + .15 ? 2 : 1; if (dist[2] < .05 && dist[1] > .05) mm = 3; mat[idx] = mm; bust[idx] = mm === 1 ? bb : 0; break; }
+            Y -= Math.max(d, .08) * .9;
+          }
+        }
+      }
+      const pixels = new Uint8ClampedArray(n * 4);
+      const set = (i, rgb, a) => { pixels[i * 4] = rgb[0]; pixels[i * 4 + 1] = rgb[1]; pixels[i * 4 + 2] = rgb[2]; pixels[i * 4 + 3] = a; };
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        const i = y * width + x;
+        if (!hit[i]) continue;
+        if (mat[i] === 2) { const up = y > 0 && hit[i - width] && mat[i - width] === 2; set(i, up ? HAIR_RGB : HAIR_HI_RGB, HAIR_A); continue; }
+        if (mat[i] === 3) { set(i, MARK_RGB, BODY_A); continue; }
+        let near = false;
+        for (const j of [i - width, i + width, i - 1, i + 1]) if (j >= 0 && j < n && hit[j] && tt[j] > tt[i] + 3.5) { near = true; break; }
+        set(i, near ? LINE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
+      }
+      return { width, height, anchor: { x: ax, y: ay }, pixels, scale: k };
+    }
     function bustEdge(bust, hit, tt, i, x, y, w, h, thr) {
       if (!bust[i]) return false;
       // 上緣（往胸口接上去那邊）不描，只描下緣弧線和外側，不然正面看像穿了胸罩
@@ -1374,7 +1422,7 @@
     return { SEX_DEPTH, W, H_CANVAS, ANCHOR, BODY_RGB, HAIR_RGB, HAIR_HI_RGB, LINE_RGB, MARK_RGB, BODY_A, HAIR_A, CUP_R, CUP_BOUNCE,
       BUILDS, BUILD_SPRING, SPRING, HAIRS, HAIR_MAP, WALK_FRAMES, WALK_FPS, DEFAULT, SEAT_YAW, POSES, CANVAS,
       SEX_THRUST, SEX_FRAME_MS, HER_J, SEX_POSES, PEEK_BED_Z, sexAnchor, sexBounceOf, renderMan, MAN_RGB, MAN_LINE_RGB, BUST_RGB, SIDE_PAL, MAN_PAL,
-      lookToDoll, dollKey, hairStyle, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, mirror };
+      lookToDoll, dollKey, hairStyle, skirtOf, proportions, cupRadius, bounceCurve, bounceAt, build, render, renderFront, mirror };
   }
   const api = factory();
   api.factorySource = factory.toString();
