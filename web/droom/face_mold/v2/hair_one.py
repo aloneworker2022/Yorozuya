@@ -94,14 +94,22 @@ def render(img,stage):
   # 3 底色＋分髮束
   out[back&white]=C['sh'];out[sides]=C['mid'];out[bangs]=C['mid']
   yy,xx=np.mgrid[0:N,0:N]
+  import random
   # 6 暗：後髮靠脖子／肩膀那段更暗；兩側靠臉那條暗；瀏海最下面一格暗
-  out[back&white&(np.abs(xx-CX)<RO-6)&(yy>CY+40)]=C['dk']
+  # 後髮（使用者 2026-11-19：臉頰兩側那塊顏色不對、看起來跟臉型一樣）：
+  # 原本整片用最暗色，形狀剛好是下巴的輪廓 → 改成跟頭髮同一個中間色，只有貼著脖子的窄窄一條暗、再往外一格半暗，
+  # 加幾條直的髮絲，看起來是垂在後面的頭髮，不是一塊黑影
+  bw=back&white&~sides&~bangs                            # 只有露在外面的後髮（不要蓋到兩側和瀏海）
+  out[bw]=C['mid']
+  out[bw&(yy>CY+64)&(np.abs(xx-CX)<=30)]=C['sh']
+  out[bw&(yy>CY+64)&(np.abs(xx-CX)<=24)]=C['dk']
+
   for s in(-1,1):
     inner=sides&(np.abs(xx-(CX+s*56))<=1)&(yy>124);out[inner]=C['sh']   # 兩側靠臉一點點暗（不是描邊）
   bot=bangs&~np.roll(bangs,-1,0)&(np.abs(xx-CX)<=54);out[bot]=C['sh']   # 只在瀏海那段（不要在太陽穴畫出一條橫的黑邊）
   if HS=='bob':
     curl=sides&~np.roll(sides,-6,0);out[curl&(yy>190)]=C['sh']
-    out[back&white&(yy>200)]=C['dk']
+    out[back&white&~sides&(yy>200)&(np.abs(xx-CX)<=26)]=C['dk']
   # 瀏海在額頭上的影子（瀏海下緣下面一格）
   shadow=np.roll(bangs,1,0)&~bangs&~white&~sides&~back
   out[shadow]=SKSH
@@ -131,9 +139,15 @@ def render(img,stage):
           xx=x+side*k
           if 0<=xx<N and bangs[y,xx] and tuple(out[y,xx])==C['mid']:out[y,xx]=C['sh']
   for s in(-1,1):
-    for x in(CX+s*62,CX+s*70):
-      for y in range(140,232 if HS!='bob' else 210):
-        if sides[y,x] and (y//9)%3!=0:out[y,x]=C['ln']
+    # 兩側也照瀏海的規則：分界線有的沒有、有的細、有的粗陰影，長短不一（不再是虛線）
+    rs=random.Random(21+s)
+    for x in range(CX+s*58,CX+s*(RO+3),s*rs.choice([3,4,5])):
+      kind=rs.choices(['none','thin','thick'],[.35,.4,.25])[0]
+      if kind=='none':continue
+      y0=rs.randint(118,160);y1=rs.randint(190,236 if HS!='bob' else 212)
+      for y in range(y0,y1):
+        if sides[y,x] and tuple(out[y,x]) in(C['mid'],C['li']):out[y,x]=C['ln']
+        if kind=='thick' and (y-y0)>(y1-y0)*.4 and sides[y,x+s]:out[y,x+s]=C['sh']
   # 5＋8 亮（使用者：反光是一條白的、兩邊沿著頭髮的邊緣，不是一塊方塊）：
   # 一條細的白色光環繞過頭——兩端貼著頭髮外緣、中間往下彎；在髮束分界的地方斷開；上下各一格淡亮；兩端再沿著外緣往下帶一段
   RY0,RD=CY-34,15
