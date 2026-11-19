@@ -2636,12 +2636,13 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         # 劇本一律補雙人；弱／中文 slot 否則會變成 solo upper-body 立繪
         if not sdtags.is_multi_scene(extra):
             boost.extend(["1man", "1girl"])
-        # 背後第三人稱已寫 from behind 且無 pov → 不硬塞 first-person
-        third = sdtags.extra_has_key(extra, ("from behind", "back focus", "third person"))
-        if not sdtags.is_pov_cam(extra) and not third:
-            boost.extend(["from his pov", "male hands"])
-        elif not sdtags.is_pov_cam(extra) and sdtags.is_oral_act(extra):
-            boost.extend(["from his pov"])
+        # 劇本：弱 extra 時補第一人稱。老婆還債要廣角第三人稱、兩人都入鏡，不要塞 POV。
+        if script_mode:
+            third = sdtags.extra_has_key(extra, ("from behind", "back focus", "third person"))
+            if not sdtags.is_pov_cam(extra) and not third:
+                boost.extend(["from his pov", "male hands"])
+            elif not sdtags.is_pov_cam(extra) and sdtags.is_oral_act(extra):
+                boost.extend(["from his pov"])
         if boost:
             extra = ", ".join(boost) + (", " + extra if extra else "")
             opts = {**opts, "extra": extra}
@@ -3399,7 +3400,7 @@ def _imggen_opts(t: ImgGenIn) -> tuple[str, str, dict]:
         # Comfy：prompt 有值才原樣送；出卡應留空，讓 _comfy_prompt_for 用人設 + extra
         # Grok：整張圖不吃前端 prompt（只在分段 part、或做愛局部橫幅時吃）
         "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS or sex_strip) else "",
-        "lead": (t.lead or "").strip()[:400],
+        "lead": (t.lead or "").strip()[: (wifepay.PROMPT_MAX if wifepay_kind else 400)],
         "raw_prompt": bool(t.raw_prompt) and key.startswith("swap-pair:"),
         "pair": t.pair if (isinstance(t.pair, dict) and key.startswith("swap-pair:")) else None,
     }
@@ -3786,13 +3787,19 @@ def _img_prompt_trace(t: ImgGenIn) -> dict:
         garment=garment,
         solo=comfy.is_solo_pose_shot((t.shot or "").strip().lower()),
     )
+    scene_kind = str(t.scene_kind or "").strip()
     comfy_full, unk2 = _comfy_prompt_for({
         "character": ch, "framing": framing, "rating": rating,
         "style": style, "extra": extra, "outfit": t.outfit or "",
         "lock_identity": bool(t.lock_identity),
         "flat_bg": bool(t.flat_bg),
         "shot": (t.shot or "").strip().lower(),
+        "scene_kind": scene_kind,
     })
+    lead = (t.lead or "").strip()
+    if lead:
+        cap = wifepay.PROMPT_MAX if scene_kind.lower() == "wifepay" else 400
+        comfy_full = _lead_merge(lead[:cap], comfy_full)
     unknown = list(dict.fromkeys([*unknown, *unk2]))
     return {
         "layers": layers,
@@ -5141,7 +5148,14 @@ def wifepay_config_get():
         extras.extend(it.get("tags") or [])
     for s in wifepay.load_scripts(ASSETS_DIR):
         extras.extend(s.get("tags") or [])
-    return {**cfg, "pose_catalog": wifepay.list_poses(ASSETS_DIR, extras)}
+    return {
+        **cfg,
+        "pose_catalog": wifepay.list_poses(ASSETS_DIR, extras),
+        "defaults": {
+            "global_prompt": wifepay.GLOBAL_POS_DEFAULT,
+            "global_negative": wifepay.GLOBAL_NEG_DEFAULT,
+        },
+    }
 
 
 @app.put("/api/wifepay/config")
@@ -5249,13 +5263,9 @@ def wifepay_gen(body: dict):
         raise HTTPException(status_code=400, detail="圖庫沒有底圖檔，不能文生圖。請先到 /wifepay 上傳。")
     info = dict(body)
     variables = wifepay.persona_vars(info)
-    prompt = wifepay.expand(str(body.get("prompt") if body.get("prompt") is not None else item.get("prompt") or ""), variables)
-    negative = wifepay.expand(
-        str(body.get("negative") if body.get("negative") is not None else item.get("negative") or ""),
-        variables,
-    )
-    if not prompt.strip():
-        prompt = wifepay.expand(wifepay.DEFAULT_ITEM_PROMPT, variables)
+    raw_prompt = str(body.get("prompt") if body.get("prompt") is not None else item.get("prompt") or "")
+    raw_neg = str(body.get("negative") if body.get("negative") is not None else item.get("negative") or "")
+    composed = wifepay.compose_gen_prompts(wifepay.load_config(ASSETS_DIR), raw_prompt, raw_neg, variables)
     denoise = wifepay.clamp_denoise(
         body["denoise"] if body.get("denoise") is not None else item.get("denoise")
     )
@@ -5268,9 +5278,10 @@ def wifepay_gen(body: dict):
         rating="nsfw",
         style=str(body.get("style") or "anime"),
         framing="full",
-        extra=prompt,
+        extra=composed["extra"],
+        lead=composed["lead"],
         prompt="",
-        negative=negative or wifepay.DEFAULT_NEGATIVE,
+        negative=composed["negative"],
         pose_ref=item["url"],
         pose_denoise=denoise,
         width=int(body.get("width") or wifepay.GEN_WIDTH),
@@ -5285,6 +5296,47 @@ def wifepay_gen(body: dict):
         retry=body.get("retry") is not False,
     )
     return imggen_submit(t)
+
+
+@app.post("/api/wifepay/preview-prompt")
+def wifepay_preview_prompt(body: dict | None = None):
+    """不生圖，只回合併後的正向／負向（含預設提示詞）以及人設展開結果。"""
+    body = body or {}
+    cfg = wifepay.load_config(ASSETS_DIR)
+    live = dict(cfg)
+    if "global_prompt" in body:
+        live["global_prompt"] = str(body.get("global_prompt") or "")
+    if "global_negative" in body:
+        live["global_negative"] = str(body.get("global_negative") or "")
+    item = wifepay.get_item(ASSETS_DIR, str(body.get("item_id") or "")) or {}
+    raw_prompt = str(body.get("prompt") if body.get("prompt") is not None else item.get("prompt") or "")
+    raw_neg = str(body.get("negative") if body.get("negative") is not None else item.get("negative") or "")
+    composed = wifepay.compose_gen_prompts(live, raw_prompt, raw_neg, wifepay.persona_vars(body))
+    ch = body.get("character") if isinstance(body.get("character"), dict) else None
+    t = ImgGenIn(
+        provider="comfy",
+        character=ch,
+        name=str(body.get("name") or (ch or {}).get("name") or ""),
+        rating="nsfw",
+        style=str(body.get("style") or "anime"),
+        framing="full",
+        extra=composed["extra"],
+        lead=composed["lead"],
+        prompt="",
+        negative=composed["negative"],
+        scene_kind="wifepay",
+        lock_identity=True,
+        cutout=False,
+        flat_bg=False,
+    )
+    return {
+        **composed,
+        "defaults": {
+            "global_prompt": wifepay.GLOBAL_POS_DEFAULT,
+            "global_negative": wifepay.GLOBAL_NEG_DEFAULT,
+        },
+        "trace": _img_prompt_trace(t),
+    }
 
 
 @app.post("/api/rental/line")

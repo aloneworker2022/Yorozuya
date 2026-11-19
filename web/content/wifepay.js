@@ -28,6 +28,10 @@ let selectedPose = "";
 let extraPoses = [];
 let currentStep = 1;
 let charSec = 0.9;
+const DEFAULT_GLOBAL_POS = "wide angle, wide shot, full body, two people, 1girl, 1boy, both visible, third-person view";
+const DEFAULT_GLOBAL_NEG = "pov, first-person view, male pov, close-up, cropped, out of frame, solo";
+let promptDefaults = { global_prompt: DEFAULT_GLOBAL_POS, global_negative: DEFAULT_GLOBAL_NEG };
+
 
 function esc(s) {
   return String(s ?? "")
@@ -360,13 +364,27 @@ async function addPose() {
   }
 }
 
+function syncGlobalPromptUi(cfg) {
+  const pos = String(cfg?.global_prompt || promptDefaults.global_prompt || DEFAULT_GLOBAL_POS);
+  const neg = String(cfg?.global_negative || promptDefaults.global_negative || DEFAULT_GLOBAL_NEG);
+  if ($("global-prompt")) $("global-prompt").value = pos;
+  if ($("global-neg")) $("global-neg").value = neg;
+}
+
 async function loadWpConfig() {
   try {
     const cfg = await fetchConfig();
     charSec = cfg.char_sec;
     extraPoses = cfg.poses || [];
     poseCatalog = cfg.pose_catalog || [];
+    if (cfg.defaults) {
+      promptDefaults = {
+        global_prompt: cfg.defaults.global_prompt || DEFAULT_GLOBAL_POS,
+        global_negative: cfg.defaults.global_negative || DEFAULT_GLOBAL_NEG,
+      };
+    }
     syncCharSecUi(charSec);
+    syncGlobalPromptUi(cfg);
     if (!selectedPose && poseCatalog[0]) selectPose(poseCatalog[0].id);
     else renderPoseGrid();
   } catch (e) {
@@ -400,6 +418,20 @@ async function persistCharSec() {
     syncCharSecUi(j.char_sec ?? charSec);
     setStatus("gen-status", `✓ 已儲存打字速度：每字 ${charSec} 秒`);
   } catch (e) {
+    setStatus("gen-status", e.message, true);
+  }
+}
+
+async function persistGlobalPrompts(reset = false) {
+  const pos = reset ? (promptDefaults.global_prompt || DEFAULT_GLOBAL_POS) : ($("global-prompt")?.value || "");
+  const neg = reset ? (promptDefaults.global_negative || DEFAULT_GLOBAL_NEG) : ($("global-neg")?.value || "");
+  try {
+    const j = await saveConfig({ global_prompt: pos, global_negative: neg });
+    syncGlobalPromptUi(j);
+    setStatus("prompt-global-status", reset ? "✓ 已恢復並儲存程式預設提示詞" : "✓ 已儲存預設正面／負面提示詞");
+    setStatus("gen-status", reset ? "✓ 已恢復並儲存程式預設提示詞" : "✓ 已儲存預設提示詞");
+  } catch (e) {
+    setStatus("prompt-global-status", e.message, true);
     setStatus("gen-status", e.message, true);
   }
 }
@@ -569,31 +601,32 @@ async function previewPrompt() {
   if (!it) { setStatus("gen-status", "先選一張底圖", true); return; }
   const info = genInfo();
   const body = {
-    provider: "comfy",
+    ...info,
+    item_id: it.id,
     character: currentGirl,
     name: currentGirl.name || "",
-    rating: "nsfw",
-    style: "anime",
-    framing: "full",
-    extra: $("item-prompt").value.trim(),
-    negative: $("item-neg").value.trim(),
-    prompt: "",
-    scene_kind: "wifepay",
-    lock_identity: true,
+    prompt: $("item-prompt").value,
+    negative: $("item-neg").value,
+    global_prompt: $("global-prompt")?.value || "",
+    global_negative: $("global-neg")?.value || "",
   };
   try {
-    const j = await apiJson("/api/imggen/preview", "POST", body);
-    const pos = String(j.trace?.comfy_prompt || j.prompt || "").trim();
+    const j = await apiJson("/api/wifepay/preview-prompt", "POST", body);
+    const pos = String(j.trace?.comfy_prompt || j.positive || "").trim();
     const neg = String(j.trace?.comfy_negative || j.negative || "").trim();
     $("prompt-sheet").textContent = [
       "【底圖】" + it.url,
-      "【模板】" + ($("item-prompt").value.trim() || "（空）"),
+      "【預設正面】" + (j.global_prompt || $("global-prompt")?.value || "（空）"),
+      "【這張 prompt】" + (j.item_prompt || $("item-prompt").value.trim() || "（空）"),
       "",
-      "【合併後正向（人設 + 模板；送生圖時 extra）】",
+      "【合併後正向（預設在前 + 人設 + 這張；會送進 Comfy）】",
       pos || "（空，變數會在伺服器展開）",
       "",
-      "【負向】",
-      neg || $("item-neg").value.trim() || "（空）",
+      "【預設負面】" + (j.global_negative || $("global-neg")?.value || "（空）"),
+      "【這張 negative】" + ($("item-neg").value.trim() || "（空）"),
+      "",
+      "【合併後負向（會送進 Comfy，含 18+ 安全詞）】",
+      neg || j.negative || "（空）",
       "",
       `體位 ${info.pose} · 客人 ${info.build} · denoise ${overDenoise(it)}`,
     ].join("\n");
@@ -888,6 +921,8 @@ function bind() {
   });
   $("btn-ig-ping")?.addEventListener("click", () => pingEngine());
   $("btn-preview-prompt")?.addEventListener("click", () => previewPrompt());
+  $("btn-global-save")?.addEventListener("click", () => persistGlobalPrompts(false));
+  $("btn-global-reset")?.addEventListener("click", () => persistGlobalPrompts(true));
   $("btn-script-save")?.addEventListener("click", () => saveCurrentScript().catch((e) => setStatus("script-status", e.message, true)));
   $("btn-script-add")?.addEventListener("click", () => addNewScript().catch((e) => setStatus("script-status", e.message, true)));
   $("btn-script-del")?.addEventListener("click", () => deleteCurrentScript().catch((e) => setStatus("script-status", e.message, true)));

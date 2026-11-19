@@ -364,6 +364,8 @@ def test_config_char_sec_persist():
     assert migrated["char_sec"] == 0.9 and migrated["poses"] == ["standing"]
     stored = json.loads(path.read_text("utf-8"))
     assert stored["char_sec"] == 0.9 and stored["poses"] == ["standing"]
+    assert stored["global_prompt"] == W.GLOBAL_POS_DEFAULT
+    assert stored["global_negative"] == W.GLOBAL_NEG_DEFAULT
     # 標點等待按比例放大
     assert W.type_delay_ms("字", 0.9) == 900
     assert W.type_delay_ms("，", 0.9) == int(round(900 * (50 / 26)))
@@ -403,6 +405,67 @@ def test_pick_peek_side_consistency():
     assert mixed["fracs"][1] in W.PEEK_FRACS
 
 
+def test_global_prompts_compose_and_config():
+    assets = _assets()
+    cfg = W.load_config(assets)
+    assert cfg["global_prompt"] == W.GLOBAL_POS_DEFAULT
+    assert cfg["global_negative"] == W.GLOBAL_NEG_DEFAULT
+    assert "wide angle" in cfg["global_prompt"] and "third-person view" in cfg["global_prompt"]
+    assert "first-person view" in cfg["global_negative"] and "solo" in cfg["global_negative"]
+    # 不分大小寫去重，保留第一次的寫法，後段接在後面
+    assert W.merge_prompt_tags("Wide Angle, 1girl", "wide angle, 1boy, 1girl") == "Wide Angle, 1girl, 1boy"
+    composed = W.compose_gen_prompts(
+        cfg, W.DEFAULT_ITEM_PROMPT, "",
+        {"hair": "black hair", "breasts": "large breasts", "body": "slim", "pose": "cowgirl"},
+    )
+    assert composed["positive"].startswith(W.GLOBAL_POS_DEFAULT)
+    tags = [x.strip().lower() for x in composed["positive"].split(",")]
+    assert tags.count("1girl") == 1 and tags.count("1boy") == 1
+    assert "cowgirl pose" in composed["positive"] and "black hair" in composed["positive"]
+    neg = composed["negative"].lower()
+    for w in ("pov", "first-person view", "male pov", "close-up", "cropped", "out of frame", "solo", "child", "loli"):
+        assert w in neg
+    assert composed["lead"] == W.GLOBAL_POS_DEFAULT
+    assert composed["extra"].startswith("1girl, 1boy")
+    # 存自訂預設；之後只改打字速度時不要蓋掉
+    saved = W.save_config(assets, {"global_prompt": "wide angle, two people", "global_negative": "pov, solo"})
+    assert saved["global_prompt"] == "wide angle, two people"
+    assert saved["global_negative"] == "pov, solo"
+    again = W.save_config(assets, {"char_sec": 0.5, "poses": ["standing"]})
+    assert again["char_sec"] == 0.5 and again["poses"] == ["standing"]
+    assert again["global_prompt"] == "wide angle, two people"
+    assert again["global_negative"] == "pov, solo"
+    # 存空字串回到程式預設
+    restored = W.save_config(assets, {"global_prompt": "  ", "global_negative": ""})
+    assert restored["global_prompt"] == W.GLOBAL_POS_DEFAULT
+    assert restored["global_negative"] == W.GLOBAL_NEG_DEFAULT
+    # 遷 1.2 秒時保留使用者改過的預設提示詞
+    path = W.config_path(assets)
+    path.write_text(json.dumps({
+        "char_sec": 1.2, "poses": ["doggy"],
+        "global_prompt": "wide shot only", "global_negative": "pov",
+    }, ensure_ascii=False), encoding="utf-8")
+    migrated = W.load_config(assets)
+    assert migrated["char_sec"] == 0.9 and migrated["poses"] == ["doggy"]
+    assert migrated["global_prompt"] == "wide shot only"
+    assert migrated["global_negative"] == "pov"
+    stored = json.loads(path.read_text("utf-8"))
+    assert stored["char_sec"] == 0.9 and stored["global_prompt"] == "wide shot only"
+
+
+def test_img2img_workflow_passes_negative():
+    import comfy
+    wf = comfy.build_img2img_workflow(
+        ckpt="x.safetensors",
+        positive="wide angle, 1girl, 1boy",
+        negative="pov, first-person view, male pov, solo",
+        image_name="ref.png",
+    )
+    assert wf["3"]["class_type"] == "CLIPTextEncode"
+    assert wf["3"]["inputs"]["text"] == "pov, first-person view, male pov, solo"
+    assert wf["5"]["class_type"] == "KSampler"
+    assert wf["5"]["inputs"]["negative"] == ["3", 0]
+    assert wf["2"]["inputs"]["text"] == "wide angle, 1girl, 1boy"
 
 
 if __name__ == "__main__":
@@ -418,4 +481,6 @@ if __name__ == "__main__":
     test_scripts_seed_and_merge()
     test_config_char_sec_persist()
     test_pick_peek_side_consistency()
+    test_global_prompts_compose_and_config()
+    test_img2img_workflow_passes_negative()
     print("wifepay_test: ok")

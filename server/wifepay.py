@@ -1,7 +1,7 @@
 """老婆還債偷看：圖生圖圖庫與三段式對話（旁白→男→她）。
 
 圖庫在 assets/wifepay/gallery/＋index.json；產出在 assets/wifepay/out/。
-對話模板在 assets/wifepay/dialog.json；劇本存在 assets/wifepay/scripts.json（可存多種、開門隨機抽）。設定（打字速度、自訂姿勢）在 assets/wifepay/config.json，缺檔時用程式預設。
+對話模板在 assets/wifepay/dialog.json；劇本存在 assets/wifepay/scripts.json（可存多種、開門隨機抽）。設定（打字速度、自訂姿勢、預設正面／負面提示詞）在 assets/wifepay/config.json，缺檔時用程式預設。
 assets/wifepay/ 整個目錄被 gitignore，內建劇本以 STOCK_SCRIPTS 寫在程式裡，缺檔或舊檔缺少新 id 時由程式補上，不依賴倉庫裡的 json。內容規則沿用 escort_lines：成年人、自願、不寫強迫／未成年。
 """
 from __future__ import annotations
@@ -45,6 +45,11 @@ DEFAULT_NEGATIVE = (
     "child, loli, shota, underage, teen, young, forced, rape, violence, "
     "worst quality, blurry, deformed, extra limbs"
 )
+# 每張圖都會套用的廣角／雙人構圖；負面擋第一人稱與單人特寫。18+ 安全負向仍走 DEFAULT_NEGATIVE。
+GLOBAL_POS_DEFAULT = (
+    "wide angle, wide shot, full body, two people, 1girl, 1boy, both visible, third-person view"
+)
+GLOBAL_NEG_DEFAULT = "pov, first-person view, male pov, close-up, cropped, out of frame, solo"
 
 # 舊預設：使用者若沒改過 dialog.json（內容等於這份），載入時遷到新預設。
 OLD_DIALOG = {
@@ -278,9 +283,60 @@ def _is_legacy_char_sec(v) -> bool:
         return False
 
 
+def clip_prompt(v, default: str = "") -> str:
+    s = str(v if v is not None else "").strip()
+    if not s:
+        return default
+    return s[:PROMPT_MAX]
+
+
+def split_prompt_tags(text: str) -> list[str]:
+    """依逗號切開提示詞，去掉空白，不分大小寫去重、保留首次出現的寫法。"""
+    out: list[str] = []
+    seen: set[str] = set()
+    for part in str(text or "").replace("，", ",").split(","):
+        tag = " ".join(part.split())
+        if not tag:
+            continue
+        key = tag.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(tag)
+    return out
+
+
+def merge_prompt_tags(*parts: str) -> str:
+    return ", ".join(split_prompt_tags(", ".join(str(p or "") for p in parts)))
+
+
+def _prompt_field(raw: dict, key: str, default: str) -> str:
+    if key not in raw:
+        return default
+    return clip_prompt(raw.get(key), default)
+
+
+def _config_from_raw(raw: dict | None) -> tuple[dict, bool]:
+    """組設定；若 char_sec 仍是舊預設 1.2，回傳 (設定, 需要寫回)。其他欄位保留。"""
+    raw = raw if isinstance(raw, dict) else {}
+    wrote = bool("char_sec" in raw and raw.get("char_sec") is not None and _is_legacy_char_sec(raw.get("char_sec")))
+    if wrote:
+        char_sec = CHAR_SEC_DEFAULT
+    elif "char_sec" in raw and raw.get("char_sec") is not None:
+        char_sec = clamp_char_sec(raw.get("char_sec"))
+    else:
+        char_sec = CHAR_SEC_DEFAULT
+    return {
+        "char_sec": char_sec,
+        "poses": clean_tags(raw.get("poses")),
+        "global_prompt": _prompt_field(raw, "global_prompt", GLOBAL_POS_DEFAULT),
+        "global_negative": _prompt_field(raw, "global_negative", GLOBAL_NEG_DEFAULT),
+    }, wrote
+
+
 def load_config(assets: Path) -> dict:
-    """打字速度與自訂姿勢。缺檔或壞檔用程式預設，不依賴被 gitignore 的資產檔。
-    若檔裡還是舊預設 1.2，自動遷到 0.9 並寫回；使用者改過的其他值不動。"""
+    """打字速度、自訂姿勢、預設正面／負面提示詞。缺檔或壞檔用程式預設，不依賴被 gitignore 的資產檔。
+    若檔裡還是舊預設 1.2，自動遷到 0.9 並寫回（其他欄位保留）；使用者改過的其他值不動。"""
     ensure_dirs(assets)
     raw = {}
     p = config_path(assets)
@@ -291,14 +347,10 @@ def load_config(assets: Path) -> dict:
                 raw = data
         except (OSError, json.JSONDecodeError):
             raw = {}
-    poses = clean_tags(raw.get("poses"))
-    if "char_sec" in raw and raw.get("char_sec") is not None and _is_legacy_char_sec(raw.get("char_sec")):
-        cur = {"char_sec": CHAR_SEC_DEFAULT, "poses": poses}
+    cur, wrote = _config_from_raw(raw)
+    if wrote:
         _atomic_write(p, json.dumps(cur, ensure_ascii=False, indent=2))
-        return cur
-    if "char_sec" in raw and raw.get("char_sec") is not None:
-        return {"char_sec": clamp_char_sec(raw.get("char_sec")), "poses": poses}
-    return {"char_sec": CHAR_SEC_DEFAULT, "poses": poses}
+    return cur
 
 
 def save_config(assets: Path, data: dict | None = None) -> dict:
@@ -308,6 +360,10 @@ def save_config(assets: Path, data: dict | None = None) -> dict:
             cur["char_sec"] = clamp_char_sec(data.get("char_sec"))
         if "poses" in data:
             cur["poses"] = clean_tags(data.get("poses"))
+        if "global_prompt" in data:
+            cur["global_prompt"] = clip_prompt(data.get("global_prompt"), GLOBAL_POS_DEFAULT)
+        if "global_negative" in data:
+            cur["global_negative"] = clip_prompt(data.get("global_negative"), GLOBAL_NEG_DEFAULT)
     _atomic_write(config_path(assets), json.dumps(cur, ensure_ascii=False, indent=2))
     return cur
 
@@ -1011,6 +1067,33 @@ def expand(text: str, variables: dict | None = None) -> str:
         return str(variables.get(m.group(1), "") or "")
 
     return _VAR_RE.sub(repl, str(text or ""))
+
+
+def compose_gen_prompts(cfg: dict | None, item_prompt: str = "", item_negative: str = "",
+                        variables: dict | None = None) -> dict:
+    """合併全域預設與單張 prompt／negative（不分大小寫去重）。
+    正向：預設在前、單張接在後（空單張用 DEFAULT_ITEM_PROMPT）。
+    負向：預設 + 單張 + 安全 DEFAULT_NEGATIVE（child／loli 等 18+ 規則不變）。
+    lead／extra 分別給 ImgGenIn，讓廣角雙人詞壓在 Comfy prompt 最前面。"""
+    cfg = cfg if isinstance(cfg, dict) else {}
+    gpos = clip_prompt(cfg.get("global_prompt"), GLOBAL_POS_DEFAULT)
+    gneg = clip_prompt(cfg.get("global_negative"), GLOBAL_NEG_DEFAULT)
+    item_pos = expand(item_prompt or "", variables)
+    item_neg = expand(item_negative or "", variables)
+    if not item_pos.strip():
+        item_pos = expand(DEFAULT_ITEM_PROMPT, variables)
+    positive = merge_prompt_tags(gpos, item_pos)
+    negative = merge_prompt_tags(gneg, item_neg, DEFAULT_NEGATIVE)
+    return {
+        "global_prompt": gpos,
+        "global_negative": gneg,
+        "item_prompt": item_pos,
+        "item_negative": item_neg,
+        "positive": positive,
+        "negative": negative,
+        "lead": gpos,
+        "extra": item_pos,
+    }
 
 
 def pick_count(rnd=None) -> int:
