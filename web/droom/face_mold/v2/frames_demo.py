@@ -24,7 +24,7 @@ for key in KEYS:
   im=Image.fromarray(img)
   tiles.append((TYPES[key]['name'],im.crop((40,80,216,230)).resize((352,300),Image.NEAREST)))
   zooms.append((TYPES[key]['name'],im.crop((122,122,194,178)).resize((432,336),Image.NEAREST)))
-NC=3 if len(KEYS)==11 else 2;NR=4 if len(KEYS)==11 else (len(KEYS)+1)//2
+NC=3 if len(KEYS) in(11,18) else 2;NR=4 if len(KEYS)==11 else 6 if len(KEYS)==18 else (len(KEYS)+1)//2
 c=Image.new('RGB',(NC*(352+476+20)+20,NR*350+20),'white');d=ImageDraw.Draw(c)
 for i,((n,t),(_,z)) in enumerate(zip(tiles,zooms)):
   if len(KEYS)==11:col,r=(0,i) if i<3 else divmod(i-3,4);col=col+(1 if i>=3 and len(KEYS)==11 else 0)
