@@ -5,7 +5,7 @@
 #   內側那束：從太陽穴下來，蓋到臉頰邊緣（Inner strands overlap the face），過了下巴往外、波浪往下
 #   前髮：眉毛高度一條線，寬到兩邊太陽穴
 #   髮尾：底下幾個捲起來的尖
-# 用法：python3 hair_wavy.py <有 front_f.png 的資料夾> <輸出.png>
+# 用法：python3 hair_wavy.py <有 front_f.png 的資料夾> <第2步輸出.png> [第3步輸出.png]
 import os,sys,math
 import numpy as np
 from PIL import Image
@@ -68,3 +68,80 @@ if __name__=='__main__':
   D=sys.argv[1];img=np.array(Image.open(f'{D}/front_f.png').convert('RGB'))
   o=outline(img)
   Image.fromarray(o).resize((N*3,H*3),Image.NEAREST).save(sys.argv[2])
+# ---------------- 第 3 步：前髮一束束、髮流線、兩側分束（還是只有黑線；頭髮蓋住的地方塗白） ----------------
+from PIL import ImageDraw
+def xfun(pts):
+  P=np.array(crom(pts));o=np.argsort(P[:,1]);return lambda y:np.interp(y,P[o,1],P[o,0])
+def stage3(img):
+  out=extend(img)
+  domeL=[(CX+80*math.cos(a),CY-1+79*math.sin(a)) for a in np.radians(np.linspace(-90,-178,10))]
+  oL=[(46,128),(42,145),(33,166),(32,186),(39,203),(34,222),(24,242),(25,262),(33,280),(27,296),(22,304)]
+  iL=[(60,128),(62,146),(67,164),(76,186),(83,204),(84,214),(79,230),(70,250),(73,268),(82,284),(80,298),(74,306)]
+  fo,fi=xfun(domeL[-1:]+oL),xfun(iL)
+  # 前髮下緣：一束約 15 格，下緣剪齊、束和束之間往上缺一小口；兩側最外面那束長一點、往下框住臉
+  xs=[60,74,89,103,117,131,145,159,172,185,197]
+  yb=lambda x:134+.0*(x-CX)-(abs(x-CX)/68)**2*2
+  bang=[]
+  for k in range(len(xs)-1):
+    a,b=xs[k],xs[k+1];ya=yb(a)-3.5;yc=yb((a+b)/2)
+    if k==0:bang+=[(a,yb(a)+8),(a+5,yb(a)+5),(b-3,yc+1),(b,ya)]
+    elif k==len(xs)-2:bang+=[(a,ya),(a+3,yc+1),(b-5,yb(b)+5),(b,yb(b)+8)]
+    else:bang+=[(a,ya),(a+2,yc),(b-2,yc),(b,ya)] if k>0 else []
+  # 填白：頭頂＋前髮、左右兩側（含耳朵、臉頰邊）
+  m=Image.new('L',(N,H),0);d=ImageDraw.Draw(m)
+  top=domeL[::-1][:-1]+[(CX+(CX-x),y) for x,y in domeL][::-1] if False else None
+  arc=[(CX+80*math.cos(a),CY-1+79*math.sin(a)) for a in np.radians(np.linspace(-178,-2,60))]
+  d.polygon([(round(x),round(y)) for x,y in arc+[(2*CX-46+1,128)]+[(round(x),round(y)) for x,y in bang[::-1]]+[(46,128)]],fill=1)
+  ends={}
+  rnd=__import__('random').Random(4)
+  T=[0,.38,.7,1]
+  for s in(-1,1):
+    E=[300+rnd.uniform(-2,4) for _ in range(3)]
+    ends[s]=E
+    def X(t,y,s=s):
+      v=fi(y)+t*(fo(y)-fi(y));return v if s<0 else 2*CX-v+1
+    poly=[(X(1,y),y) for y in np.arange(124,E[2]-2,1)]+[(X(t,E[k]+2),E[k]+2) for k,t in((2,.85),(1,.55),(0,.2))]+[(X(0,y),y) for y in np.arange(E[0]-2,127,-1)]
+    d.polygon([(round(x),round(y)) for x,y in poly],fill=1)
+  M=np.array(m).astype(bool);out[M]=255
+  L=[]
+  # 頭頂圓頂
+  L.append(domeL);L.append(mirror(domeL,dx=1))
+  # 前髮
+  L.append(bang)
+  # 前髮的分束線：從每個缺口往上，往頭頂（髮旋在頭頂中間偏後）收；長短不一，不畫到頂
+  W=(CX,40);rl=__import__('random').Random(9)
+  for k in range(1,len(xs)-1):
+    if rl.random()<.25:continue
+    a=xs[k];y0=yb(a)-3.5;ln=rl.uniform(.35,.7)
+    pts=[(a+(W[0]-a)*u*.55,y0+(W[1]-y0)*u) for u in np.linspace(0,ln,5)]
+    L.append(pts)
+  # 頭頂兩側的髮流線：從頭頂往兩邊順著圓頂下來
+  for s in(-1,1):
+    for r,a0,a1 in((70,-115,-160),(62,-125,-168),(74,-100,-140)):
+      p=[(CX+s*-r*math.cos(math.radians(a)),CY-1+r*math.sin(math.radians(a))) for a in np.linspace(a0,a1,6)]
+      L.append(p)
+  # 兩側：外輪廓、內側、中間兩條分束線（跟著波浪），每束的尾巴圓圓收起來
+  for s in(-1,1):
+    E=ends[s]
+    def X(t,y,s=s):
+      v=fi(y)+t*(fo(y)-fi(y));return v if s<0 else 2*CX-v+1
+    dome=domeL if s<0 else mirror(domeL,dx=1)
+    L.append([(X(1,y),y) for y in np.arange(124,E[2]-3,2)])            # 外輪廓
+    L.append([(X(0,y),y) for y in np.arange(128,E[0]-3,2)])            # 內側（蓋到臉頰）
+    L.append([(X(.38,y),y) for y in np.arange(150,max(E[0],E[1])-3,2)])   # 分束線（從眼睛那層開始）
+    L.append([(X(.7,y),y) for y in np.arange(176,max(E[1],E[2])-3,2)])
+    for k in range(3):                                                  # 每束的尾巴：圓弧往內捲
+      ta,tb=T[k],T[k+1];e=E[k]
+      xa,xb=X(ta,e-3),X(tb,e-3)
+      L.append([(xa,e-3),(xa+(xb-xa)*.3,e+2),(xa+(xb-xa)*.7,e+2),(xb,e-3)])
+    # 脖子後面的後髮：一條波浪線＋下緣
+    xn=109 if s<0 else 147
+    L.append([(X(0,214)+(xn-X(0,214))*.45,216),(X(0,240)+(xn-X(0,240))*.5,240),(X(0,265)+(xn-X(0,265))*.4,265),(X(0,290)+(xn-X(0,290))*.5,292)])
+    be=[(X(0,E[0]-3),E[0]-3),((X(0,E[0])+xn)/2,E[0]+1),(xn,E[0]-2)]
+    L.append(be)
+  for c in L:
+    for x,y in pixels(crom(c,12)):
+      if 0<=x<N and 0<=y<H:out[y,x]=INK
+  return out
+if __name__=='__main__' and len(sys.argv)>3:
+  o=stage3(img);Image.fromarray(o).resize((N*3,H*3),Image.NEAREST).save(sys.argv[3])
