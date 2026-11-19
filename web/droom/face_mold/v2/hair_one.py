@@ -22,11 +22,24 @@ def regions():
   # 瀏海：頭髮外緣的上半圈，往下到 BANG_Y；兩邊在太陽穴收進去
   top=pm(arc(RO,math.pi*1.06,math.pi*1.94)+[(CX+60,BANG_Y-4),(CX-60,BANG_Y-4)])
   bang=np.zeros((N,N),bool)
+  # 瀏海下緣（使用者：太整齊一樣 → 髮束寬窄不一、長短不一、有的尖有的鈍、偶爾一束特別長或往旁邊撇）
+  import random
+  rnd=random.Random(7 if HS!='bob' else 11)
+  x=CX-62;tips={}
+  while x<=CX+62:
+    w=rnd.choice([4,5,6,7,8,9,10,12]);L=rnd.choice([0,1,2,3,4,5,6,-1,-2]) if HS=='bob' else rnd.choice([0,1,2,3,4,-1,-2,5])
+    if rnd.random()<.15:L+=4                              # 偶爾一束比較長
+    pointed=rnd.random()<.6;lean=rnd.choice([-1,0,0,1])
+    for i in range(w):
+      if x+i>CX+62:break
+      u=(i+.5)/w                                           # 0～1 在這束裡的位置
+      drop=L+(3*(1-abs(2*u-1-lean*.4)) if pointed else 1.2)   # 尖的：中間最長；鈍的：平
+      tips[x+i]=BANG_Y-2+drop
+    x+=w
   for x in range(CX-62,CX+63):
-    # 下緣一束束的：每 7 格一束，尖端上下錯開 0～3 格
-    k=(x-(CX-62))//7;tip=BANG_Y+([0,2,1,3,0,2,1] if HS!='bob' else [0,4,1,5,2,4,0])[k%7]-(1 if (x-(CX-62))%7 in(0,6) else 0)
+    tip=tips[x]
     if abs(x-CX)>52:tip-=int((abs(x-CX)-52)*.9)          # 兩端往上收、接到鬢角
-    for y in range(int(CY-RO*0.6),tip):bang[y,x]=True
+    for y in range(int(CY-RO*0.6),int(tip)):bang[y,x]=True
   cap=pm(arc(RO,math.pi,2*math.pi)+[(CX+RO,CY),(CX-RO,CY)])
   bang&=cap|(np.arange(N)[:,None]>CY-30)
   front_top=cap&(np.arange(N)[:,None]<CY-28)
@@ -41,7 +54,7 @@ def regions():
       for y in range(110,212,4):p.append((CX+s*(RO+3+5*math.sin(math.pi*(y-110)/130)),y))
       p+=[(CX+s*(RO+2),214),(CX+s*72,220),(CX+s*64,222),(CX+s*58,218),(CX+s*55,212),(xin+s*1,180),(xin,150)]
       sides|=pm(p)
-    back=pm(arc(RO+3,math.pi,2*math.pi)+[(CX+RO+8,200),(CX+RO+2,216),(CX+46,222),(CX-46,222),(CX-RO-2,216),(CX-RO-8,200)])
+    back=pm(arc(RO,math.pi,2*math.pi)+[(CX+RO+8,200),(CX+RO+2,216),(CX+46,222),(CX-46,222),(CX-RO-2,216),(CX-RO-8,200)])
   else:
     # 長直髮：兩側從太陽穴直直往下，內緣貼著臉頰外側、外緣在耳朵外面，尾端一束束
     for s in(-1,1):
@@ -52,7 +65,7 @@ def regions():
       p+=tips+[(xin+s*2,226),(xin,150)]
       sides|=pm(p)
     # 後髮：頭的後面一大片，比肩膀寬一點，一路到畫面下面
-    back=pm(arc(RO+2,math.pi,2*math.pi)+[(CX+RO+10,256),(CX-RO-10,256)])
+    back=pm(arc(RO,math.pi,2*math.pi)+[(CX+RO+10,256),(CX-RO-10,256)])
   return bangs,sides,back
 def render(img,stage):
   white=(img==255).all(2);out=img.copy()
@@ -71,8 +84,8 @@ def render(img,stage):
   # 6 暗：後髮靠脖子／肩膀那段更暗；兩側靠臉那條暗；瀏海最下面一格暗
   out[back&white&(np.abs(xx-CX)<RO-6)&(yy>CY+40)]=C['dk']
   for s in(-1,1):
-    inner=sides&(np.abs(xx-(CX+s*55))<=2)&(yy>118);out[inner]=C['sh']
-  bot=bangs&~np.roll(bangs,-1,0);out[bot]=C['sh']
+    inner=sides&(np.abs(xx-(CX+s*56))<=1)&(yy>124);out[inner]=C['sh']   # 兩側靠臉一點點暗（不是描邊）
+  bot=bangs&~np.roll(bangs,-1,0)&(np.abs(xx-CX)<=54);out[bot]=C['sh']   # 只在瀏海那段（不要在太陽穴畫出一條橫的黑邊）
   if HS=='bob':
     curl=sides&~np.roll(sides,-6,0);out[curl&(yy>190)]=C['sh']
     out[back&white&(yy>200)]=C['dk']
@@ -96,12 +109,14 @@ def render(img,stage):
   # 5＋8 亮：頭頂一圈寬的亮帶（光從左上，左邊亮一點），帶子裡再一條條白色高光（天使環，跟著髮束斷開）
   for y in range(N):
     for x in range(N):
-      if not bangs[y,x] or y>CY:continue
-      r=math.hypot(x-CX,y-CY);a=math.degrees(math.atan2(y-CY,x-CX))%360
-      if 49<=r<=62 and 200<a<340:
+      if not bangs[y,x] or y>BANG_Y-6:continue
+      HY=CY+34                                              # 亮帶的圓心往下移（使用者：反光太上面）
+      r=math.hypot(x-CX,y-HY);a=math.degrees(math.atan2(y-HY,x-CX))%360
+      jt=((x*37)%5)-2;jb=((x*53)%5)-2                       # 每一欄上下緣抖一點，不要像髮箍
+      if 49+jb<=r<=62+jt and 210<a<330:
         # 亮帶（光從左上，左邊寬右邊窄），帶子中間一條條直的白色高光，跟著髮束斷開
-        if a>290 and r<52+ (340-a)/10:continue
-        streak=(x//3)%3!=0 and 53<=r<=58 and (a<300 or (x//3)%2==0)
+        if a>285 and r<52+(330-a)/9:continue
+        streak=((x*7)//5)%4!=0 and 53+jb//2<=r<=58+jt and (a<300 or (x//3)%2==0)
         if tuple(out[y,x])==C['ln']:continue
         out[y,x]=C['hi'] if streak else C['li']
   for s in(-1,1):                                          # 兩側上段也帶一點亮
