@@ -111,10 +111,25 @@ def render(img,stage):
     for y in range(BANG_Y-h,BANG_Y+3):
       if bangs[y,x]:out[y,x]=(242,204,177) if y>BANG_Y-h+2 else C['sh']
   # 7 髮絲：沿著經線（從髮旋順著頭的圓弧往下，到瀏海下緣），只畫中下段
+  # 使用者 2026-11-19：分界線不是每條都有——有的沒畫、有的細、有的是比較粗的陰影；長短也不一樣
+  import random
+  rl=random.Random(5 if HS!='bob' else 9)
+  ytop,ybot=int(CY-RO*.86),BANG_Y+6
   for ph in MER[1:-1]:
-    for y in range(int(CY-RO*.86),BANG_Y+6):
+    kind=rl.choices(['none','thin','thick'],[.3,.42,.28])[0]
+    if kind=='none':continue
+    y0=rl.randint(ytop,int(CY-RO*.35));y1=ybot if rl.random()<.7 else rl.randint(int(CY-RO*.1),ybot)
+    side=rl.choice([-1,1])                                  # 粗陰影長在分界的哪一邊（被另一束壓住的那邊）
+    for y in range(y0,y1):
       x=round(mer_x(ph,y))
-      if bangs[y,x] and tuple(out[y,x])==C['mid']:out[y,x]=C['ln']
+      if not bangs[y,x]:continue
+      t=(y-y0)/max(1,y1-y0)
+      if tuple(out[y,x])==C['mid']:out[y,x]=C['ln']
+      if kind=='thick':                                     # 越往髮尾越寬（1→3 格），外側用陰影色
+        w=1+int(2.2*t)
+        for k in range(1,w+1):
+          xx=x+side*k
+          if 0<=xx<N and bangs[y,xx] and tuple(out[y,xx])==C['mid']:out[y,xx]=C['sh']
   for s in(-1,1):
     for x in(CX+s*62,CX+s*70):
       for y in range(140,232 if HS!='bob' else 210):
