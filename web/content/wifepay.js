@@ -1,5 +1,6 @@
-/* Wife Pay 編輯頁 v1：圖庫 CRUD、選／抽妹子、prompt／denoise、對話測試、全部一起測試。 */
-import { loadPools, generateGirl, RARITY_MARK } from "./girl_gen.js";
+/* Wife Pay 編輯頁 v2：抽妹子只擲參數（不產立繪、不叫模型），參數可改可再抽。 */
+import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES } from "./girl_gen.js";
+import { familyOf } from "./girl_voice.js?v=1";
 import {
   apiJson, fetchGallery, fetchDialog, generateFromItem, mountWifepayReveal, startWifepayPeek,
 } from "./wifepay_reveal.js?v=1";
@@ -50,6 +51,74 @@ function lookSummary(g) {
   return bits.join(" · ") || "（無外觀摘要）";
 }
 
+function isRolledGirl(g) {
+  return !!(g && (g.rolled || String(g.id || "").startsWith("wifepay-")));
+}
+
+function clampAge(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 18;
+  return Math.max(18, Math.min(45, Math.round(n)));
+}
+
+function fillArchSelect() {
+  const sel = $("p-arch");
+  if (!sel || sel.options.length) return;
+  for (const name of PERSONALITY_NAMES) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  }
+}
+
+function fillParams(g) {
+  fillArchSelect();
+  const L = g?.look || {};
+  if ($("p-name")) $("p-name").value = g?.name || "";
+  if ($("p-arch")) $("p-arch").value = g?.archetype || (g?.personality && g.personality[0]) || "文靜溫柔";
+  if ($("p-stage")) $("p-stage").value = g?.roomStage || g?.stage || "wife";
+  if ($("p-age")) $("p-age").value = clampAge(L.age);
+  if ($("p-hair")) $("p-hair").value = L.hair || "";
+  if ($("p-hair-color")) $("p-hair-color").value = L.hair_color || L.hairColor || "";
+  if ($("p-build")) $("p-build").value = L.build || L.body || "";
+  if ($("p-cup")) $("p-cup").value = L.cup || "";
+  if ($("p-breast-shape")) $("p-breast-shape").value = L.breast_shape || "";
+  if ($("p-face")) $("p-face").value = L.face || "";
+  if ($("p-eyes")) $("p-eyes").value = L.eyes || "";
+  if ($("p-eye-color")) $("p-eye-color").value = L.eye_color || "";
+  if ($("p-mouth")) $("p-mouth").value = L.mouth || "";
+  if ($("p-feature")) $("p-feature").value = L.feature || "";
+  $("girl-params")?.classList.toggle("on", !!g);
+}
+
+function applyParams() {
+  if (!currentGirl) return;
+  const g = currentGirl;
+  g.look = g.look && typeof g.look === "object" ? g.look : {};
+  const L = g.look;
+  g.name = ($("p-name")?.value || "").trim() || g.name || "她";
+  g.archetype = $("p-arch")?.value || g.archetype || "文靜溫柔";
+  g.personality = [g.archetype];
+  g.family = familyOf(g);
+  const stage = $("p-stage")?.value || "wife";
+  g.roomStage = stage;
+  g.stage = stage;
+  L.age = clampAge($("p-age")?.value);
+  L.hair = ($("p-hair")?.value || "").trim();
+  L.hair_color = ($("p-hair-color")?.value || "").trim();
+  L.build = ($("p-build")?.value || "").trim();
+  L.body = L.build;
+  L.cup = ($("p-cup")?.value || "").trim();
+  L.breast_shape = ($("p-breast-shape")?.value || "").trim();
+  L.bust = [L.cup, L.breast_shape].filter(Boolean).join("、");
+  L.face = ($("p-face")?.value || "").trim();
+  L.eyes = ($("p-eyes")?.value || "").trim();
+  L.eye_color = ($("p-eye-color")?.value || "").trim();
+  L.mouth = ($("p-mouth")?.value || "").trim();
+  L.feature = ($("p-feature")?.value || "").trim();
+}
+
 function renderGirlCard() {
   const meta = $("girl-meta");
   const port = $("girl-port");
@@ -57,18 +126,23 @@ function renderGirlCard() {
     meta.innerHTML = `<span class="mini">尚未選擇魅子</span>`;
     port.style.display = "none";
     port.removeAttribute("src");
+    fillParams(null);
     return;
   }
   const g = currentGirl;
   const mark = RARITY_MARK[g.rarity] || "";
   const ckpt = shortCkpt(g.comfyCkpt);
-  meta.innerHTML = `
-    <div><b>${esc(g.name || "？")}</b> ${esc(mark)} ${esc(g.rarity || "")}
-      <span class="mini">· ${esc(g.id || "（暫無 id）")}</span></div>
-    <div class="mini" style="margin:.25em 0 0">${esc(lookSummary(g))}</div>
-    <div class="mini">comfyCkpt · ${ckpt ? esc(ckpt) : "（尚未綁定）"}</div>
-  `;
-  if (g.id) {
+  const rolled = isRolledGirl(g);
+  meta.innerHTML = rolled
+    ? `<div><b>${esc(g.name || "？")}</b> ${esc(mark)} ${esc(g.rarity || "")}
+        <span class="mini">· 只擲參數，不產立繪</span></div>
+      <div class="mini" style="margin:.25em 0 0">${esc(lookSummary(g))} · 個性家族 ${esc(g.family || familyOf(g))}</div>`
+    : `<div><b>${esc(g.name || "？")}</b> ${esc(mark)} ${esc(g.rarity || "")}
+        <span class="mini">· ${esc(g.id || "（暫無 id）")}</span></div>
+      <div class="mini" style="margin:.25em 0 0">${esc(lookSummary(g))}</div>
+      <div class="mini">comfyCkpt · ${ckpt ? esc(ckpt) : "（尚未綁定）"}</div>`;
+  // 暫抽的妹子沒有立繪，不要去打 /assets/portraits（也不觸發任何生圖）
+  if (!rolled && g.id) {
     port.style.display = "block";
     port.onerror = () => { port.style.display = "none"; };
     port.src = `/assets/portraits/${encodeURIComponent(g.id)}_half.png?t=${Date.now()}`;
@@ -76,6 +150,7 @@ function renderGirlCard() {
     port.style.display = "none";
     port.removeAttribute("src");
   }
+  fillParams(g);
   const prefer = String(g.comfyCkpt || "").trim();
   const sel = $("ig-ckpt");
   if (sel && prefer) {
@@ -240,6 +315,7 @@ async function pingEngine() {
 }
 
 function genInfo() {
+  applyParams();
   const over = $("ig-denoise").value;
   return {
     character: currentGirl,
@@ -247,7 +323,7 @@ function genInfo() {
     pose: $("ig-pose").value,
     build: $("ig-build").value,
     stage: currentGirl?.roomStage || currentGirl?.stage || "wife",
-    family: currentGirl?.family || "",
+    family: currentGirl?.family || (currentGirl ? familyOf(currentGirl) : ""),
     ckpt: $("ig-ckpt").value || currentGirl?.comfyCkpt || "",
     comfy_url: $("ig-comfy").value.trim(),
     seed: Number($("ig-seed").value || 0),
@@ -371,19 +447,26 @@ async function testAll() {
 }
 
 async function drawGirl() {
-  setStatus("gen-status", "抽一隻…");
+  setStatus("gen-status", "擲參數…");
   try {
     await loadPools();
     const used = girls.map((g) => g.name).filter(Boolean);
+    if (currentGirl?.name) used.push(currentGirl.name);
     const g = generateGirl({ luck: 50, rating: "nsfw", usedNames: used });
-    if (!g) throw new Error("抽卡失敗（人物池未載入？）");
-    g.id = g.id || `wifepay-${Date.now().toString(36)}`;
+    if (!g) throw new Error("擲參數失敗（人物池未載入？）");
+    // 只留測試用的人設參數：不產立繪、不寫存檔、不叫 Comfy／模型
+    g.id = `wifepay-${Date.now().toString(36)}`;
+    g.rolled = true;
+    g.roomStage = "wife";
+    g.stage = "wife";
+    g.family = familyOf(g);
+    delete g.comfyCkpt;
     currentGirl = g;
     const radio = document.querySelector('input[name="girl-mode"][value="draw"]');
     if (radio) radio.checked = true;
     updateModeUi();
     renderGirlCard();
-    setStatus("gen-status", `✓ 抽到 ${g.name} ${RARITY_MARK[g.rarity] || ""}`);
+    setStatus("gen-status", `✓ 已擲參數：${g.name} ${RARITY_MARK[g.rarity] || ""}（可直接改，或再抽一次）`);
   } catch (e) {
     setStatus("gen-status", e.message, true);
   }
@@ -417,6 +500,23 @@ function bind() {
   });
   $("btn-reload-girls")?.addEventListener("click", () => loadGirls());
   $("btn-draw")?.addEventListener("click", () => drawGirl());
+  $("btn-reroll")?.addEventListener("click", () => drawGirl());
+  $("girl-params")?.querySelectorAll("input,select").forEach((el) => {
+    el.addEventListener("change", () => {
+      applyParams();
+      // 只更新摘要，不要 fillParams 以免把游標打回去
+      const g = currentGirl;
+      if (!g) return;
+      const meta = $("girl-meta");
+      if (!meta) return;
+      const mark = RARITY_MARK[g.rarity] || "";
+      if (isRolledGirl(g)) {
+        meta.innerHTML = `<div><b>${esc(g.name || "？")}</b> ${esc(mark)} ${esc(g.rarity || "")}
+          <span class="mini">· 只擲參數，不產立繪</span></div>
+        <div class="mini" style="margin:.25em 0 0">${esc(lookSummary(g))} · 個性家族 ${esc(g.family || "")}</div>`;
+      }
+    });
+  });
   $("btn-gal-up")?.addEventListener("click", () => uploadGallery().catch((e) => setStatus("gen-status", e.message, true)));
   $("btn-gal-del")?.addEventListener("click", () => deleteItem().catch((e) => setStatus("gen-status", e.message, true)));
   $("btn-item-save")?.addEventListener("click", () => saveItem().catch((e) => setStatus("gen-status", e.message, true)));

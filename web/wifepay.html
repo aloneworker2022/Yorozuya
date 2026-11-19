@@ -52,6 +52,10 @@
   .sheet { background: rgba(0,0,0,.28); border-radius: 8px; padding: .7em .8em; white-space: pre-wrap;
            font-size: .85em; color: #c8c0dc; min-height: 3em; max-height: 14em; overflow: auto; }
   #reveal-host { margin-top: .6em; }
+  .params { margin-top: .7em; display: none; }
+  .params.on { display: block; }
+  .params .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5em, 1fr)); gap: .4em .55em; }
+  .params .grid .wide { grid-column: 1 / -1; }
 </style>
 </head>
 <body>
@@ -65,10 +69,10 @@
 
 <section>
   <h2>1. 妹子</h2>
-  <p class="mini">存檔名冊從 <code>/api/save</code> 讀；抽一隻只在本頁暫用，不寫進存檔。</p>
+  <p class="mini">存檔名冊從 <code>/api/save</code> 讀。抽一隻<b>只擲人設參數</b>（外觀、個性、名字），立刻出現在下面，可直接改、可再抽；不產立繪、不叫模型、不寫進存檔。年齡最低 18。</p>
   <div class="mode-row">
     <label><input type="radio" name="girl-mode" value="saved" checked> 存檔魅子</label>
-    <label><input type="radio" name="girl-mode" value="draw"> 抽一隻新的</label>
+    <label><input type="radio" name="girl-mode" value="draw"> 抽參數</label>
   </div>
   <div class="row" id="saved-row">
     <span class="grow"><label>存檔名冊</label>
@@ -76,11 +80,37 @@
     <button type="button" id="btn-reload-girls">重新讀名冊</button>
   </div>
   <div class="row" id="draw-row" style="display:none;margin-top:.4em">
-    <button class="cy" type="button" id="btn-draw">抽一隻</button>
+    <button class="cy" type="button" id="btn-draw">抽一組參數</button>
+    <button type="button" id="btn-reroll">再抽一次</button>
   </div>
   <div class="girl-card" id="girl-card">
     <img class="port" id="girl-port" alt="" style="display:none">
     <div class="meta" id="girl-meta"><span class="mini">尚未選擇魅子</span></div>
+  </div>
+  <div class="params" id="girl-params">
+    <p class="mini">這些參數會進 prompt／對話。改了立刻套用（只在本頁）。</p>
+    <div class="grid">
+      <span><label>名字</label><input id="p-name" type="text"></span>
+      <span><label>個性</label><select id="p-arch"></select></span>
+      <span><label>關係階（對話用）</label>
+        <select id="p-stage">
+          <option value="wife">妻子</option>
+          <option value="devoted_wife">貼心妻子</option>
+          <option value="obedient_wife">順從妻子</option>
+          <option value="pathological_wife">病態妻子</option>
+        </select></span>
+      <span><label>年齡（18+）</label><input id="p-age" type="number" min="18" max="45" step="1"></span>
+      <span><label>髮型</label><input id="p-hair" type="text"></span>
+      <span><label>髮色</label><input id="p-hair-color" type="text"></span>
+      <span><label>身材</label><input id="p-build" type="text"></span>
+      <span><label>罩杯</label><input id="p-cup" type="text"></span>
+      <span><label>胸型</label><input id="p-breast-shape" type="text"></span>
+      <span><label>臉</label><input id="p-face" type="text"></span>
+      <span><label>眼睛</label><input id="p-eyes" type="text"></span>
+      <span><label>瞳色</label><input id="p-eye-color" type="text"></span>
+      <span><label>嘴</label><input id="p-mouth" type="text"></span>
+      <span class="wide"><label>特徵</label><input id="p-feature" type="text"></span>
+    </div>
   </div>
 </section>
 
@@ -172,6 +202,6 @@
   <div id="reveal-host"></div>
 </section>
 
-<script type="module" src="/content/wifepay.js?v=1"></script>
+<script type="module" src="/content/wifepay.js?v=2"></script>
 </body>
 </html>
