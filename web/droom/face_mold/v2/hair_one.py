@@ -18,26 +18,36 @@ def arc(r,a0,a1,n=80):return [(CX+r*math.cos(a0+(a1-a0)*k/n),CY+r*math.sin(a0+(a
 RO=R+7
 HS=os.environ.get('HS','hime')   # 髮型：hime 長直髮齊瀏海、bob 鮑伯
 BANG_Y=136 if os.environ.get('HS','hime')!='bob' else 133   # 瀏海下緣（剛好在眼睛上面、蓋到眉毛）
+def mer_x(phi,y):
+  # 經線：髮旋在球頂，phi＝往左右的角度；y 在赤道以上照球面算，赤道以下（瀏海垂下來）就直直往下
+  c=max(-1,min(1,(CY-y)/RO));th=math.acos(c)
+  if y>CY:th=math.pi/2
+  return CX+RO*.96*math.sin(th)*math.sin(math.radians(phi))
+MER=[]
 def regions():
   # 瀏海：頭髮外緣的上半圈，往下到 BANG_Y；兩邊在太陽穴收進去
   top=pm(arc(RO,math.pi*1.06,math.pi*1.94)+[(CX+60,BANG_Y-4),(CX-60,BANG_Y-4)])
   bang=np.zeros((N,N),bool)
-  # 瀏海下緣（使用者：太整齊一樣 → 髮束寬窄不一、長短不一、有的尖有的鈍、偶爾一束特別長或往旁邊撇）
+  # 瀏海（使用者 2026-11-19：頭髮從頭頂的髮旋往下、沿著頭的圓弧，不是像卡牌那樣直的）
+  # 髮束的分界＝球上的經線（從髮旋出發、往兩邊鼓出去再往下），分界的間隔不一樣；
+  # 每兩條經線中間是一束，尾巴有尖有鈍、長短不一
+  global MER
   import random
   rnd=random.Random(7 if HS!='bob' else 11)
-  x=CX-62;tips={}
-  while x<=CX+62:
-    w=rnd.choice([4,5,6,7,8,9,10,12]);L=rnd.choice([0,1,2,3,4,5,6,-1,-2]) if HS=='bob' else rnd.choice([0,1,2,3,4,-1,-2,5])
-    if rnd.random()<.15:L+=4                              # 偶爾一束比較長
-    pointed=rnd.random()<.6;lean=rnd.choice([-1,0,0,1])
-    for i in range(w):
-      if x+i>CX+62:break
-      u=(i+.5)/w                                           # 0～1 在這束裡的位置
-      drop=L+(3*(1-abs(2*u-1-lean*.4)) if pointed else 1.2)   # 尖的：中間最長；鈍的：平
-      tips[x+i]=BANG_Y-2+drop
-    x+=w
+  MER=[];p=-56
+  while p<56:MER.append(p);p+=rnd.choice([7,8,9,10,12,13,15])
+  MER.append(56)
+  tips={}
+  for i in range(len(MER)-1):
+    x0,x1=mer_x(MER[i],BANG_Y),mer_x(MER[i+1],BANG_Y)
+    L=rnd.choice([0,1,2,3,4,5,-1,-2]);L+=4 if rnd.random()<.15 else 0
+    pointed=rnd.random()<.65;lean=rnd.choice([-1,0,0,1])
+    for x in range(int(math.floor(x0)),int(math.ceil(x1))+1):
+      u=(x+.5-x0)/max(1,x1-x0);u=min(1,max(0,u))
+      drop=L+(3.5*(1-abs(2*u-1-lean*.4)) if pointed else 1.2)
+      tips[x]=max(tips.get(x,0),BANG_Y-2+drop)
   for x in range(CX-62,CX+63):
-    tip=tips[x]
+    tip=tips.get(x,BANG_Y-2)
     if abs(x-CX)>52:tip-=int((abs(x-CX)-52)*.9)          # 兩端往上收、接到鬢角
     for y in range(int(CY-RO*0.6),int(tip)):bang[y,x]=True
   cap=pm(arc(RO,math.pi,2*math.pi)+[(CX+RO,CY),(CX-RO,CY)])
@@ -97,32 +107,44 @@ def render(img,stage):
   for x,h in((CX-34,8),(CX-8,6),(CX+19,9),(CX+41,7)):
     for y in range(BANG_Y-h,BANG_Y+3):
       if bangs[y,x]:out[y,x]=(242,204,177) if y>BANG_Y-h+2 else C['sh']
-  # 7 髮絲：從髮旋放射到瀏海下緣、兩側直直往下（暗色細線，只畫中下段，上面讓亮的帶子乾淨）
-  for x in range(CX-54,CX+55,9):
-    for t in np.linspace(.68,1,40):
-      px=round(W[0]+(x-W[0])*t);py=round(W[1]+(BANG_Y-2-W[1])*t)
-      if bangs[py,px] and tuple(out[py,px])==C['mid']:out[py,px]=C['ln']
+  # 7 髮絲：沿著經線（從髮旋順著頭的圓弧往下，到瀏海下緣），只畫中下段
+  for ph in MER[1:-1]:
+    for y in range(int(CY-RO*.86),BANG_Y+6):
+      x=round(mer_x(ph,y))
+      if bangs[y,x] and tuple(out[y,x])==C['mid']:out[y,x]=C['ln']
   for s in(-1,1):
     for x in(CX+s*62,CX+s*70):
       for y in range(140,232 if HS!='bob' else 210):
         if sides[y,x] and (y//9)%3!=0:out[y,x]=C['ln']
-  # 5＋8 亮：頭頂一圈寬的亮帶（光從左上，左邊亮一點），帶子裡再一條條白色高光（天使環，跟著髮束斷開）
-  for y in range(N):
-    for x in range(N):
-      if not bangs[y,x] or y>BANG_Y-6:continue
-      HY=CY+34                                              # 亮帶的圓心往下移（使用者：反光太上面）
-      r=math.hypot(x-CX,y-HY);a=math.degrees(math.atan2(y-HY,x-CX))%360
-      jt=((x*37)%5)-2;jb=((x*53)%5)-2                       # 每一欄上下緣抖一點，不要像髮箍
-      if 49+jb<=r<=62+jt and 210<a<330:
-        # 亮帶（光從左上，左邊寬右邊窄），帶子中間一條條直的白色高光，跟著髮束斷開
-        if a>285 and r<52+(330-a)/9:continue
-        streak=((x*7)//5)%4!=0 and 53+jb//2<=r<=58+jt and (a<300 or (x//3)%2==0)
-        if tuple(out[y,x])==C['ln']:continue
-        out[y,x]=C['hi'] if streak else C['li']
-  for s in(-1,1):                                          # 兩側上段也帶一點亮
-    for y in range(120,150):
-      for x in range(N):
-        if sides[y,x] and abs(x-(CX+s*66))<=2 and (y//5)%2==0:out[y,x]=C['li']
+  # 5＋8 亮（使用者：反光是一條白的、兩邊沿著頭髮的邊緣，不是一塊方塊）：
+  # 一條細的白色光環繞過頭——兩端貼著頭髮外緣、中間往下彎；在髮束分界的地方斷開；上下各一格淡亮；兩端再沿著外緣往下帶一段
+  RY0,RD=CY-34,15
+  ring=lambda x:RY0+RD*(1-((x-CX)/RO)**2)
+  mx=[round(mer_x(ph,ring(CX+RO*.96*math.sin(math.radians(ph))))) for ph in MER]
+  for x in range(CX-RO,CX+RO+1):
+    yc=ring(x);w=1+1.6*(1-abs(x-CX)/RO)            # 中間粗、兩邊細
+    for y in range(int(yc-w-1),int(yc+w+2)):
+      if not (0<=y<N) or not (bangs[y,x] or sides[y,x]):continue
+      d=abs(y-yc)
+      gap=any(abs(x-m)<=1 for m in mx)
+      if d<=w and not gap:out[y,x]=C['hi']
+      elif d<=w+1.2 and tuple(out[y,x])!=C['hi']:out[y,x]=C['li']
+  import random
+  rr=random.Random(3)
+  for x in range(CX-RO+6,CX+RO-5):                          # 光環上下拉出幾條短短的亮絲（順著髮束），看起來不是一條死板的帶子
+    if rr.random()<.28 and not any(abs(x-m)<=1 for m in mx):
+      yc=ring(x);up=rr.randint(2,5);dn=rr.randint(1,4)
+      for y in range(int(yc-up-1),int(yc+dn+2)):
+        if 0<=y<N and (bangs[y,x] or sides[y,x]) and tuple(out[y,x])!=C['hi']:out[y,x]=C['li']
+  for s in(-1,1):                                          # 兩端沿著頭髮外緣往下帶一段亮
+    for y in range(int(RY0)-2,int(RY0)+34):
+      row=bangs[y]|sides[y]
+      xs=[x for x in range(N) if row[x]]
+      if not xs:continue
+      xe=max(xs) if s>0 else min(xs)
+      for k in(1,2):
+        x=xe-s*k
+        if row[x]:out[y,x]=C['hi'] if (k==1 and y<RY0+18) else C['li']
   return out
 if __name__=='__main__':
   D=sys.argv[1];img=np.array(Image.open(f'{D}/front_f.png').convert('RGB'))
