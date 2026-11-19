@@ -5097,7 +5097,8 @@ async def escort_peek_lines(body: dict):
 
 @app.get("/api/wifepay/gallery")
 def wifepay_gallery_list():
-    return {"items": wifepay.load_index(ASSETS_DIR)}
+    """回圖庫；若某個姿勢已選超過 2 張，會修剪並在 trimmed 說明。"""
+    return wifepay.load_gallery(ASSETS_DIR)
 
 
 @app.post("/api/wifepay/gallery")
@@ -5130,7 +5131,8 @@ def wifepay_gallery_patch(item_id: str, body: WifepayItemPatch):
     hit = wifepay.patch_item(ASSETS_DIR, item_id, fields)
     if not hit:
         raise HTTPException(status_code=404, detail="沒有這張圖")
-    return {"item": hit}
+    rejected = list(hit.pop("rejected_poses", []) or [])
+    return {"item": hit, "rejected_poses": rejected, "pose_max": wifepay.POSE_SELECT_MAX}
 
 
 @app.delete("/api/wifepay/gallery/{item_id}")
@@ -5232,7 +5234,7 @@ async def wifepay_dialog(body: dict):
 
 @app.post("/api/wifepay/pick")
 def wifepay_pick(body: dict | None = None):
-    """隨機抽 1 或 2 張圖庫（可帶 pose 優先對 tags）。空圖庫 items=[]。不生圖。"""
+    """從該姿勢已選的底圖隨機抽 1 或 2 張（各半；只選 1 張就固定 1）。空＝items=[]。不生圖。"""
     body = body or {}
     items = wifepay.load_index(ASSETS_DIR)
     pose = str(body.get("pose") or "")

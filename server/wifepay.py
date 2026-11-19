@@ -1,6 +1,6 @@
 """老婆還債偷看：圖生圖圖庫與三段式對話（旁白→男→她）。
 
-圖庫在 assets/wifepay/gallery/＋index.json；產出在 assets/wifepay/out/。
+圖庫在 assets/wifepay/gallery/＋index.json；產出在 assets/wifepay/out/。每個姿勢最多選 2 張底圖，開門時從已選的裡面隨機抽 1 或 2 張（只選 1 張就固定 1 張），不會從其他姿勢補張。
 對話模板在 assets/wifepay/dialog.json；劇本存在 assets/wifepay/scripts.json（可存多種、開門隨機抽）。設定（打字速度、自訂姿勢、預設正面／負面提示詞、隔門聽不清）在 assets/wifepay/config.json，缺檔時用程式預設。
 assets/wifepay/ 整個目錄被 gitignore，內建劇本以 STOCK_SCRIPTS 寫在程式裡，缺檔或舊檔缺少新 id 時由程式補上，不依賴倉庫裡的 json。內容規則沿用 escort_lines：成年人、自願、不寫強迫／未成年。
 """
@@ -35,6 +35,7 @@ PEEK_FRACS = ("1/2", "3/5")
 GEN_WIDTH, GEN_HEIGHT = 832, 1216
 PROMPT_MAX = 4000
 TAGS_MAX = 8
+POSE_SELECT_MAX = 2
 BANNED = EL.BANNED
 
 DEFAULT_ITEM_PROMPT = (
@@ -214,7 +215,8 @@ def _atomic_write(path: Path, text: str) -> None:
     tmp.replace(path)
 
 
-def load_index(assets: Path) -> list[dict]:
+def load_index(assets: Path, *, trim: bool = True) -> list[dict]:
+    """讀圖庫。trim=True 時每個姿勢若選超過 2 張，會拿掉多餘的姿勢 tag 並寫回（圖還在）。"""
     ensure_dirs(assets)
     p = index_path(assets)
     if not p.is_file():
@@ -231,12 +233,95 @@ def load_index(assets: Path) -> list[dict]:
         cleaned = clean_item(it) if isinstance(it, dict) else None
         if cleaned:
             out.append(cleaned)
+    if trim:
+        out, warns = trim_pose_selections(out, pose_ids_of(assets))
+        if warns:
+            save_index(assets, out)
     return out
 
 
 def save_index(assets: Path, items: list[dict]) -> None:
     ensure_dirs(assets)
     _atomic_write(index_path(assets), json.dumps(items, ensure_ascii=False, indent=2))
+
+
+def pose_ids_of(assets: Path | None = None, extra=None) -> set[str]:
+    """內建姿勢＋設定裡新增的。不含一般 tag（例如 bed）。"""
+    ids = {str(p["id"]) for p in STOCK_POSES}
+    if assets is not None:
+        ids.update(str(x) for x in (load_config(assets).get("poses") or []) if x)
+    if extra:
+        for x in extra:
+            s = str(x or "").strip()
+            if s:
+                ids.add(s)
+    return ids
+
+
+def items_for_pose(items: list, pose: str) -> list[dict]:
+    pose = str(pose or "").strip()
+    if not pose:
+        return []
+    return [
+        x for x in (items or [])
+        if isinstance(x, dict) and x.get("id") and x.get("url") and pose in (x.get("tags") or [])
+    ]
+
+
+def trim_pose_selections(items: list, pose_ids, max_n: int = POSE_SELECT_MAX) -> tuple[list, list]:
+    """每個姿勢最多 max_n 張。超出的從後面的圖拿掉該 pose tag（圖還在）。回 (items, warnings)。"""
+    out = [dict(x) if isinstance(x, dict) else x for x in (items or [])]
+    ids = {str(x) for x in (pose_ids or []) if x}
+    warnings: list[dict] = []
+    for pose in ids:
+        hits = [x for x in out if isinstance(x, dict) and pose in (x.get("tags") or [])]
+        if len(hits) <= max_n:
+            continue
+        keep, drop = hits[:max_n], hits[max_n:]
+        for x in drop:
+            x["tags"] = [t for t in (x.get("tags") or []) if t != pose]
+        warnings.append({
+            "pose": pose,
+            "kept": [x.get("id") for x in keep],
+            "dropped": [x.get("id") for x in drop],
+        })
+    warnings.sort(key=lambda w: str(w.get("pose") or ""))
+    return out, warnings
+
+
+def apply_pose_tag_limit(items: list, item_id: str, new_tags, pose_ids, max_n: int = POSE_SELECT_MAX) -> tuple[list, list]:
+    """套 tags，但每個姿勢不得超過 max_n 張。已在這張上的姿勢保留。回 (tags, rejected_poses)。"""
+    tags = clean_tags(new_tags)
+    ids = {str(x) for x in (pose_ids or []) if x}
+    current = next((x for x in (items or []) if isinstance(x, dict) and x.get("id") == item_id), None) or {}
+    already = set(current.get("tags") or [])
+    kept: list[str] = []
+    rejected: list[str] = []
+    for tag in tags:
+        if tag not in ids:
+            kept.append(tag)
+            continue
+        if tag in already:
+            kept.append(tag)
+            continue
+        others = sum(1 for x in (items or []) if isinstance(x, dict) and x.get("id") != item_id and tag in (x.get("tags") or []))
+        if others < max_n:
+            kept.append(tag)
+        else:
+            rejected.append(tag)
+    return kept, rejected
+
+
+def load_gallery(assets: Path) -> dict:
+    """讀圖庫並在超過每姿勢 2 張時修剪、寫回。"""
+    items = load_index(assets, trim=False)
+    items2, warns = trim_pose_selections(items, pose_ids_of(assets))
+    if warns:
+        save_index(assets, items2)
+        items = items2
+    else:
+        items = items2
+    return {"items": items, "trimmed": warns, "pose_max": POSE_SELECT_MAX}
 
 
 def clamp_denoise(v, default: float = DEFAULT_DENOISE) -> float:
@@ -918,7 +1003,14 @@ def add_item(assets: Path, png: bytes, *, width: int = 0, height: int = 0, promp
         "created": time.time(),
     })
     items = load_index(assets)
-    items.append(item)
+    if item and item.get("tags"):
+        item["tags"], rejected = apply_pose_tag_limit(
+            items, item["id"], item.get("tags"), pose_ids_of(assets),
+        )
+        if rejected:
+            item = dict(item)
+            item["rejected_poses"] = rejected
+    items.append({k: v for k, v in item.items() if k != "rejected_poses"} if item else item)
     save_index(assets, items)
     return item
 
@@ -934,9 +1026,16 @@ def patch_item(assets: Path, item_id: str, fields: dict) -> dict | None:
         hit["negative"] = _clip(fields.get("negative"), PROMPT_MAX) or DEFAULT_NEGATIVE
     if "denoise" in fields and fields.get("denoise") is not None:
         hit["denoise"] = clamp_denoise(fields.get("denoise"))
+    rejected: list[str] = []
     if "tags" in fields:
-        hit["tags"] = clean_tags(fields.get("tags"))
+        hit["tags"], rejected = apply_pose_tag_limit(
+            items, item_id, fields.get("tags"), pose_ids_of(assets),
+        )
     save_index(assets, items)
+    if rejected:
+        out = dict(hit)
+        out["rejected_poses"] = rejected
+        return out
     return hit
 
 
@@ -1541,21 +1640,27 @@ def pick_count(rnd=None) -> int:
 
 
 def pick_items(items: list, pose: str = "", count: int | None = None, rnd=None) -> list:
-    """隨機抽 1 或 2 張。有對上 pose 的 tags 時優先從那些抽；不夠再從全部抽。圖庫空就回空。"""
-    pool = [x for x in (items or []) if isinstance(x, dict) and x.get("id") and x.get("url")]
+    """從這個姿勢已選的底圖隨機抽 1 或 2 張（各半）。
+    只選了 1 張就固定 1 張；沒選就空。不會從其他姿勢補張。沒指定姿勢時才從全部圖抽。最多 2 張。"""
+    pose = str(pose or "").strip()
+    if pose:
+        pool = items_for_pose(items, pose)
+    else:
+        pool = [x for x in (items or []) if isinstance(x, dict) and x.get("id") and x.get("url")]
     if not pool:
         return []
+    # 防呆：就算還沒修剪，抽的時候也不超過每姿勢上限
+    if pose and len(pool) > POSE_SELECT_MAX:
+        pool = pool[:POSE_SELECT_MAX]
     rng = rnd if hasattr(rnd, "sample") else random.Random()
-    n = int(count) if count in (1, 2) else pick_count(rng)
-    n = min(n, len(pool))
-    tagged = [x for x in pool if pose and pose in (x.get("tags") or [])]
-    src = tagged if len(tagged) >= n else (tagged + [x for x in pool if x not in tagged])
-    src = src[:len(pool)]
-    if len(src) < n:
-        src = pool
-    if len(src) <= n:
-        return list(src)
-    return rng.sample(src, n)
+    if len(pool) == 1:
+        n = 1
+    else:
+        n = int(count) if count in (1, 2) else pick_count(rng)
+        n = min(n, POSE_SELECT_MAX, len(pool))
+    if len(pool) <= n:
+        return list(pool)
+    return rng.sample(pool, n)
 
 
 def _banned(text: str) -> bool:

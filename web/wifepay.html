@@ -49,6 +49,7 @@
   .thumbs { display: flex; flex-wrap: wrap; gap: .5em; margin-top: .5em; }
   .thumbs button { padding: .25em; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1); position: relative; }
   .thumbs button.sel { border-color: #ff4fd8; }
+  .thumbs button.in-pose { box-shadow: inset 0 0 0 1px rgba(111,227,225,.55); }
   .thumbs button .tag { position: absolute; left: 4px; bottom: 4px; font-size: 9px; color: #ffd0e4;
                         background: rgba(0,0,0,.65); padding: 0 3px; border-radius: 3px; }
   .thumbs img { width: 72px; height: 108px; object-fit: cover; border-radius: 4px; display: block; }
@@ -160,7 +161,8 @@
 
 <section class="step" id="step-2" data-step="2">
   <h2>2. 編輯圖形</h2>
-  <p class="mini">上傳、刪除、點選這次姿勢要用的底圖。新上傳的會自動帶上目前姿勢的 tag。直式 832×1216。</p>
+  <p class="mini">每個姿勢最多選 2 張底圖。開門時從已選的裡面隨機抽 1 或 2 張（只選 1 張就固定 1 張），不是必定兩張。新上傳的會自動帶上目前姿勢的 tag。直式 832×1216。</p>
+  <p class="mini" id="gal-pose-count">已選 0／2 張</p>
   <label class="chk"><input id="gal-all" type="checkbox"> 顯示全部圖（不只這個姿勢）</label>
   <div class="row">
     <input id="gal-file" type="file" accept="image/*" style="flex:1 1 14em">
@@ -169,7 +171,7 @@
   </div>
   <div class="thumbs" id="gal-thumbs"><span class="mini">（尚無圖）</span></div>
   <div class="row">
-    <span class="grow"><label>這張 tags（逗號分隔；抽圖時優先對上姿勢）</label>
+    <span class="grow"><label>這張 tags（逗號分隔；姿勢 tag 等於選進該姿勢，每姿勢最多 2 張）</label>
       <input id="item-tags" type="text" placeholder="cowgirl, bed"></span>
     <button type="button" id="btn-item-save">儲存這張</button>
   </div>
@@ -322,6 +324,6 @@
   <button class="cy" type="button" id="btn-next">下一步</button>
 </div>
 
-<script type="module" src="/content/wifepay.js?v=9"></script>
+<script type="module" src="/content/wifepay.js?v=10"></script>
 </body>
 </html>

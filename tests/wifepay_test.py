@@ -143,12 +143,25 @@ def test_pick_one_or_two():
     assert len(two) == 2 and len({x["id"] for x in two}) == 2
     # 只有一張時，就算要 2 張也只回 1
     assert len(W.pick_items(items[:1], count=2)) == 1
-    # 對上 pose 的 tags 優先
+    # 只從該姿勢已選的抽，兩張都對上就兩張
     tagged = W.pick_items(items, pose="cowgirl", count=2, rnd=random.Random(0))
     assert {x["id"] for x in tagged} == {"a", "c"}
-    # 隨機 1 或 2（固定種子）
-    counts = {W.pick_count(random.Random(i).random) for i in range(20)}
+    # 只選了 1 張時，就算要 2 張也不從其他姿勢補
+    only = W.pick_items(items, pose="doggy", count=2, rnd=random.Random(0))
+    assert [x["id"] for x in only] == ["b"]
+    # 這個姿勢沒選任何圖 → 空
+    assert W.pick_items(items, pose="missionary", count=2) == []
+    # 超過 2 張已選時，抽圖最多 2 張
+    extra = items + [{"id": "d", "url": "/assets/wifepay/gallery/d.png", "tags": ["cowgirl"]}]
+    capped = W.pick_items(extra, pose="cowgirl", count=2, rnd=random.Random(0))
+    assert len(capped) == 2
+    assert {x["id"] for x in capped} <= {"a", "c"}  # 只留前 2 張（a,c），d 超出上限不抽
+    # 已選 2 張時，未指定 count 會隨機 1 或 2
+    counts = {len(W.pick_items(items, pose="cowgirl", rnd=random.Random(i))) for i in range(40)}
     assert counts == {1, 2}
+    # 隨機 1 或 2（固定種子）
+    raw_counts = {W.pick_count(random.Random(i).random) for i in range(20)}
+    assert raw_counts == {1, 2}
     # 空圖庫
     assert W.pick_items(None) == []
 
@@ -542,6 +555,43 @@ def test_door_muffle_config():
 
 
 
+def test_pose_select_limit():
+    assets = _assets()
+    a = W.add_item(assets, PNG, tags=["cowgirl", "bed"])
+    b = W.add_item(assets, PNG, tags=["cowgirl"])
+    c = W.add_item(assets, PNG, tags=["cowgirl"])
+    # 第三張不該再帶上 cowgirl（bed 這種非姿勢 tag 不受限）
+    assert "cowgirl" not in (c.get("tags") or []) or c.get("rejected_poses")
+    # 就算 add 時寫進去了，load 也會修剪
+    # 先手動寫成 3 張都有 cowgirl，模擬舊設定
+    items = W.load_index(assets, trim=False)
+    for it in items:
+        if "cowgirl" not in (it.get("tags") or []):
+            it["tags"] = list(it.get("tags") or []) + ["cowgirl"]
+    W.save_index(assets, items)
+    gal = W.load_gallery(assets)
+    assert gal["pose_max"] == 2
+    assert gal["trimmed"]
+    cow = [it for it in gal["items"] if "cowgirl" in (it.get("tags") or [])]
+    assert len(cow) == 2
+    assert {it["id"] for it in cow} == {a["id"], b["id"]}
+    # 多的圖還在，只是拿掉姿勢
+    leftover = next(it for it in gal["items"] if it["id"] == c["id"])
+    assert "cowgirl" not in (leftover.get("tags") or [])
+    # patch 再指定第 3 張會被拒，其他 tag 仍可存
+    hit = W.patch_item(assets, c["id"], {"tags": ["cowgirl", "bed"]})
+    assert "cowgirl" not in (hit.get("tags") or [])
+    assert "bed" in (hit.get("tags") or [])
+    assert "cowgirl" in (hit.get("rejected_poses") or [])
+    # 已在這張上的姿勢可以保留
+    keep = W.patch_item(assets, a["id"], {"tags": ["cowgirl", "bed"]})
+    assert "cowgirl" in keep["tags"]
+    # 修剪後抽圖仍遵守 1 或 2
+    counts = {len(W.pick_items(gal["items"], pose="cowgirl", rnd=random.Random(i))) for i in range(40)}
+    assert counts == {1, 2}
+
+
+
 if __name__ == "__main__":
     test_gallery_crud()
     test_dialog_prompt_save()
@@ -559,4 +609,5 @@ if __name__ == "__main__":
     test_img2img_workflow_passes_negative()
     test_hear_through_door()
     test_door_muffle_config()
+    test_pose_select_limit()
     print("wifepay_test: ok")

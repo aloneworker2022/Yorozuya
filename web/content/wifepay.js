@@ -1,10 +1,10 @@
-/* Wife Pay 編輯頁 v9：隔門聽不清；預設廣角／雙人提示詞；一步一步精靈；打字速度可調；門縫切圖。 */
+/* Wife Pay 編輯頁 v10：每姿勢最多兩張、隨機 1～2 張；隔門聽不清；步驟精靈。 */
 import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES } from "./girl_gen.js";
 import { familyOf } from "./girl_voice.js?v=1";
 import {
-  apiJson, fetchGallery, fetchDialog, fetchScripts, generateFromItem, mountWifepayReveal, startWifepayPeek,
-  fetchConfig, saveConfig, pickPeek,
-} from "./wifepay_reveal.js?v=7";
+  apiJson, fetchGalleryDoc, fetchDialog, fetchScripts, generateFromItem, mountWifepayReveal, startWifepayPeek,
+  fetchConfig, saveConfig, pickPeek, POSE_SELECT_MAX, itemsForPose,
+} from "./wifepay_reveal.js?v=8";
 
 const $ = (id) => document.getElementById(id);
 const ENG_KEY = "yorozuya_eng";
@@ -231,6 +231,43 @@ function itemHasPose(it, pose) {
   return tags.includes(String(pose).toLowerCase());
 }
 
+function poseIdSet() {
+  return new Set((poseCatalog || []).map((p) => String(p.id)));
+}
+
+function selectedForPose(pose) {
+  return itemsForPose(items, pose || selectedPose);
+}
+
+function canAssignPose(itemId, pose) {
+  const p = String(pose || "");
+  if (!p) return true;
+  const cur = selectedForPose(p);
+  if (cur.some((x) => x.id === itemId)) return true;
+  return cur.length < POSE_SELECT_MAX;
+}
+
+function formatTrimWarn(trimmed) {
+  if (!trimmed || !trimmed.length) return "";
+  return trimmed.map((w) => {
+    const name = poseLabel(w.pose) || w.pose;
+    const n = (w.dropped || []).length;
+    return `姿勢「${name}」原本選了超過 ${POSE_SELECT_MAX} 張，已自動只留 ${POSE_SELECT_MAX} 張（多的 ${n} 張還在圖庫，只是拿掉這個姿勢）。`;
+  }).join(" ");
+}
+
+function syncPoseCount() {
+  const el = $("gal-pose-count");
+  if (!el) return;
+  if (!selectedPose) {
+    el.textContent = "先在第 1 步選一個姿勢。";
+    return;
+  }
+  const n = selectedForPose(selectedPose).length;
+  const name = poseLabel(selectedPose);
+  el.textContent = `「${name}」已選 ${n}／${POSE_SELECT_MAX} 張。開門時會從裡面隨機抽 1 或 2 張` + (n <= 1 ? "（目前只會出 1 張）。" : "，不是必定兩張。");
+}
+
 function scriptHasPose(s, pose) {
   if (!pose) return true;
   const tags = (s?.tags || []).map((t) => String(t).toLowerCase());
@@ -339,6 +376,7 @@ function selectPose(id) {
   if ($("ig-pose")) $("ig-pose").value = selectedPose;
   renderPoseGrid();
   setStatus("pose-status", selectedPose ? `已選「${poseLabel(selectedPose)}」` : "");
+  syncPoseCount();
   renderThumbs();
   renderScriptSelects();
   renderSteps();
@@ -529,8 +567,9 @@ function renderThumbs() {
   for (const it of vis) {
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = it.id === selectedId ? "sel" : "";
-    btn.title = it.id;
+    const inPose = !!(selectedPose && itemHasPose(it, selectedPose));
+    btn.className = (it.id === selectedId ? "sel" : "") + (inPose ? " in-pose" : "");
+    btn.title = it.id + (inPose ? "（已選進目前姿勢）" : "");
     const tag = (it.tags || [])[0] || "";
     btn.innerHTML = `<img src="${esc(it.url)}" alt="">${tag ? `<span class="tag">${esc(tag)}</span>` : ""}`;
     btn.onclick = () => {
@@ -541,16 +580,24 @@ function renderThumbs() {
     };
     box.appendChild(btn);
   }
+  syncPoseCount();
 }
 
 async function reloadGallery(preferId) {
-  items = await fetchGallery();
+  const doc = await fetchGalleryDoc();
+  items = doc.items || [];
   const vis = visibleItems();
   if (preferId && items.some((x) => x.id === preferId)) selectedId = preferId;
   else if (!items.some((x) => x.id === selectedId)) selectedId = (vis[0] || items[0])?.id || "";
   fillItemForm(selectedItem());
   renderThumbs();
   renderSteps();
+  const warn = formatTrimWarn(doc.trimmed);
+  if (warn) {
+    setStatus("gal-status", warn, true);
+    setStatus("gen-status", warn, true);
+  }
+  return doc;
 }
 
 async function uploadGallery() {
@@ -566,9 +613,23 @@ async function uploadGallery() {
   $("gal-file").value = "";
   const item = j.item;
   if (item?.id && selectedPose) {
+    if (!canAssignPose(item.id, selectedPose)) {
+      await reloadGallery(item.id);
+      const msg = `這個姿勢最多只能選 ${POSE_SELECT_MAX} 張底圖。圖已上傳，但沒有套上「${poseLabel(selectedPose)}」。請先拿掉其中一張的姿勢 tag，再指定。`;
+      setStatus("gal-status", msg, true);
+      setStatus("gen-status", msg, true);
+      return;
+    }
     const tags = Array.from(new Set([...(item.tags || []), selectedPose]));
     try {
-      await apiJson(`/api/wifepay/gallery/${encodeURIComponent(item.id)}`, "PATCH", { tags });
+      const patched = await apiJson(`/api/wifepay/gallery/${encodeURIComponent(item.id)}`, "PATCH", { tags });
+      if (patched?.rejected_poses?.length) {
+        await reloadGallery(item.id);
+        const msg = `這個姿勢最多只能選 ${POSE_SELECT_MAX} 張底圖，沒有套上「${poseLabel(selectedPose)}」。`;
+        setStatus("gal-status", msg, true);
+        setStatus("gen-status", msg, true);
+        return;
+      }
     } catch { /* 圖已上傳，tag 失敗也不擋 */ }
   }
   await reloadGallery(item?.id);
@@ -579,17 +640,33 @@ async function uploadGallery() {
 async function saveItem() {
   const it = selectedItem();
   if (!it) throw new Error("先選一張圖");
-  const tags = $("item-tags").value.split(/[,，]/).map((t) => t.trim()).filter(Boolean);
+  let tags = $("item-tags").value.split(/[,，]/).map((t) => t.trim()).filter(Boolean);
+  const blocked = tags.filter((tag) => poseIdSet().has(tag) && !canAssignPose(it.id, tag));
+  if (blocked.length) {
+    tags = tags.filter((tag) => !blocked.includes(tag));
+    const names = blocked.map((t) => `「${poseLabel(t)}」`).join("、");
+    const msg = `${names}最多只能選 ${POSE_SELECT_MAX} 張底圖，沒有套上這個姿勢。請先拿掉其中一張的姿勢 tag。`;
+    setStatus("gal-status", msg, true);
+    setStatus("gen-status", msg, true);
+    $("item-tags").value = tags.join(", ");
+  }
   const j = await apiJson(`/api/wifepay/gallery/${encodeURIComponent(it.id)}`, "PATCH", {
     prompt: $("item-prompt").value,
     negative: $("item-neg").value,
     denoise: Number($("item-denoise").value || 0.55),
     tags,
   });
+  if (j?.rejected_poses?.length && !blocked.length) {
+    const names = j.rejected_poses.map((t) => `「${poseLabel(t)}」`).join("、");
+    setStatus("gal-status", `${names}最多只能選 ${POSE_SELECT_MAX} 張底圖，沒有套上這個姿勢。`, true);
+    setStatus("gen-status", `${names}最多只能選 ${POSE_SELECT_MAX} 張底圖，沒有套上這個姿勢。`, true);
+  }
   await reloadGallery(j.item?.id || it.id);
-  setStatus("gal-status", "✓ 已儲存這張");
-  setStatus("denoise-status", "✓ 已儲存這張");
-  setStatus("gen-status", "✓ 已儲存這張");
+  if (!blocked.length && !(j?.rejected_poses || []).length) {
+    setStatus("gal-status", "✓ 已儲存這張");
+    setStatus("denoise-status", "✓ 已儲存這張");
+    setStatus("gen-status", "✓ 已儲存這張");
+  }
 }
 
 async function deleteItem() {

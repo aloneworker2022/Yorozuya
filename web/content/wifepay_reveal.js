@@ -59,15 +59,58 @@ async function apiJson(url, method, body) {
   return j;
 }
 
-export async function fetchGallery() {
+export const POSE_SELECT_MAX = 2;
+
+export async function fetchGalleryDoc() {
   const j = await apiJson("/api/wifepay/gallery");
-  return Array.isArray(j.items) ? j.items : [];
+  const items = Array.isArray(j?.items) ? j.items : (Array.isArray(j) ? j : []);
+  return {
+    items,
+    trimmed: Array.isArray(j?.trimmed) ? j.trimmed : [],
+    pose_max: Number(j?.pose_max) || POSE_SELECT_MAX,
+  };
+}
+
+export async function fetchGallery() {
+  return (await fetchGalleryDoc()).items;
+}
+
+export function itemsForPose(items, pose) {
+  const p = String(pose || "").trim();
+  const pool = (items || []).filter((x) => x && x.id && x.url);
+  if (!p) return pool;
+  return pool.filter((x) => (x.tags || []).includes(p));
+}
+
+/** 從該姿勢已選的底圖抽 1 或 2 張（各半）。只選 1 張就固定 1；沒選就空。不會從其他姿勢補張。 */
+export function pickItems(items, pose, count, rnd) {
+  const poseId = String(pose || "").trim();
+  let pool = poseId
+    ? itemsForPose(items, poseId)
+    : (items || []).filter((x) => x && x.id && x.url);
+  if (!pool.length) return [];
+  if (poseId && pool.length > POSE_SELECT_MAX) pool = pool.slice(0, POSE_SELECT_MAX);
+  const roll = typeof rnd === "function" ? rnd : (rnd && typeof rnd.random === "function" ? () => rnd.random() : Math.random);
+  let n;
+  if (pool.length === 1) n = 1;
+  else if (count === 1 || count === 2) n = Math.min(count, POSE_SELECT_MAX, pool.length);
+  else n = Math.min(roll() < 0.5 ? 1 : 2, POSE_SELECT_MAX, pool.length);
+  if (pool.length <= n) return pool.slice();
+  const copy = pool.slice();
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const j = Math.floor(roll() * copy.length) % copy.length;
+    out.push(copy.splice(j, 1)[0]);
+  }
+  return out;
 }
 
 export async function pickGallery(pose, count) {
   const body = { pose: pose || "" };
   if (count === 1 || count === 2) body.count = count;
-  return apiJson("/api/wifepay/pick", "POST", body);
+  const j = await apiJson("/api/wifepay/pick", "POST", body);
+  const items = Array.isArray(j.items) ? j.items.slice(0, POSE_SELECT_MAX) : [];
+  return { ...j, items };
 }
 
 export async function fetchDialog(info) {
@@ -613,7 +656,7 @@ export function mountWifepayReveal(host, opts = {}) {
   return api;
 }
 
-/** 遊戲／全部測試：抽 1～2 張、生對話、生圖，掛到 host。空圖庫不清文生圖。 */
+/** 遊戲／全部測試：從該姿勢已選底圖抽 1～2 張、生對話、生圖，掛到 host。空圖庫不清文生圖。 */
 export function startWifepayPeek(host, opts = {}) {
   const info = {
     character: opts.character || null,
