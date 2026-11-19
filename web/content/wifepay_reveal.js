@@ -2,11 +2,11 @@
  * 對話：一開始就在中央打字（旁白→男→她，按「下一句」換人）。
  * 圖好了先把對話框在約 0.4 秒滑到下方，再把已切好的門縫圖（1/2 或 3/5，同一邊）從該側螢幕邊緣移入（約 0.7 秒 ease-out，略淡入）。
  * 若有第二張：不要在按「下一句」時換圖；改成點圖片，第二張從同一側移入並蓋在第一張上面（底下那張略暗、微偏移）。
- * 圖片區用 dvh／svh 限制高度（直向約 55%、橫向更矮），切圖 contain 在框內；圖在對話框上方的空間垂直置中、略偏上（頂部約 7dvh＋safe-area），對話框留在底部完整可見。
+ * 圖片區用 dvh／svh 限制高度（直向約 55%、橫向更矮），切圖 contain 在框內；圖垂直置中於頂部（含 safe-area）與對話框上緣之間，上下留白大致相同，對話框留在底部完整可見。
  * prefers-reduced-motion 改短淡入。男子／她的對白可做「隔門聽不清」；旁白不變。 */
 import { hearLine, normalizeMuffleLevel, parseMuffleEnabled } from "./wifepay_heard.js?v=1";
 
-const CSS_ID = "wifepay-reveal-css-9";
+const CSS_ID = "wifepay-reveal-css-10";
 const DIALOG_DOWN_MS = 400;
 const SLIDE_MS = 700;
 const REDUCE_MS = 180;
@@ -16,7 +16,7 @@ const CSS = `
 .wp-pics{display:none;flex:0 0 auto;min-height:0;width:min(100%,96vw);max-width:100%;max-height:0;opacity:1;background:#07050a;align-items:center;justify-content:center;padding:0;box-sizing:border-box;position:relative;overflow:hidden;transition:max-height .4s ease,height .4s ease}
 .wp-pics.ready{display:flex;pointer-events:auto}
 .wp-pics.has-next{cursor:pointer}
-.wp-reveal.has-pics .wp-pics{flex:0 0 auto;width:min(100%,96vw);max-width:min(100%,96vw);max-height:min(55dvh,55svh);margin-top:0;margin-bottom:auto}
+.wp-reveal.has-pics .wp-pics{flex:0 0 auto;width:min(100%,96vw);max-width:min(100%,96vw);max-height:min(55dvh,55svh);margin-top:auto;margin-bottom:auto}
 .wp-stage{position:relative;height:100%;width:100%;overflow:hidden;background:linear-gradient(90deg,#050308 0%,#0c0910 18%,#07050a 50%,#0c0910 82%,#050308 100%)}
 .wp-slot{position:absolute;top:0;overflow:hidden;background:#000;border:none;box-sizing:border-box;box-shadow:inset 6px 0 0 rgba(40,28,24,.9),inset -6px 0 0 rgba(24,16,14,.9),0 0 18px rgba(0,0,0,.55);opacity:0;will-change:transform,opacity;z-index:1}
 .wp-slot img{position:absolute;top:0;height:100%;width:auto;max-width:none;display:block}
@@ -36,7 +36,7 @@ const CSS = `
 @media (prefers-reduced-motion: reduce){
   .wp-pics,.wp-dialog{transition-duration:.18s !important}
 }
-.wp-reveal.has-pics{justify-content:flex-start;align-items:center;gap:0;padding-top:max(7dvh,calc(env(safe-area-inset-top) + .5rem))}
+.wp-reveal.has-pics{justify-content:flex-start;align-items:center;gap:0;padding-top:env(safe-area-inset-top)}
 .wp-reveal.has-pics .wp-dialog{margin-top:0;margin-right:auto;margin-left:auto;margin-bottom:max(.4rem,env(safe-area-inset-bottom));max-height:min(38dvh,38svh)}
 .wp-wait{margin:0 0 .4rem;text-align:center;color:#e6be8c}
 .wp-log{width:100%;max-height:14.5rem;overflow:auto;display:flex;flex-direction:column;justify-content:flex-end;gap:.55rem}
@@ -58,7 +58,7 @@ const CSS = `
 
 function ensureCss() {
   if (document.getElementById(CSS_ID)) return;
-  for (const id of ["wifepay-reveal-css-8", "wifepay-reveal-css-7", "wifepay-reveal-css-6", "wifepay-reveal-css-5"]) {
+  for (const id of ["wifepay-reveal-css-9", "wifepay-reveal-css-8", "wifepay-reveal-css-7", "wifepay-reveal-css-6", "wifepay-reveal-css-5"]) {
     const old = document.getElementById(id);
     if (old) old.remove();
   }
