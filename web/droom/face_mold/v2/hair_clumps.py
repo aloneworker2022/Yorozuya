@@ -30,8 +30,8 @@ def bang_clumps(rnd):
   while p<58:
     w=rnd.uniform(15,20) if big else rnd.uniform(6,9)
     a,b=p-(1.2 if big else .6),min(60,p+w+(1.2 if big else .6))
-    L=(rnd.choice([1,2,3,4,5]) if big else rnd.choice([-2,-1,0,1,2]))   # 不要垂到眼睛
-    tipy=BANG_Y-2+L;pointed=rnd.random()<(.7 if big else .5);lean=rnd.uniform(-.25,.25)
+    L=(rnd.choice([0,1,2,3]) if big else rnd.choice([-1,0,1]))   # 長短只差一點點
+    tipy=BANG_Y-2+L;pointed=False;lean=0   # 使用者 2026-11-19：每一片的下面是平的（剪齊），不是尖的
     top=CY-RO*.93
     left=[];right=[]
     for k in range(25):
@@ -52,7 +52,7 @@ def side_clumps(rnd):
       w=min(rnd.uniform(8,13),RO+1-abs(x-CX));xa,xb=(x,x+s*w) if s>0 else (x+s*w,x)
       ex=max(abs(xa-CX),abs(xb-CX))
       top=CY-math.sqrt(max(0,RO*RO-ex*ex))+6+rnd.uniform(0,3)   # 從頭頂那圈的邊緣下面長出來（不要在頭外面多出一個方角）
-      tip=bottom+rnd.uniform(-6,6);pointed=rnd.random()<.6
+      tip=bottom+rnd.uniform(-4,4);pointed=False
       bulge=(4*math.sin(math.pi*(top-104)/130) if HS=='bob' else 0)
       lx=[(xa-.8,top)];rx=[(xb+.8,top)]
       for k in range(1,20):
@@ -74,7 +74,7 @@ def back_clumps(rnd):
       xb=min(xb,CX+RO+4);xa=max(xa,CX-RO-4)
       tip=bottom-rnd.uniform(0,10)
       cy=lambda X:CY-math.sqrt(max(0,RO*RO-min(RO,abs(X-CX))**2))+3     # 從頭頂那圈裡面長出來，不在頭外面多一個方角
-      pts=[(xa-1,cy(xa)),(xb+1,cy(xb)),(xb+1+s*2,tip-6),((xa+xb)/2,tip),(xa-1+s*2,tip-6)]
+      pts=[(xa-1,cy(xa)),(xb+1,cy(xb)),(xb+1,tip),(xa-1,tip)]   # 下面平的
       out.append(Clump('back',pts,0,len(out)));x+=s*w*.8
   return out
 def build():
