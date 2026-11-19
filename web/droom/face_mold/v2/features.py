@@ -79,7 +79,18 @@ def mouth_px():
   def nums(name):return [float(v) for v in re.search(name+r'=\[(.*?)\]',src).group(1).split(',')]
   MT=os.environ.get('MT','closed')
   SP,DZ=(arr('OPEN'),nums('DZ1')) if MT=='open' else (arr('LIPS'),nums('DZ0'))
-  LINE=[i for i,r in enumerate(SP) if 'C' in r][0];SC=(len(SP[0])-1)//2;y0=round(Y(588))
+  LINE=[i for i,r in enumerate(SP) if 'C' in r][0]
+  # 唇色樣式（使用者 2026-11-19）：LIPS=全＝上下唇都上色（原本）；LIPS=下唇＝上唇不上色、只留嘴縫的線，下唇有顏色
+  if os.environ.get('LIPS','全')=='下唇':
+    SP=[''.join(ch if ch=='L' else '.' for ch in row) if r<LINE else row for r,row in enumerate(SP)]
+  # 嘴巴大小（MS=小／中／大）：小＝原本 19 格寬；中、大照比例放大（最近鄰，奇數寬才置中）
+  sx,sy={'小':(1,1),'中':(1.32,1.15),'大':(1.65,1.32)}[os.environ.get('MS','小')]
+  if sx!=1 or sy!=1:
+    W0,H0=len(SP[0]),len(SP);W2=round(W0*sx)|1;H2=round(H0*sy)
+    SP=[''.join(SP[min(H0-1,int((r+.5)/sy))][min(W0-1,int((c+.5)*W0/W2))] for c in range(W2)) for r in range(H2)]
+    DZ=[DZ[min(H0-1,int((r+.5)/sy))] for r in range(H2)]
+    LINE=[i for i,r in enumerate(SP) if 'C' in r][0]
+  SC=(len(SP[0])-1)//2;y0=round(Y(588))
   o={}
   for r,row in enumerate(SP):
     for c,ch in enumerate(row):
