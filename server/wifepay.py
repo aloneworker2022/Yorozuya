@@ -1,7 +1,8 @@
 """老婆還債偷看：圖生圖圖庫與三段式對話（旁白→男→她）。
 
 圖庫在 assets/wifepay/gallery/＋index.json；產出在 assets/wifepay/out/。
-對話模板在 assets/wifepay/dialog.json；劇本在 assets/wifepay/scripts.json（可存多種、開門隨機抽）。內容規則沿用 escort_lines：成年人、自願、不寫強迫／未成年。
+對話模板在 assets/wifepay/dialog.json；劇本存在 assets/wifepay/scripts.json（可存多種、開門隨機抽）。
+assets/wifepay/ 整個目錄被 gitignore，內建劇本以 STOCK_SCRIPTS 寫在程式裡，缺檔或舊檔缺少新 id 時由程式補上，不依賴倉庫裡的 json。內容規則沿用 escort_lines：成年人、自願、不寫強迫／未成年。
 """
 from __future__ import annotations
 
@@ -477,6 +478,105 @@ STOCK_SCRIPTS = [
             "wife": "太、太快了……慢一點好不好……",
         },
     },
+    {
+        "id": "sc_reluctant_pleasure",
+        "name": "不太情願卻很舒服",
+        "enabled": True,
+        "tags": ["missionary", "cowgirl"],
+        "scenario": (
+            "她是自己答應來做這份工作的，雖然嘴上有點彆扭、臉很紅，顯得不太情願又害臊，"
+            "但沒有被強迫，也沒有威脅。身體卻比嘴老實，漸漸舒服起來，最後自己也承認很有感覺。"
+            "旁白要寫兩人正在做什麼，以及她彆扭卻漸漸沉溺的表情、態度和肢體，還有男子發現她其實很有感覺時的得意。"
+            "雙方都是成年人、你情我願。"
+        ),
+        "man_tone": "帶著發現她其實很舒服的得意，可以調侃她嘴上彆扭身體卻很誠實，語氣不要兇、不要威脅。",
+        "wife_tone": "先小聲彆扭、害臊，後來忍不住漏出舒服的聲音，承認自己其實很有感覺；不要說被強迫，不要求救。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "她自己敞開身子讓他進來，臉別向一側、耳根紅透，眉心微蹙卻沒有推開；男人放慢節奏看著她，眼神發亮、嘴角帶笑，掌心按在她腰上感覺她越夾越緊，每一下都讓她肩頭輕輕發抖，嘴上還彆扭著。",
+            "man": "嘴上不情願，身體卻夾這麼緊？",
+            "wife": "別說了……可是真的，好舒服……",
+        },
+    },
+    {
+        "id": "sc_comes_around",
+        "name": "被幹到迎合",
+        "enabled": True,
+        "tags": ["missionary", "cowgirl", "doggy"],
+        "scenario": (
+            "一開始她比較被動，躺著或撐著讓客人動；漸漸被頂到有感覺，開始自己扭腰、抬臀去迎合他的節奏。"
+            "旁白要寫這個從被動變成主動迎合的過程，以及兩人的表情、態度和肢體。雙方都是你情我願。"
+        ),
+        "man_tone": "先誇她開始自己動了，語氣又饞又滿意，鼓勵她繼續迎上來。",
+        "wife_tone": "從悶哼變成主動求再深一點，帶著終於忍不住迎合的害羞。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "一開始她只是躺著承受，手指鬆鬆抓著床單、眼神飄開；幾下之後腰卻自己抬起來迎他，唇間漏出黏熱的氣音，臉頰潮紅。男人低頭看她主動送上來，眼神又饞又滿意，托著她的臀加深每一次撞擊。",
+            "man": "對，自己把腰抬起來，很會嘛。",
+            "wife": "嗯……等一下，我自己會迎上去……",
+        },
+    },
+    {
+        "id": "sc_shy",
+        "name": "害羞",
+        "enabled": True,
+        "tags": ["kiss", "missionary", "foreplay"],
+        "scenario": (
+            "她很害羞，會用手遮臉或摀嘴，聲音又細又小，不敢對上他的眼睛，身體卻沒有躲開。"
+            "旁白要寫她遮臉、縮肩、細聲的樣子，以及男子放慢或靠近看她的態度與肢體。雙方都是你情我願。"
+        ),
+        "man_tone": "語氣偏低、帶笑，誘她把手放下來看他，不要兇。",
+        "wife_tone": "細聲、斷斷續續，害臊地求他別一直看，偶爾悶在手心裡叫。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "她用雙手遮著發燙的臉，指縫間偷偷看他，聲音細得幾乎聽不見，肩頭縮著卻沒有躲開；男人把她的手輕輕拉開一點，低頭看她濕潤的眼睫，動作放慢，掌心沿著她腰側安撫，語氣低而帶笑。",
+            "man": "把手放下來，讓我看看你的臉。",
+            "wife": "不要一直看……好害羞……嗯……",
+        },
+    },
+    {
+        "id": "sc_hard_start",
+        "name": "男子一來就猛幹",
+        "enabled": True,
+        "tags": ["missionary", "doggy"],
+        "scenario": (
+            "客人一進來就節奏很重、一下子頂到最深，她被頂得發顫、有點招架不住，卻明顯很有感覺，也願意繼續。"
+            "旁白要寫他一開始就很猛的動作，以及她被頂到發軟的表情、態度和肢體，還有他專注又興奮的樣子。"
+            "雙方都是你情我願，不是強迫。"
+        ),
+        "man_tone": "喘得急、句子短，直說好緊、再夾，興致很高但不威脅。",
+        "wife_tone": "又甜又喘，求他稍慢又承認好深好舒服，是被頂得很爽的求饒式撒嬌，不是拒絕。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "他一壓上來就頂到最深處，節奏又重又急，額角是汗、眼神發亮；她被頂得聲音發顫，眉心皺緊、手指死死抓著床單，腿卻主動纏上他的腰，身體一下一下地發抖，顯然被弄得很有感覺。",
+            "man": "一進來就這麼緊，再夾一下。",
+            "wife": "太、太深了……好舒服，稍、稍慢一點……",
+        },
+    },
+    {
+        "id": "sc_falls_for_him",
+        "name": "幹到愛上",
+        "enabled": True,
+        "tags": ["cowgirl", "kiss", "missionary"],
+        "scenario": (
+            "做到後來她完全沉進去，當下對這個客人又黏又迷戀，會主動抱緊、索吻、說出黏人的話。"
+            "旁白要寫她眼神發軟、腰主動貼上去、手不讓他離開的肢體，以及男子被她這副樣子取悅的表情與態度。"
+            "這是這一刻的迷戀，不要寫強迫。"
+        ),
+        "man_tone": "又得意又寵，回應她的黏人，問她是不是離不開。",
+        "wife_tone": "黏人、撒嬌、當下告白式的迷戀，求他再近一點、不要停。",
+        "system": "",
+        "user": "",
+        "fallback": {
+            "narration": "做到後來她整個人軟在他身上，眼神迷離、雙手緊緊環住他的脖子不讓他退開，腰還主動往上貼；男人被她這副黏人的樣子取悅，吻著她發燙的耳尖，動作又深又穩，看她一下一下把自己送上來。",
+            "man": "這麼黏我，是不是有點愛上了？",
+            "wife": "嗯……再近一點，不要停，好喜歡……",
+        },
+    },
 ]
 
 
@@ -520,16 +620,76 @@ def clean_script(raw: dict, *, new_id: bool = False) -> dict | None:
         "enabled": bool(enabled),
         "tags": clean_tags(raw.get("tags")),
         "scenario": scenario,
+        "man_tone": _clip(raw.get("man_tone"), 600),
+        "wife_tone": _clip(raw.get("wife_tone"), 600),
         "system": system,
         "user": user,
         "fallback": fb,
     }
 
 
+def stock_scripts() -> list[dict]:
+    """內建劇本一律從程式碼生成，不讀被 gitignore 的資產檔。"""
+    return [s for s in (clean_script(x) for x in STOCK_SCRIPTS) if s]
+
+
+def stock_script_ids() -> set[str]:
+    return {s["id"] for s in stock_scripts()}
+
+
+def _clean_script_list(items) -> list[dict]:
+    out = []
+    seen = set()
+    for it in items or []:
+        row = clean_script(it) if isinstance(it, dict) else None
+        if not row or row["id"] in seen:
+            continue
+        seen.add(row["id"])
+        out.append(row)
+    return out
+
+
+def _read_scripts_blob(assets: Path) -> tuple[list, set[str] | None, bool]:
+    """回 (原始 list, seen_stock_ids 或 None 表示舊檔沒這個欄位, 檔案是否存在且可解析)。"""
+    p = scripts_path(assets)
+    if not p.is_file():
+        return [], None, False
+    try:
+        data = json.loads(p.read_text("utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return [], None, False
+    if isinstance(data, list):
+        return data, None, True
+    if isinstance(data, dict):
+        items = data.get("scripts")
+        if not isinstance(items, list):
+            items = []
+        raw_seen = data.get("seen_stock_ids")
+        if isinstance(raw_seen, list):
+            seen = {str(x).strip() for x in raw_seen if str(x).strip()}
+            return items, seen, True
+        return items, None, True
+    return [], None, False
+
+
+def merge_stock_scripts(existing, seen_stock_ids: set[str] | None = None) -> tuple[list[dict], set[str], bool]:
+    """保留使用者既有劇本（含改過的內建）。缺少的內建依 id 補上；已記在 seen 卻被刪掉的不復活。"""
+    rows = _clean_script_list(existing)
+    have = {s["id"] for s in rows}
+    seen = set(have) if seen_stock_ids is None else set(seen_stock_ids)
+    changed = False
+    for stock in stock_scripts():
+        if stock["id"] not in have and stock["id"] not in seen:
+            rows.append(stock)
+            have.add(stock["id"])
+            changed = True
+    seen |= stock_script_ids()
+    return rows, seen, changed
+
+
 def _seed_scripts(assets: Path) -> list[dict]:
-    """第一次：內建 8 種劇本。若 dialog.json 是使用者改過的模板，放到第一筆並保留原文。"""
-    scripts = [clean_script(x) for x in STOCK_SCRIPTS]
-    scripts = [s for s in scripts if s]
+    """第一次：從程式碼寫入全部內建劇本。若 dialog.json 是使用者改過的模板，放到第一筆並保留原文。"""
+    scripts = list(stock_scripts())
     raw = None
     p = dialog_path(assets)
     if p.is_file():
@@ -561,41 +721,40 @@ def _seed_scripts(assets: Path) -> list[dict]:
 
 
 def load_scripts(assets: Path) -> list[dict]:
+    """缺檔、空檔或壞檔就從 STOCK_SCRIPTS 種子；舊檔則依 id 補上新的內建，不覆蓋使用者改過的內容。"""
     ensure_dirs(assets)
+    items, seen, ok = _read_scripts_blob(assets)
+    cleaned = _clean_script_list(items) if ok else []
+    if not ok or not cleaned:
+        scripts = _seed_scripts(assets)
+        save_scripts(assets, scripts, seen_stock_ids=stock_script_ids() | {s["id"] for s in scripts})
+        return scripts
+    scripts, seen2, changed = merge_stock_scripts(cleaned, seen)
     p = scripts_path(assets)
-    if p.is_file():
-        try:
-            data = json.loads(p.read_text("utf-8"))
-        except (OSError, json.JSONDecodeError):
-            data = None
-        items = data if isinstance(data, list) else (data.get("scripts") if isinstance(data, dict) else None)
-        if isinstance(items, list):
-            out = []
-            seen = set()
-            for it in items:
-                row = clean_script(it) if isinstance(it, dict) else None
-                if not row or row["id"] in seen:
-                    continue
-                seen.add(row["id"])
-                out.append(row)
-            if out:
-                return out
-    scripts = _seed_scripts(assets)
-    save_scripts(assets, scripts)
+    need_seen_field = True
+    try:
+        data = json.loads(p.read_text("utf-8"))
+        need_seen_field = not (isinstance(data, dict) and isinstance(data.get("seen_stock_ids"), list))
+    except (OSError, json.JSONDecodeError):
+        need_seen_field = True
+    if changed or need_seen_field:
+        save_scripts(assets, scripts, seen_stock_ids=seen2)
     return scripts
 
 
-def save_scripts(assets: Path, scripts: list[dict]) -> list[dict]:
+def save_scripts(assets: Path, scripts: list[dict], seen_stock_ids=None) -> list[dict]:
     ensure_dirs(assets)
-    rows = []
-    seen = set()
-    for it in scripts or []:
-        row = clean_script(it) if isinstance(it, dict) else None
-        if not row or row["id"] in seen:
-            continue
-        seen.add(row["id"])
-        rows.append(row)
-    _atomic_write(scripts_path(assets), json.dumps({"scripts": rows}, ensure_ascii=False, indent=2))
+    rows = _clean_script_list(scripts)
+    if seen_stock_ids is None:
+        _, prev, ok = _read_scripts_blob(assets)
+        seen = set(prev or set())
+    else:
+        seen = {str(x).strip() for x in seen_stock_ids if str(x).strip()}
+    seen |= stock_script_ids()
+    _atomic_write(
+        scripts_path(assets),
+        json.dumps({"scripts": rows, "seen_stock_ids": sorted(seen)}, ensure_ascii=False, indent=2),
+    )
     return rows
 
 
@@ -762,6 +921,12 @@ def dialog_messages(info: dict, template: dict | None = None, script: dict | Non
         extra.append(f"她的叫聲類型：{v['voice_zh']}")
     if v.get("family"):
         extra.append(f"她的個性：{v['family']}")
+    man_tone = str(script.get("man_tone") or info.get("man_tone") or "").strip()
+    wife_tone = str(script.get("wife_tone") or info.get("wife_tone") or "").strip()
+    if man_tone:
+        extra.append(f"男子語氣：{man_tone}")
+    if wife_tone:
+        extra.append(f"妻子語氣：{wife_tone}")
     scenario = str(script.get("scenario") or info.get("scenario") or "").strip()
     script_name = str(script.get("name") or info.get("script_name") or "").strip()
     v = {

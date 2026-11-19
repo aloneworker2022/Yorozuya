@@ -75,7 +75,10 @@ export async function fetchDialog(info) {
 
 export async function fetchScripts() {
   const j = await apiJson("/api/wifepay/scripts");
-  return Array.isArray(j.scripts) ? j.scripts : [];
+  if (!Array.isArray(j.scripts)) {
+    throw new Error("劇本接口回傳格式不對（沒有 scripts 陣列）。若剛更新程式，請先重啟 uvicorn。");
+  }
+  return j.scripts;
 }
 
 /** 輪詢既有 /api/imggen；成功回圖 URL，失敗丟錯。 */

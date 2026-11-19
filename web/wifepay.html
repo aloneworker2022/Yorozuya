@@ -180,7 +180,8 @@
 
 <section>
   <h2>4. 劇本</h2>
-  <p class="mini">可存多種劇本，開門時從啟用的裡面隨機抽（有對上圖庫 tags 會優先）。每本可寫情境、後備旁白／對白；進階欄位可覆寫提示詞（空白＝用內建修正後的旁白模板）。測試可指定某一本或隨機。</p>
+  <p class="mini">可存多種劇本，開門時從啟用的裡面隨機抽（有對上圖庫 tags 會優先）。每本可寫情境、男子／妻子語氣、後備旁白／對白；進階欄位可覆寫提示詞（空白＝用內建修正後的旁白模板）。測試可指定某一本或隨機。內建劇本由伺服器從程式碼補上，不依賴本機是否已有 scripts.json。</p>
+  <div class="status" id="script-status"></div>
   <div class="row">
     <span class="grow"><label>編輯這本</label>
       <select id="script-sel"></select></span>
@@ -199,6 +200,10 @@
   <input id="script-tags" type="text" placeholder="missionary, bed">
   <label>情境（會進旁白提示詞）</label>
   <textarea id="script-scenario" style="min-height:5em"></textarea>
+  <label>男子語氣</label>
+  <textarea id="script-man-tone" style="min-height:2.6em" placeholder="例如：得意、調侃，不要兇"></textarea>
+  <label>妻子語氣</label>
+  <textarea id="script-wife-tone" style="min-height:2.6em" placeholder="例如：先彆扭後承認很舒服"></textarea>
   <label>後備旁白（模型沒寫好時用，建議 60～120 字，寫表情與態度）</label>
   <textarea id="script-fb-nar" style="min-height:4em"></textarea>
   <div class="row">
@@ -230,6 +235,6 @@
   <div id="reveal-host"></div>
 </section>
 
-<script type="module" src="/content/wifepay.js?v=4"></script>
+<script type="module" src="/content/wifepay.js?v=5"></script>
 </body>
 </html>

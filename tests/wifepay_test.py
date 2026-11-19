@@ -208,11 +208,15 @@ def test_scripts_crud_and_pick():
     assert len(scripts) >= 8
     ids = {s["id"] for s in scripts}
     assert "sc_cowgirl" in ids and "sc_intense" in ids
+    for nid in ("sc_reluctant_pleasure", "sc_comes_around", "sc_shy", "sc_hard_start", "sc_falls_for_him"):
+        assert nid in ids
     # 每個內建劇本都有可用的後備旁白
     for s in scripts:
         fb = W.clean_fallback(s.get("fallback"))
         assert fb, s["id"]
         assert W.apply_banned(fb["narration"]) == fb["narration"]
+        assert W.apply_banned(fb["man"]) == fb["man"]
+        assert W.apply_banned(fb["wife"]) == fb["wife"]
     # 指定 id
     hit = W.pick_script(scripts, script_id="sc_kiss")
     assert hit and hit["id"] == "sc_kiss"
@@ -245,6 +249,93 @@ def test_scripts_crud_and_pick():
     row = W.fallback_dialog({"pose": "missionary", "script": hit}, rnd=lambda: 0.0)
     assert row["narration"] == hit["fallback"]["narration"]
 
+NEW_STOCK_IDS = (
+    "sc_reluctant_pleasure",
+    "sc_comes_around",
+    "sc_shy",
+    "sc_hard_start",
+    "sc_falls_for_him",
+)
+NEW_STOCK_NAMES = ("不太情願卻很舒服", "被幹到迎合", "害羞", "男子一來就猛幹", "幹到愛上")
+
+
+def test_scripts_seed_and_merge():
+    # 缺檔：從程式碼種子，不依賴被 gitignore 的 assets/wifepay/scripts.json
+    assets = _assets()
+    assert not W.scripts_path(assets).is_file()
+    seeded = W.load_scripts(assets)
+    ids = [s["id"] for s in seeded]
+    assert len(seeded) == len(W.STOCK_SCRIPTS)
+    assert set(ids) == W.stock_script_ids()
+    for nid, nname in zip(NEW_STOCK_IDS, NEW_STOCK_NAMES):
+        hit = next(s for s in seeded if s["id"] == nid)
+        assert hit["name"] == nname
+        assert hit["scenario"]
+        assert hit["man_tone"] and hit["wife_tone"]
+        fb = W.clean_fallback(hit["fallback"])
+        assert fb and W.NAR_MIN <= len(fb["narration"]) <= 120
+        sys_m, user_m = W.dialog_messages({"name": "小焰"}, script=hit)
+        assert "男子語氣：" in user_m and hit["man_tone"] in user_m
+        assert "妻子語氣：" in user_m and hit["wife_tone"] in user_m
+        # 必須是自願：後備對白與情境通過 BANNED；求救詞不能出現
+        blob = hit["scenario"] + hit["man_tone"] + hit["wife_tone"] + fb["narration"] + fb["man"] + fb["wife"]
+        assert W.apply_banned(blob) == blob
+        for bad in ("救命", "報警", "放開我", "強暴", "強姦"):
+            assert bad not in blob
+        # 後備對白本身不要出現強迫／威脅（情境裡寫「沒有被強迫／不要威脅」是指引）
+        spoken = fb["narration"] + fb["man"] + fb["wife"]
+        assert "強迫" not in spoken and "威脅" not in spoken
+    saved = json.loads(W.scripts_path(assets).read_text("utf-8"))
+    assert "seen_stock_ids" in saved and set(saved["seen_stock_ids"]) >= W.stock_script_ids()
+
+    # 舊檔只有部分劇本、使用者改過其中一本：依 id 補新的，不覆蓋改過的
+    assets2 = _assets()
+    W.scripts_path(assets2).parent.mkdir(parents=True, exist_ok=True)
+    custom_old = {
+        "id": "sc_cowgirl",
+        "name": "我改過的自己動",
+        "enabled": True,
+        "tags": ["cowgirl"],
+        "scenario": "這是使用者自己改的情境，不要被覆蓋。",
+        "fallback": W.STOCK_SCRIPTS[1]["fallback"],
+    }
+    only = {
+        "scripts": [
+            custom_old,
+            {"id": "sc_user", "name": "自訂一本", "scenario": "使用者新增的劇本。", "enabled": True,
+             "fallback": W.STOCK_SCRIPTS[0]["fallback"]},
+        ]
+    }
+    W.scripts_path(assets2).write_text(json.dumps(only, ensure_ascii=False, indent=2), encoding="utf-8")
+    merged = W.load_scripts(assets2)
+    by = {s["id"]: s for s in merged}
+    assert by["sc_cowgirl"]["name"] == "我改過的自己動"
+    assert by["sc_cowgirl"]["scenario"].startswith("這是使用者自己改")
+    assert by["sc_user"]["name"] == "自訂一本"
+    for nid in NEW_STOCK_IDS:
+        assert nid in by and by[nid]["name"] == NEW_STOCK_NAMES[NEW_STOCK_IDS.index(nid)]
+    assert "sc_missionary" in by  # 舊內建缺的也要補
+
+    # 已看過並刪掉的內建不要復活
+    assets3 = _assets()
+    W.load_scripts(assets3)
+    assert W.delete_script(assets3, "sc_shy") is True
+    again = W.load_scripts(assets3)
+    assert "sc_shy" not in {s["id"] for s in again}
+    blob = json.loads(W.scripts_path(assets3).read_text("utf-8"))
+    assert "sc_shy" in blob["seen_stock_ids"]
+
+    # 壞檔／空檔要重新種子
+    assets4 = _assets()
+    p4 = W.scripts_path(assets4)
+    p4.parent.mkdir(parents=True, exist_ok=True)
+    p4.write_text("{not json", encoding="utf-8")
+    assert {s["id"] for s in W.load_scripts(assets4)} == W.stock_script_ids()
+    p4.write_text(json.dumps({"scripts": []}, ensure_ascii=False), encoding="utf-8")
+    assert {s["id"] for s in W.load_scripts(assets4)} == W.stock_script_ids()
+
+
+
 
 if __name__ == "__main__":
     test_gallery_crud()
@@ -256,4 +347,5 @@ if __name__ == "__main__":
     test_dialog_messages_expand()
     test_migrate_old_dialog_default()
     test_scripts_crud_and_pick()
+    test_scripts_seed_and_merge()
     print("wifepay_test: ok")

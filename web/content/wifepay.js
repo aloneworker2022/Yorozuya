@@ -1,9 +1,9 @@
-/* Wife Pay 編輯頁 v4：劇本可存多種隨機抽；抽妹子只擲參數。 */
+/* Wife Pay 編輯頁 v5：劇本可存多種隨機抽；抽妹子只擲參數。 */
 import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES } from "./girl_gen.js";
 import { familyOf } from "./girl_voice.js?v=1";
 import {
   apiJson, fetchGallery, fetchDialog, fetchScripts, generateFromItem, mountWifepayReveal, startWifepayPeek,
-} from "./wifepay_reveal.js?v=3";
+} from "./wifepay_reveal.js?v=4";
 
 const $ = (id) => document.getElementById(id);
 const ENG_KEY = "yorozuya_eng";
@@ -413,6 +413,8 @@ function fillScriptForm(row) {
   if ($("script-name")) $("script-name").value = s.name || "";
   if ($("script-tags")) $("script-tags").value = Array.isArray(s.tags) ? s.tags.join(", ") : (s.tags || "");
   if ($("script-scenario")) $("script-scenario").value = s.scenario || "";
+  if ($("script-man-tone")) $("script-man-tone").value = s.man_tone || "";
+  if ($("script-wife-tone")) $("script-wife-tone").value = s.wife_tone || "";
   const fb = s.fallback || {};
   if ($("script-fb-nar")) $("script-fb-nar").value = fb.narration || "";
   if ($("script-fb-man")) $("script-fb-man").value = fb.man || "";
@@ -430,6 +432,8 @@ function gatherScriptFields() {
     enabled: !!$("script-enabled")?.checked,
     tags: $("script-tags")?.value || "",
     scenario: $("script-scenario")?.value || "",
+    man_tone: $("script-man-tone")?.value || "",
+    wife_tone: $("script-wife-tone")?.value || "",
     system: $("dlg-sys")?.value || "",
     user: $("dlg-user")?.value || "",
     fallback: (fbNar || fbMan || fbWife) ? { narration: fbNar, man: fbMan, wife: fbWife } : null,
@@ -437,10 +441,26 @@ function gatherScriptFields() {
 }
 
 async function loadScriptsList() {
-  scripts = await fetchScripts();
-  if (!scripts.some((s) => s.id === selectedScriptId)) selectedScriptId = scripts[0]?.id || "";
-  renderScriptSelects();
-  fillScriptForm(currentScript());
+  try {
+    const rows = await fetchScripts();
+    if (!Array.isArray(rows) || !rows.length) {
+      throw new Error("伺服器沒有回傳劇本。若剛更新程式，請先重啟 uvicorn，再重新整理這個頁面。");
+    }
+    scripts = rows;
+    if (!scripts.some((s) => s.id === selectedScriptId)) selectedScriptId = scripts[0]?.id || "";
+    renderScriptSelects();
+    fillScriptForm(currentScript());
+    setStatus("script-status", `已載入 ${scripts.length} 本劇本`);
+  } catch (e) {
+    scripts = [];
+    selectedScriptId = "";
+    renderScriptSelects();
+    fillScriptForm({});
+    const msg = `載入劇本失敗：${e.message || e}。若剛更新程式，請先重啟 uvicorn，再強制重新整理這個頁面。`;
+    setStatus("script-status", msg, true);
+    setStatus("gen-status", msg, true);
+    throw e;
+  }
 }
 
 async function saveCurrentScript() {
