@@ -73,7 +73,8 @@ def samples():
     xs=np.nonzero(back[Yp])[0]
     for X in range(xs.min(),xs.max()+1):
       x=X-128;zo=-math.sqrt(max(0,(RO+2)**2-x*x))*BACK
-      for f in(1,.8,.6,.4):P.append((x,Yp,zo*f,'back'));P.append((x,Yp+.5,zo*f,'back'))
+      for f in(1,.8,.6,.4):
+        for o in(0,.5):P.append((x+o,Yp,zo*f,'back'));P.append((x+o,Yp+.5,zo*f,'back'))   # 半格也取，邊緣才不會漏白縫
   return P
 def render(img,deg,cx):
   a=math.radians(deg);ca,sa=math.cos(a),math.sin(a)
@@ -118,6 +119,21 @@ def render(img,deg,cx):
       if (X,Yp) in vis and vis[(X,Yp)][0] in('cap','bang'):
         out[Yp,X]=C['ln']
         if kind=='thick' and (yy-y0)>(y1-y0)*.4 and (X+side,Yp) in vis:out[Yp,X+side]=C['sh']
+  # 兩側的髮絲（照正面的規則：有的沒有、細線、粗陰影，長短不一），轉過去後在看得到的那片上直直畫
+  rs=random.Random(31)
+  cols={}
+  for (X,Yp),(c,x,y,z) in vis.items():
+    if c=='side' and Yp>CY+6:cols.setdefault(X,[]).append(Yp)
+  X0=min(cols) if cols else 0
+  for X in sorted(cols):
+    if (X-X0)%rs.choice([5,6,7,8]):continue
+    kind=rs.choices(['none','thin','thick'],[.5,.28,.22])[0]
+    if kind=='none':continue
+    ys=sorted(cols[X]);y0=rs.randint(ys[0],ys[0]+max(1,(ys[-1]-ys[0])//3));y1=rs.randint(y0+12,max(y0+13,ys[-1]))
+    for Yp in range(y0,y1):
+      if (X,Yp) in vis and vis[(X,Yp)][0]=='side':
+        out[Yp,X]=C['ln']
+        if kind=='thick' and (Yp-y0)>(y1-y0)*.4 and (X+1,Yp) in vis and vis[(X+1,Yp)][0]=='side':out[Yp,X+1]=C['sh']
   # 光環：球殼上一圈，前面往下彎（y＝RY0＋RD×(z/RO)²）
   RY0,RD=CY-34,15
   for k in range(1400):
