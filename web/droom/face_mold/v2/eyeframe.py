@@ -10,6 +10,7 @@ import math
 import os
 LINE=os.environ.get('LINE')=='1'
 LOWC='c';HOOKK=.7
+IRSC=float(os.environ.get('IRSC','1'))   # 黑眼珠再放大倍率
 IRCENTER=os.environ.get('IRCENTER','1')=='1';IRIN=float(os.environ.get('IRIN','.6'))
 # 2026-11-19 第二本教學（普通／つり目／たれ目各 6 個）：上眼線外半段長出一根根細睫毛、下眼線外側幾根小短毛、
 # 雙眼皮線拉長貼著上眼線、黑眼珠改成直的橢圓（比較高、比較窄）
@@ -212,7 +213,7 @@ class Frame:
     if not _inpoly(x,y,s.poly):return None
     # 眼睛裡面（同舊眼睛的配色）
     if 'ir' in T:   # 照教學量的黑眼珠：中心、橫半徑、直半徑（大、上緣藏在上眼線下面）
-      ic=((s.irx if (s.irx is not None and IRCENTER) else T['ir'][0])+idx,T['ir'][1]);IRX,IRY=T['ir'][2],T['ir'][3];k=min(IRX/IRISW,IRY/IRISH)
+      ic=((s.irx if (s.irx is not None and IRCENTER) else T['ir'][0])+idx,T['ir'][1]);IRX,IRY=T['ir'][2]*IRSC,T['ir'][3]*IRSC;k=min(IRX/IRISW,IRY/IRISH)
     else:ic=(.5+T['iris'][0]+idx,.3+T['iris'][1]);k=T.get('irs',1);IRX,IRY=IRISW*k,IRISH*k
     r=math.hypot((x-ic[0])/IRX,(y-ic[1])/IRY)
     if LINE:   # 線稿模式（使用者：先只看眼眶和瞳孔、不要著色）：黑眼珠只畫一圈外框

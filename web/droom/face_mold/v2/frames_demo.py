@@ -15,7 +15,7 @@ KEYS=os.environ.get('KEYS','N1,N2,N3,T1,T2,T3,T4,R1,R2,R3,R4').split(',')
 for key in KEYS:
   fr=Frame(key);img=base.copy()
   for s in(1,-1):
-    ex=128+s*30;ey=Y(539)
+    ex=128+s*float(os.environ.get('EYEX','30'));ey=Y(539)
     x0,x1,y0,y1=fr.box
     for Yp in range(math.floor(ey+y0*ES),math.ceil(ey+y1*ES)):
       for X in range(math.floor(ex-x1*ES) if s<0 else math.floor(ex+x0*ES),math.ceil(ex-x0*ES) if s<0 else math.ceil(ex+x1*ES)):
