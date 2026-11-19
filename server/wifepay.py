@@ -19,7 +19,8 @@ GALLERY_PREFIX = "/assets/wifepay/gallery/"
 OUT_PREFIX = "/assets/wifepay/out/"
 DEFAULT_DENOISE = 0.55
 DENOISE_LO, DENOISE_HI = 0.35, 0.85
-CHAR_SEC_DEFAULT = 1.2
+CHAR_SEC_DEFAULT = 0.9
+CHAR_SEC_LEGACY = 1.2
 CHAR_SEC_LO, CHAR_SEC_HI = 0.05, 2.0
 # 舊版打字間隔（毫秒）當比例：一般 26、逗號 50、句號 90
 _TYPE_BASE_MS, _TYPE_COMMA_MS, _TYPE_PERIOD_MS = 26, 50, 90
@@ -30,7 +31,7 @@ STOCK_POSES = (
     {"id": "kiss", "name": "擁吻"},
     {"id": "reverse", "name": "背向"},
 )
-PEEK_FRACS = ("1/2", "1/3")
+PEEK_FRACS = ("1/2", "3/5")
 GEN_WIDTH, GEN_HEIGHT = 832, 1216
 PROMPT_MAX = 4000
 TAGS_MAX = 8
@@ -239,21 +240,21 @@ def _normalize_frac(v) -> str:
     s = str(v or "").strip().lower()
     if v in (2, 0.5) or s in ("2", "1/2", "0.5", "half"):
         return "1/2"
-    if v in (3,) or s in ("3", "1/3", "third"):
-        return "1/3"
+    if v in (0.6,) or s in ("3/5", "0.6", "0.60"):
+        return "3/5"
     try:
         f = float(v)
     except (TypeError, ValueError):
         return ""
-    if abs(f - 0.5) < 0.05:
+    if abs(f - 0.5) <= 0.02:
         return "1/2"
-    if abs(f - (1 / 3)) < 0.05:
-        return "1/3"
+    if abs(f - 0.6) <= 0.02:
+        return "3/5"
     return ""
 
 
 def pick_peek(count: int = 1, rnd=None, side: str | None = None, fracs=None) -> dict:
-    """一扇門同一邊（左或右）；每張圖獨立抽只顯示 1/2 或 1/3 寬。"""
+    """一扇門同一邊（左或右）；每張圖獨立抽只顯示 1/2 或 3/5 寬。"""
     try:
         n = int(count)
     except (TypeError, ValueError):
@@ -269,8 +270,17 @@ def pick_peek(count: int = 1, rnd=None, side: str | None = None, fracs=None) -> 
     return {"side": side_v, "fracs": out}
 
 
+def _is_legacy_char_sec(v) -> bool:
+    """仍是上一版預設 1.2 秒（尚未被使用者改成別的值）。"""
+    try:
+        return abs(float(v) - CHAR_SEC_LEGACY) < 1e-6
+    except (TypeError, ValueError):
+        return False
+
+
 def load_config(assets: Path) -> dict:
-    """打字速度與自訂姿勢。缺檔或壞檔用程式預設，不依賴被 gitignore 的資產檔。"""
+    """打字速度與自訂姿勢。缺檔或壞檔用程式預設，不依賴被 gitignore 的資產檔。
+    若檔裡還是舊預設 1.2，自動遷到 0.9 並寫回；使用者改過的其他值不動。"""
     ensure_dirs(assets)
     raw = {}
     p = config_path(assets)
@@ -281,10 +291,14 @@ def load_config(assets: Path) -> dict:
                 raw = data
         except (OSError, json.JSONDecodeError):
             raw = {}
-    return {
-        "char_sec": clamp_char_sec(raw.get("char_sec"), CHAR_SEC_DEFAULT),
-        "poses": clean_tags(raw.get("poses")),
-    }
+    poses = clean_tags(raw.get("poses"))
+    if "char_sec" in raw and raw.get("char_sec") is not None and _is_legacy_char_sec(raw.get("char_sec")):
+        cur = {"char_sec": CHAR_SEC_DEFAULT, "poses": poses}
+        _atomic_write(p, json.dumps(cur, ensure_ascii=False, indent=2))
+        return cur
+    if "char_sec" in raw and raw.get("char_sec") is not None:
+        return {"char_sec": clamp_char_sec(raw.get("char_sec")), "poses": poses}
+    return {"char_sec": CHAR_SEC_DEFAULT, "poses": poses}
 
 
 def save_config(assets: Path, data: dict | None = None) -> dict:

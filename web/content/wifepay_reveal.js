@@ -1,6 +1,6 @@
 /* 老婆還債偷看：共用「中央對話框 → 門縫切圖、對話框在圖下方」元件（遊戲與 /wifepay 編輯頁同一套）。
- * 對話：先出說話人標籤，停約 0.8 秒後打字機逐字出現（預設每字 1.2 秒，可在編輯頁改，標點按比例加長）；一段跑完按「下一句」才換人。
- * 打字途中再點會一次跑完。圖好了只顯示左或右的 1/2 或 1/3 寬（同一扇門同一邊），兩張時在同一位置交疊淡入。 */
+ * 對話：先出說話人標籤，停約 0.8 秒後打字機逐字出現（預設每字 0.9 秒，可在編輯頁改，標點按比例加長）；一段跑完按「下一句」才換人。
+ * 打字途中再點會一次跑完。圖好了只顯示左或右的 1/2 或 3/5 寬（同一扇門同一邊），兩張時在同一位置交疊淡入。 */
 const CSS_ID = "wifepay-reveal-css-4";
 const CSS = `
 .wp-reveal{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;background:rgba(8,6,12,.28);overflow:hidden}
@@ -92,12 +92,12 @@ export function invalidateConfig() { _cfgP = null; }
 
 export async function fetchConfig() {
   if (!_cfgP) {
-    _cfgP = apiJson("/api/wifepay/config").catch(() => ({ char_sec: 1.2, poses: [], pose_catalog: [] }));
+    _cfgP = apiJson("/api/wifepay/config").catch(() => ({ char_sec: 0.9, poses: [], pose_catalog: [] }));
   }
   const j = await _cfgP;
   const char = Number(j.char_sec);
   return {
-    char_sec: Number.isFinite(char) ? Math.max(0.05, Math.min(2, char)) : 1.2,
+    char_sec: Number.isFinite(char) ? Math.max(0.05, Math.min(2, char)) : 0.9,
     poses: Array.isArray(j.poses) ? j.poses : [],
     pose_catalog: Array.isArray(j.pose_catalog) ? j.pose_catalog : [],
   };
@@ -119,7 +119,7 @@ export function pickPeek(count, opt = {}) {
   const fracs = [];
   for (let i = 0; i < n; i++) {
     const hit = normalizeFrac(given[i]);
-    fracs.push(hit || (Math.random() < 0.5 ? "1/2" : "1/3"));
+    fracs.push(hit || (Math.random() < 0.5 ? "1/2" : "3/5"));
   }
   return { side, fracs };
 }
@@ -136,15 +136,15 @@ export function normalizePeek(raw, count) {
 function normalizeFrac(v) {
   const s = String(v ?? "").trim();
   if (v === 2 || v === 0.5 || s === "2" || s === "1/2" || s === "0.5") return "1/2";
-  if (v === 3 || s === "3" || s === "1/3") return "1/3";
+  if (v === 0.6 || s === "3/5" || s === "0.6" || s === "0.60") return "3/5";
   const f = Number(v);
-  if (Number.isFinite(f) && Math.abs(f - 0.5) < 0.05) return "1/2";
-  if (Number.isFinite(f) && Math.abs(f - 1 / 3) < 0.05) return "1/3";
+  if (Number.isFinite(f) && Math.abs(f - 0.5) <= 0.02) return "1/2";
+  if (Number.isFinite(f) && Math.abs(f - 0.6) <= 0.02) return "3/5";
   return "";
 }
 
 export function fracValue(f) {
-  return normalizeFrac(f) === "1/3" ? 1 / 3 : 0.5;
+  return normalizeFrac(f) === "3/5" ? 3 / 5 : 0.5;
 }
 
 /** 輪詢既有 /api/imggen；成功回圖 URL，失敗丟錯。 */
@@ -196,8 +196,8 @@ export async function generateFromItem(item, opts = {}, onTick) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-export function typeDelay(mark, charSec = 1.2) {
-  const base = Math.max(50, Math.min(2000, Math.round((Number(charSec) || 1.2) * 1000)));
+export function typeDelay(mark, charSec = 0.9) {
+  const base = Math.max(50, Math.min(2000, Math.round((Number(charSec) || 0.9) * 1000)));
   if (/[。！？!?…]/.test(mark)) return Math.round(base * (90 / 26));
   if (/[、，,．.]/.test(mark)) return Math.round(base * (50 / 26));
   return base;
@@ -217,7 +217,7 @@ function speakerLabels(opts, row) {
  * 在 host 裡掛上揭示畫面。
  * opts.dialog = 已有 {narration,man,wife} 或 ()=>Promise
  * opts.images = 已有 url[] 或 ()=>Promise<url[]>（空陣列＝只留對話）
- * opts.charSec 每字秒數（預設 1.2；也可等 fetchConfig）
+ * opts.charSec 每字秒數（預設 0.9；也可等 fetchConfig）
  * opts.peek = {side, fracs}
  * opts.fullImage 編輯頁看全圖
  * opts.showFullToggle 顯示「看全圖」按鈕
@@ -431,7 +431,7 @@ export function mountWifepayReveal(host, opts = {}) {
         body.textContent = chars.slice(0, i).join("");
         scrollLog();
         if (i >= chars.length) return finish();
-        const sec = state.charSec != null ? state.charSec : 1.2;
+        const sec = state.charSec != null ? state.charSec : 0.9;
         timer = setTimeout(tick, typeDelay(chars[i - 1], sec));
       };
       tick();
@@ -548,7 +548,7 @@ export function mountWifepayReveal(host, opts = {}) {
         try {
           const cfg = await fetchConfig();
           if (state.charSec == null) api.setCharSec(cfg.char_sec);
-        } catch { /* 用預設 1.2 */ }
+        } catch { /* 用預設 0.9 */ }
       }
       if (opts.emptyMessage) api.setNote(opts.emptyMessage);
       const dlgP = typeof opts.dialog === "function" ? opts.dialog() : Promise.resolve(opts.dialog);

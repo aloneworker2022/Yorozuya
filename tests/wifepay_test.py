@@ -339,24 +339,35 @@ def test_scripts_seed_and_merge():
 def test_config_char_sec_persist():
     assets = _assets()
     cfg = W.load_config(assets)
-    assert cfg["char_sec"] == W.CHAR_SEC_DEFAULT == 1.2
+    assert cfg["char_sec"] == W.CHAR_SEC_DEFAULT == 0.9
     assert cfg["poses"] == []
     # 缺檔時從程式預設，不依賴被 gitignore 的 config.json
     assert not W.config_path(assets).is_file()
-    saved = W.save_config(assets, {"char_sec": 1.2, "poses": ["standing", "standing", "missionary"]})
-    assert saved["char_sec"] == 1.2
+    saved = W.save_config(assets, {"char_sec": 0.9, "poses": ["standing", "standing", "missionary"]})
+    assert saved["char_sec"] == 0.9
     assert saved["poses"] == ["standing", "missionary"]
     again = W.load_config(assets)
-    assert again["char_sec"] == 1.2 and again["poses"] == ["standing", "missionary"]
-    # clamp
+    assert again["char_sec"] == 0.9 and again["poses"] == ["standing", "missionary"]
+    # clamp（0 或無效會回到新預設 0.9）
     assert W.save_config(assets, {"char_sec": 0})["char_sec"] == W.CHAR_SEC_DEFAULT
     assert W.save_config(assets, {"char_sec": 9})["char_sec"] == W.CHAR_SEC_HI
     assert W.save_config(assets, {"char_sec": 0.01})["char_sec"] == W.CHAR_SEC_LO
-    assert W.save_config(assets, {"char_sec": "1.2"})["char_sec"] == 1.2
+    # 使用者改過的其他值不要被蓋掉
+    assert W.save_config(assets, {"char_sec": 0.5})["char_sec"] == 0.5
+    assert W.load_config(assets)["char_sec"] == 0.5
+    assert W.save_config(assets, {"char_sec": 1.0})["char_sec"] == 1.0
+    assert W.load_config(assets)["char_sec"] == 1.0
+    # 檔裡還是舊預設 1.2 時，遷到 0.9，姿勢保留
+    path = W.config_path(assets)
+    path.write_text(json.dumps({"char_sec": 1.2, "poses": ["standing"]}, ensure_ascii=False), encoding="utf-8")
+    migrated = W.load_config(assets)
+    assert migrated["char_sec"] == 0.9 and migrated["poses"] == ["standing"]
+    stored = json.loads(path.read_text("utf-8"))
+    assert stored["char_sec"] == 0.9 and stored["poses"] == ["standing"]
     # 標點等待按比例放大
-    assert W.type_delay_ms("字", 1.2) == 1200
-    assert W.type_delay_ms("，", 1.2) == int(round(1200 * (50 / 26)))
-    assert W.type_delay_ms("。", 1.2) == int(round(1200 * (90 / 26)))
+    assert W.type_delay_ms("字", 0.9) == 900
+    assert W.type_delay_ms("，", 0.9) == int(round(900 * (50 / 26)))
+    assert W.type_delay_ms("。", 0.9) == int(round(900 * (90 / 26)))
     assert W.type_delay_ms("字", 0.05) == 50
     poses = W.list_poses(assets, ["bed", "cowgirl"])
     ids = [p["id"] for p in poses]
@@ -383,12 +394,12 @@ def test_pick_peek_side_consistency():
     assert sides == {"left", "right"}
     assert any(a != b for a, b in frac_pairs)
     # 指定邊與比例時沿用
-    fixed = W.pick_peek(2, side="right", fracs=["1/3", "1/2"], rnd=random.Random(0))
-    assert fixed == {"side": "right", "fracs": ["1/3", "1/2"]}
+    fixed = W.pick_peek(2, side="right", fracs=["3/5", "1/2"], rnd=random.Random(0))
+    assert fixed == {"side": "right", "fracs": ["3/5", "1/2"]}
     # 第二張沒指定時跟第一張同一邊
-    mixed = W.pick_peek(2, side="left", fracs=["1/3"], rnd=random.Random(1))
+    mixed = W.pick_peek(2, side="left", fracs=["3/5"], rnd=random.Random(1))
     assert mixed["side"] == "left"
-    assert mixed["fracs"][0] == "1/3"
+    assert mixed["fracs"][0] == "3/5"
     assert mixed["fracs"][1] in W.PEEK_FRACS
 
 

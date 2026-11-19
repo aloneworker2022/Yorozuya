@@ -1,10 +1,10 @@
-/* Wife Pay 編輯頁 v6：一步一步精靈；打字速度可調；門縫切圖。 */
+/* Wife Pay 編輯頁 v7：一步一步精靈；打字速度可調；門縫切圖。 */
 import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES } from "./girl_gen.js";
 import { familyOf } from "./girl_voice.js?v=1";
 import {
   apiJson, fetchGallery, fetchDialog, fetchScripts, generateFromItem, mountWifepayReveal, startWifepayPeek,
   fetchConfig, saveConfig, pickPeek,
-} from "./wifepay_reveal.js?v=5";
+} from "./wifepay_reveal.js?v=6";
 
 const $ = (id) => document.getElementById(id);
 const ENG_KEY = "yorozuya_eng";
@@ -27,7 +27,7 @@ let poseCatalog = [];
 let selectedPose = "";
 let extraPoses = [];
 let currentStep = 1;
-let charSec = 1.2;
+let charSec = 0.9;
 
 function esc(s) {
   return String(s ?? "")
@@ -385,7 +385,7 @@ async function loadWpConfig() {
 }
 
 function syncCharSecUi(sec) {
-  const n = Math.max(0.05, Math.min(2, Number(sec) || 1.2));
+  const n = Math.max(0.05, Math.min(2, Number(sec) || 0.9));
   charSec = Math.round(n * 100) / 100;
   if ($("ig-char-sec")) $("ig-char-sec").value = String(charSec);
   if ($("ig-char-sec-num")) $("ig-char-sec-num").value = String(charSec);
