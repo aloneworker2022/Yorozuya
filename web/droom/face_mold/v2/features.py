@@ -83,8 +83,9 @@ def mouth_px():
     for c,ch in enumerate(row):
       if ch!='.':o[(CXF+c-SC,y0+r-LINE)]=(PAL[ch],DZ[r])
   return o
-ES=float(os.environ.get('ES','1.35'))   # 眼睛放大倍率（使用者：眼睛大一點）
-EYET=os.environ.get('EYET','')   # 眼眶種類（eyeframe.TYPES 的 key，例如 N1、T3、R2）；空的＝舊眼睛
+ES=float(os.environ.get('ES','1.35'))*float(os.environ.get('EYS','1'))   # 眼睛大小：ES 基本倍率 × EYS 整個放大（眼眶＋黑眼珠）
+EYEX=float(os.environ.get('EYEX','30'))   # 兩眼距離：眼睛中心離中線幾格
+EYET=os.environ.get('EYET','A3')   # 眼眶種類（eyeframe.TYPES：普通 A1～A6、つり目 B1～B6、たれ目 C1～C6）；設成空字串才回到最早的舊眼睛
 FR=None
 if EYET:
   from eyeframe import Frame
@@ -94,14 +95,14 @@ def eye_px():
   if FR:
     x0,x1,y0,y1=FR.box
     for s in(1,-1):
-      ex=CXF+s*30;ey=Y(EYEY)
+      ex=CXF+s*EYEX;ey=Y(EYEY)
       for yy in range(math.floor(ey+y0*ES*EH),math.ceil(ey+y1*ES*EH)):
         for xx in range(math.floor(ex-x1*ES),math.ceil(ex+x1*ES)):
           ch=FR.at(s*(xx+.5-ex)/ES,(yy+.5-ey)/(ES*EH),s)
           if ch:o[(xx,yy)]=(EPAL[ch],0)
     return o
   for s in(1,-1):
-    ex=CXF+s*30;ey=Y(EYEY)
+    ex=CXF+s*EYEX;ey=Y(EYEY)
     for yy in range(math.floor(ey-16*ES*EH),math.ceil(ey+10*ES*EH)):
       for xx in range(math.floor(ex-20*ES),math.ceil(ex+20*ES)):
         ch=eyeAt(s*(xx+.5-ex)/ES,(yy+.5-ey)/(ES*EH),s)
@@ -180,7 +181,7 @@ def eyes_turn(img,ca,sa,cx):
   # 兩隻都用正面那隻眼睛，橫向壓的倍率＝臉表面在那裡的縮短量（ca－斜率×sa），黑眼珠往臉朝的那邊（左）靠一點
   BR=bridge_pts(sa,cx)
   for s in(1,-1):
-    xr=s*30/S;yr=EYEY;z=surf(xr,yr)
+    xr=s*EYEX/S;yr=EYEY;z=surf(xr,yr)
     Xc=cx+(xr*ca-z*sa)*S;Yc=Y(yr)
     if s<0:Xc+=float(os.environ.get('FARIN','3'))   # 遠側眼睛往鼻子那邊移幾格（外側留空）
     zx=(surf(xr+.5,yr)-surf(xr-.5,yr))

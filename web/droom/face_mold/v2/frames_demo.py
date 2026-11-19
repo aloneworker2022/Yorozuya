@@ -9,11 +9,11 @@ from outline import Y,S,N
 EPAL=dict(K=(58,36,36),k=(110,70,62),W=(250,247,244),w=(214,206,214),I=(84,52,44),i=(140,88,62),j=(190,132,88),P=(38,22,22),O=(112,66,50),g1=(176,64,116),g2=(228,112,140),g3=(244,156,118),g4=(250,204,140),H=(255,255,255),L=(184,124,104),c=(216,166,140))
 from eyeframe import IRIS_COLORS,ICOL
 EPAL.update(IRIS_COLORS[ICOL])   # 黑眼珠顏色（ICOL=橘／水藍／亮綠／金黃／紅／粉紅／黑／棕）
-D=sys.argv[1];ES=1.35
+D=sys.argv[1];ES=1.35*float(os.environ.get('EYS','1'))
 base=np.array(Image.open(D+'/front.png').convert('RGB'))
 F=ImageFont.truetype('/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',30)
 tiles=[];zooms=[]
-KEYS=os.environ.get('KEYS','N1,N2,N3,T1,T2,T3,T4,R1,R2,R3,R4').split(',')
+KEYS=os.environ.get('KEYS','A1,A2,A3,A4,A5,A6,B1,B2,B3,B4,B5,B6,C1,C2,C3,C4,C5,C6').split(',')
 for key in KEYS:
   fr=Frame(key);img=base.copy()
   for s in(1,-1):
