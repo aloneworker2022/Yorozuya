@@ -4,7 +4,7 @@
  * 「她沒發現你……」。遊戲偷看（mode=peek）：點門後中央對話框先出（旁白→男→她），同時生 1～2 張圖生圖，圖好了淡入、對話框下移；失敗只留對話。日租 mode=door/room 仍用舊字幕。
  * 不扣錢、不決定發現與否：這些由呼叫端（app.js）先算好傳進來。 */
 import { peekLine, nextGapMs, flavorWife } from "./escort_voices.js?v=3";
-import { startWifepayPeek } from "./wifepay_reveal.js?v=6";
+import { startWifepayPeek } from "./wifepay_reveal.js?v=7";
 
 const LW = 195, LH = 422;                    // 邏輯像素（畫面 ×2 放大）
 const DX0 = 8, DX1 = 187, DY0 = 112, DY1 = 340;

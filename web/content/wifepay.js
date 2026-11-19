@@ -1,10 +1,10 @@
-/* Wife Pay 編輯頁 v7：一步一步精靈；打字速度可調；門縫切圖。 */
+/* Wife Pay 編輯頁 v9：隔門聽不清；預設廣角／雙人提示詞；一步一步精靈；打字速度可調；門縫切圖。 */
 import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES } from "./girl_gen.js";
 import { familyOf } from "./girl_voice.js?v=1";
 import {
   apiJson, fetchGallery, fetchDialog, fetchScripts, generateFromItem, mountWifepayReveal, startWifepayPeek,
   fetchConfig, saveConfig, pickPeek,
-} from "./wifepay_reveal.js?v=6";
+} from "./wifepay_reveal.js?v=7";
 
 const $ = (id) => document.getElementById(id);
 const ENG_KEY = "yorozuya_eng";
@@ -28,6 +28,9 @@ let selectedPose = "";
 let extraPoses = [];
 let currentStep = 1;
 let charSec = 0.9;
+let doorMuffle = true;
+let doorMuffleLevel = "mid";
+const MUFFLE_LEVEL_ZH = { light: "輕", mid: "中", heavy: "重" };
 const DEFAULT_GLOBAL_POS = "wide angle, wide shot, full body, two people, 1girl, 1boy, both visible, third-person view";
 const DEFAULT_GLOBAL_NEG = "pov, first-person view, male pov, close-up, cropped, out of frame, solo";
 let promptDefaults = { global_prompt: DEFAULT_GLOBAL_POS, global_negative: DEFAULT_GLOBAL_NEG };
@@ -377,6 +380,8 @@ async function loadWpConfig() {
     charSec = cfg.char_sec;
     extraPoses = cfg.poses || [];
     poseCatalog = cfg.pose_catalog || [];
+    doorMuffle = cfg.door_muffle !== false;
+    doorMuffleLevel = cfg.door_muffle_level || "mid";
     if (cfg.defaults) {
       promptDefaults = {
         global_prompt: cfg.defaults.global_prompt || DEFAULT_GLOBAL_POS,
@@ -384,6 +389,7 @@ async function loadWpConfig() {
       };
     }
     syncCharSecUi(charSec);
+    syncMuffleUi(cfg);
     syncGlobalPromptUi(cfg);
     if (!selectedPose && poseCatalog[0]) selectPose(poseCatalog[0].id);
     else renderPoseGrid();
@@ -408,6 +414,54 @@ function syncCharSecUi(sec) {
   if ($("ig-char-sec")) $("ig-char-sec").value = String(charSec);
   if ($("ig-char-sec-num")) $("ig-char-sec-num").value = String(charSec);
   if ($("char-sec-label")) $("char-sec-label").textContent = `目前每個字 ${charSec} 秒（遊戲裡也用這個設定）`;
+}
+
+function levelFromSlider(v) {
+  const n = Number(v);
+  if (n <= 1) return "light";
+  if (n >= 3) return "heavy";
+  return "mid";
+}
+
+function sliderFromLevel(lv) {
+  return lv === "light" ? 1 : lv === "heavy" ? 3 : 2;
+}
+
+function syncMuffleUi(cfg) {
+  if (cfg) {
+    if (cfg.door_muffle != null) doorMuffle = cfg.door_muffle !== false;
+    if (cfg.door_muffle_level) doorMuffleLevel = cfg.door_muffle_level;
+  }
+  if ($("ig-muffle")) $("ig-muffle").checked = !!doorMuffle;
+  if ($("ig-muffle-level")) $("ig-muffle-level").value = String(sliderFromLevel(doorMuffleLevel));
+  if ($("muffle-level-label")) $("muffle-level-label").textContent = MUFFLE_LEVEL_ZH[doorMuffleLevel] || "中";
+}
+
+function readMuffleFromUi() {
+  doorMuffle = !!$("ig-muffle")?.checked;
+  doorMuffleLevel = levelFromSlider($("ig-muffle-level")?.value || 2);
+  if ($("muffle-level-label")) $("muffle-level-label").textContent = MUFFLE_LEVEL_ZH[doorMuffleLevel] || "中";
+}
+
+function muffleSeedFromUi() {
+  const n = Number($("ig-muffle-seed")?.value || 0);
+  if (Number.isFinite(n) && n > 0) return Math.floor(n);
+  return Math.floor(Math.random() * 0xfffffffe) + 1;
+}
+
+async function persistMuffle() {
+  readMuffleFromUi();
+  try {
+    const j = await saveConfig({ door_muffle: doorMuffle, door_muffle_level: doorMuffleLevel });
+    syncMuffleUi(j);
+    const zh = MUFFLE_LEVEL_ZH[doorMuffleLevel] || "中";
+    const msg = doorMuffle ? `✓ 已儲存隔門聽不清（程度：${zh}）` : "✓ 已儲存：關閉隔門聽不清";
+    setStatus("muffle-status", msg);
+    setStatus("gen-status", msg);
+  } catch (e) {
+    setStatus("muffle-status", e.message, true);
+    setStatus("gen-status", e.message, true);
+  }
 }
 
 async function persistCharSec() {
@@ -437,11 +491,16 @@ async function persistGlobalPrompts(reset = false) {
 }
 
 function revealOpts() {
+  readMuffleFromUi();
   return {
     page: true,
     charSec,
     fullImage: !!$("ig-full")?.checked,
     showFullToggle: true,
+    doorMuffle,
+    doorMuffleLevel,
+    muffleSeed: muffleSeedFromUi(),
+    showOriginal: !!$("ig-show-orig")?.checked,
   };
 }
 
@@ -943,6 +1002,9 @@ function bind() {
   $("ig-char-sec")?.addEventListener("input", () => syncChar("range"));
   $("ig-char-sec-num")?.addEventListener("input", () => syncChar("num"));
   $("btn-char-save")?.addEventListener("click", () => persistCharSec());
+  $("ig-muffle")?.addEventListener("change", () => readMuffleFromUi());
+  $("ig-muffle-level")?.addEventListener("input", () => readMuffleFromUi());
+  $("btn-muffle-save")?.addEventListener("click", () => persistMuffle());
 }
 
 bind();

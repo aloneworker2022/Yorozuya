@@ -193,6 +193,14 @@ def test_migrate_old_dialog_default():
     pp.write_text(json.dumps(W.PREV_DIALOG, ensure_ascii=False, indent=2), encoding="utf-8")
     d2 = W.load_dialog_prompt(assets_prev)
     assert d2["system"] == W.DEFAULT_DIALOG["system"]
+    # 加入吟叫前的那一版預設也要遷
+    assets_prev2 = _assets()
+    pp2 = W.dialog_path(assets_prev2)
+    pp2.parent.mkdir(parents=True, exist_ok=True)
+    pp2.write_text(json.dumps(W.PREV2_DIALOG, ensure_ascii=False, indent=2), encoding="utf-8")
+    d3 = W.load_dialog_prompt(assets_prev2)
+    assert d3["system"] == W.DEFAULT_DIALOG["system"]
+    assert "吟叫" in d3["system"]
     # 使用者自訂的模板不能被蓋掉
     assets2 = _assets()
     custom = {"system": "我自己寫的系統提示", "user": "使用者 {name}"}
@@ -468,6 +476,72 @@ def test_img2img_workflow_passes_negative():
     assert wf["2"]["inputs"]["text"] == "wide angle, 1girl, 1boy"
 
 
+def test_hear_through_door():
+    src = "你怎麼可以射進去"
+    # 旁白不變
+    nar = "暖黃燈下，她仰躺在凌亂的床單上，眉心微蹙、唇瓣微張，眼尾含著水光卻還是看著壓上來的男人；他額角沁著汗，眼神發亮、嘴角帶著得意，腰一下一下深深頂進去，床板跟著輕輕響。"
+    row = W.hear_dialog({"narration": nar, "man": "夾這麼緊……錢花得真值。", "wife": src}, enabled=True, level="mid", seed=7)
+    assert row["narration"] == nar
+    assert row["narration_orig"] == nar
+    assert row["man"] and row["wife"]
+    assert row["wife_orig"] == src
+    # 關掉就原樣
+    raw = W.hear_through_door(src, side="wife", level="heavy", seed=3, enabled=False)
+    assert raw == src
+    # 同一顆種子同一句，結果固定
+    a = W.hear_through_door(src, side="wife", level="mid", seed=42, mode="a")
+    b = W.hear_through_door(src, side="wife", level="mid", seed=42, mode="a")
+    assert a == b and a
+    # 換種子可以不一樣（多試幾顆）
+    variants = {W.hear_through_door(src, side="wife", level="mid", seed=s, mode="a") for s in range(1, 40)}
+    assert len(variants) >= 2
+    # 斷續：至少兩段，非空，保住大意
+    for seed in range(1, 30):
+        hit = W.hear_line(src, side="wife", level="mid", seed=seed, mode="a")
+        assert hit["text"]
+        assert len(hit["fragments"]) >= 2
+        kept = "".join(hit["fragments"])
+        assert kept[0] == "你" or "你" in hit["text"]
+        assert any(ch in kept for ch in "可射進")
+        assert "幼" not in hit["text"]
+    # 吟叫模式也非空，妻子較常出現吟叫詞
+    moaned = False
+    for seed in range(1, 40):
+        hit = W.hear_line(src, side="wife", level="heavy", seed=seed, mode="b")
+        assert hit["text"]
+        if any(m in hit["text"] for m in W.WIFE_MOANS):
+            moaned = True
+    assert moaned
+    # 系統提示有要求吟叫／斷續
+    assert "吟叫" in W.DEFAULT_DIALOG["system"]
+    assert "斷續" in W.DEFAULT_DIALOG["system"]
+
+
+def test_door_muffle_config():
+    assets = _assets()
+    cfg = W.load_config(assets)
+    assert cfg["door_muffle"] is True
+    assert cfg["door_muffle_level"] == "mid"
+    saved = W.save_config(assets, {"door_muffle": False, "door_muffle_level": "重"})
+    assert saved["door_muffle"] is False
+    assert saved["door_muffle_level"] == "heavy"
+    # 只改打字速度時不要蓋掉
+    again = W.save_config(assets, {"char_sec": 0.6})
+    assert again["char_sec"] == 0.6
+    assert again["door_muffle"] is False
+    assert again["door_muffle_level"] == "heavy"
+    # 遷 1.2 秒時保留隔門設定
+    path = W.config_path(assets)
+    path.write_text(json.dumps({
+        "char_sec": 1.2, "poses": [], "door_muffle": False, "door_muffle_level": "light",
+    }, ensure_ascii=False), encoding="utf-8")
+    migrated = W.load_config(assets)
+    assert migrated["char_sec"] == 0.9
+    assert migrated["door_muffle"] is False
+    assert migrated["door_muffle_level"] == "light"
+
+
+
 if __name__ == "__main__":
     test_gallery_crud()
     test_dialog_prompt_save()
@@ -483,4 +557,6 @@ if __name__ == "__main__":
     test_pick_peek_side_consistency()
     test_global_prompts_compose_and_config()
     test_img2img_workflow_passes_negative()
+    test_hear_through_door()
+    test_door_muffle_config()
     print("wifepay_test: ok")

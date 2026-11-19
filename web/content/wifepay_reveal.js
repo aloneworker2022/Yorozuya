@@ -1,7 +1,10 @@
 /* 老婆還債偷看：共用「中央對話框 → 門縫切圖、對話框在圖下方」元件（遊戲與 /wifepay 編輯頁同一套）。
  * 對話：先出說話人標籤，停約 0.8 秒後打字機逐字出現（預設每字 0.9 秒，可在編輯頁改，標點按比例加長）；一段跑完按「下一句」才換人。
- * 打字途中再點會一次跑完。圖好了只顯示左或右的 1/2 或 3/5 寬（同一扇門同一邊），兩張時在同一位置交疊淡入。 */
-const CSS_ID = "wifepay-reveal-css-4";
+ * 打字途中再點會一次跑完。圖好了只顯示左或右的 1/2 或 3/5 寬（同一扇門同一邊），兩張時在同一位置交疊淡入。
+ * 男子／她的對白在顯示時可做「隔門聽不清」（隻字片語、吟叫穿插）；旁白不變。 */
+import { hearLine, normalizeMuffleLevel, parseMuffleEnabled } from "./wifepay_heard.js?v=1";
+
+const CSS_ID = "wifepay-reveal-css-5";
 const CSS = `
 .wp-reveal{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;background:rgba(8,6,12,.28);overflow:hidden}
 .wp-reveal.page{position:relative;inset:auto;width:100%;height:min(86dvh,44rem);min-height:28rem;background:#120e18;border-radius:12px;overflow:hidden;pointer-events:auto}
@@ -29,6 +32,7 @@ const CSS = `
 .wp-line.wp-wife{color:#ffb0cf}
 .wp-k{display:block;margin-bottom:.12rem;opacity:.8;font-size:.85em;letter-spacing:.06em}
 .wp-t{display:block;min-height:1.35em;white-space:pre-wrap;word-break:break-word}
+.wp-orig{display:block;margin-top:.2rem;font-size:.78em;font-weight:500;opacity:.72;color:#cbbfd8}
 .wp-t.waiting::after{content:"……";opacity:.55;animation:wpblink 1.1s steps(3,end) infinite}
 @keyframes wpblink{50%{opacity:.15}}
 .wp-next{display:block;margin:.7rem auto 0;padding:.32rem 1rem;border:1px solid rgba(232,138,180,.5);border-radius:999px;background:rgba(40,24,44,.92);color:#ffd0e4;font:600 13px/1.4 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;cursor:pointer}
@@ -92,7 +96,7 @@ export function invalidateConfig() { _cfgP = null; }
 
 export async function fetchConfig() {
   if (!_cfgP) {
-    _cfgP = apiJson("/api/wifepay/config").catch(() => ({ char_sec: 0.9, poses: [], pose_catalog: [] }));
+    _cfgP = apiJson("/api/wifepay/config").catch(() => ({ char_sec: 0.9, poses: [], pose_catalog: [], door_muffle: true, door_muffle_level: "mid" }));
   }
   const j = await _cfgP;
   const char = Number(j.char_sec);
@@ -100,6 +104,11 @@ export async function fetchConfig() {
     char_sec: Number.isFinite(char) ? Math.max(0.05, Math.min(2, char)) : 0.9,
     poses: Array.isArray(j.poses) ? j.poses : [],
     pose_catalog: Array.isArray(j.pose_catalog) ? j.pose_catalog : [],
+    door_muffle: parseMuffleEnabled(j.door_muffle, true),
+    door_muffle_level: normalizeMuffleLevel(j.door_muffle_level),
+    global_prompt: j.global_prompt,
+    global_negative: j.global_negative,
+    defaults: j.defaults,
   };
 }
 
@@ -196,9 +205,12 @@ export async function generateFromItem(item, opts = {}, onTick) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-export function typeDelay(mark, charSec = 0.9) {
+export function typeDelay(mark, charSec = 0.9, prev = "") {
   const base = Math.max(50, Math.min(2000, Math.round((Number(charSec) || 0.9) * 1000)));
-  if (/[。！？!?…]/.test(mark)) return Math.round(base * (90 / 26));
+  // ……／… 比句號再多停一點；連續的 ... 後面幾點也略長
+  if (/[…]/.test(mark)) return Math.round(base * (110 / 26));
+  if (mark === "." && /[.…]/.test(prev)) return Math.round(base * (80 / 26));
+  if (/[。！？!?]/.test(mark)) return Math.round(base * (90 / 26));
   if (/[、，,．.]/.test(mark)) return Math.round(base * (50 / 26));
   return base;
 }
@@ -221,6 +233,7 @@ function speakerLabels(opts, row) {
  * opts.peek = {side, fracs}
  * opts.fullImage 編輯頁看全圖
  * opts.showFullToggle 顯示「看全圖」按鈕
+ * opts.doorMuffle / opts.doorMuffleLevel / opts.muffleSeed / opts.showOriginal
  */
 export function mountWifepayReveal(host, opts = {}) {
   ensureCss();
@@ -263,6 +276,10 @@ export function mountWifepayReveal(host, opts = {}) {
     advanced: 0,
     full: !!opts.fullImage,
     charSec: opts.charSec != null ? Number(opts.charSec) : null,
+    doorMuffle: opts.doorMuffle == null ? null : parseMuffleEnabled(opts.doorMuffle, true),
+    doorMuffleLevel: opts.doorMuffleLevel == null ? null : normalizeMuffleLevel(opts.doorMuffleLevel),
+    muffleSeed: opts.muffleSeed != null && Number.isFinite(Number(opts.muffleSeed)) ? Math.floor(Number(opts.muffleSeed)) : null,
+    showOriginal: !!opts.showOriginal,
   };
   pics.classList.toggle("full", state.full);
   if (fullBtn) fullBtn.textContent = state.full ? "門縫切圖" : "看全圖";
@@ -432,7 +449,7 @@ export function mountWifepayReveal(host, opts = {}) {
         scrollLog();
         if (i >= chars.length) return finish();
         const sec = state.charSec != null ? state.charSec : 0.9;
-        timer = setTimeout(tick, typeDelay(chars[i - 1], sec));
+        timer = setTimeout(tick, typeDelay(chars[i - 1], sec, chars[i - 2] || ""));
       };
       tick();
     });
@@ -469,6 +486,14 @@ export function mountWifepayReveal(host, opts = {}) {
     setCharSec(sec) {
       const n = Number(sec);
       if (Number.isFinite(n)) state.charSec = Math.max(0.05, Math.min(2, n));
+    },
+    setMuffle(opts = {}) {
+      if (opts.doorMuffle != null) state.doorMuffle = parseMuffleEnabled(opts.doorMuffle, true);
+      if (opts.doorMuffleLevel != null) state.doorMuffleLevel = normalizeMuffleLevel(opts.doorMuffleLevel);
+      if (opts.muffleSeed != null && Number.isFinite(Number(opts.muffleSeed))) {
+        state.muffleSeed = Math.floor(Number(opts.muffleSeed));
+      }
+      if (opts.showOriginal != null) state.showOriginal = !!opts.showOriginal;
     },
     setPeek(peek) {
       state.peek = normalizePeek(peek || state.peek, Math.max(state.urls.length, (peek && peek.fracs && peek.fracs.length) || 1));
@@ -520,15 +545,23 @@ export function mountWifepayReveal(host, opts = {}) {
     }
     if (closed.yes || job !== playJob) return;
     const rest = [];
-    if (row.man) rest.push(["wp-man", labels.man, row.man]);
-    if (row.wife) rest.push(["wp-wife", labels.wife, row.wife]);
+    const muffleOn = state.doorMuffle !== false;
+    const muffleLv = state.doorMuffleLevel || "mid";
+    const muffleSeed = state.muffleSeed != null ? state.muffleSeed : (Math.floor(Math.random() * 0xfffffffe) + 1);
+    if (state.muffleSeed == null) state.muffleSeed = muffleSeed;
+    const pack = (kind, label, raw, side) => {
+      const heard = hearLine(raw, { side, enabled: muffleOn, level: muffleLv, seed: muffleSeed });
+      return [kind, label, heard.text, raw, heard.text !== raw];
+    };
+    if (row.man) rest.push(pack("wp-man", labels.man, row.man, "man"));
+    if (row.wife) rest.push(pack("wp-wife", labels.wife, row.wife, "wife"));
     for (let i = 0; i < rest.length; i++) {
       if (!instant) {
         await waitNext();
         if (closed.yes || job !== playJob) return;
       }
       markHist();
-      const [kind, label, text] = rest[i];
+      const [kind, label, text, raw] = rest[i];
       const line = addLine(kind, label, false);
       if (instant) {
         line.body.textContent = text;
@@ -537,6 +570,12 @@ export function mountWifepayReveal(host, opts = {}) {
         if (closed.yes || job !== playJob) return;
         await typeText(line.body, text);
       }
+      if (state.showOriginal && raw && raw !== text) {
+        const orig = document.createElement("span");
+        orig.className = "wp-orig";
+        orig.textContent = "原句：" + raw;
+        line.node.append(orig);
+      }
     }
     ctl.phase = "done";
     showNext(false);
@@ -544,12 +583,15 @@ export function mountWifepayReveal(host, opts = {}) {
 
   const run = async () => {
     try {
-      if (state.charSec == null) {
+      if (state.charSec == null || state.doorMuffle == null || state.doorMuffleLevel == null) {
         try {
           const cfg = await fetchConfig();
           if (state.charSec == null) api.setCharSec(cfg.char_sec);
-        } catch { /* 用預設 0.9 */ }
+          if (state.doorMuffle == null) state.doorMuffle = parseMuffleEnabled(cfg.door_muffle, true);
+          if (state.doorMuffleLevel == null) state.doorMuffleLevel = normalizeMuffleLevel(cfg.door_muffle_level);
+        } catch { /* 用預設 */ }
       }
+      if (state.muffleSeed == null) state.muffleSeed = Math.floor(Math.random() * 0xfffffffe) + 1;
       if (opts.emptyMessage) api.setNote(opts.emptyMessage);
       const dlgP = typeof opts.dialog === "function" ? opts.dialog() : Promise.resolve(opts.dialog);
       const imgP = typeof opts.images === "function" ? opts.images() : Promise.resolve(opts.images);
@@ -660,6 +702,10 @@ export function startWifepayPeek(host, opts = {}) {
     peek,
     fullImage: !!opts.fullImage,
     showFullToggle: opts.showFullToggle !== false && !!opts.page,
+    doorMuffle: opts.doorMuffle,
+    doorMuffleLevel: opts.doorMuffleLevel,
+    muffleSeed: opts.muffleSeed,
+    showOriginal: !!opts.showOriginal,
     dialog,
     images: async () => {
       const urls = await images();

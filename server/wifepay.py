@@ -1,7 +1,7 @@
 """老婆還債偷看：圖生圖圖庫與三段式對話（旁白→男→她）。
 
 圖庫在 assets/wifepay/gallery/＋index.json；產出在 assets/wifepay/out/。
-對話模板在 assets/wifepay/dialog.json；劇本存在 assets/wifepay/scripts.json（可存多種、開門隨機抽）。設定（打字速度、自訂姿勢、預設正面／負面提示詞）在 assets/wifepay/config.json，缺檔時用程式預設。
+對話模板在 assets/wifepay/dialog.json；劇本存在 assets/wifepay/scripts.json（可存多種、開門隨機抽）。設定（打字速度、自訂姿勢、預設正面／負面提示詞、隔門聽不清）在 assets/wifepay/config.json，缺檔時用程式預設。
 assets/wifepay/ 整個目錄被 gitignore，內建劇本以 STOCK_SCRIPTS 寫在程式裡，缺檔或舊檔缺少新 id 時由程式補上，不依賴倉庫裡的 json。內容規則沿用 escort_lines：成年人、自願、不寫強迫／未成年。
 """
 from __future__ import annotations
@@ -96,9 +96,10 @@ PREV_DIALOG = {
 
 # 旁白要比對白長，寫動作＋兩人表情／態度／肢體；60～120 字。對白維持短句。
 NAR_MIN, NAR_MAX = 60, 180
-MAN_MAX, WIFE_MAX = 36, 40
+MAN_MAX, WIFE_MAX = 40, 48
 
-DEFAULT_DIALOG = {
+# 改預設提示（加入吟叫／斷續）前的那一版；使用者若沒改過，載入時遷到新預設。
+PREV2_DIALOG = {
     "system": (
         "你在寫成人戀愛模擬遊戲裡從門縫看見的一幕場面與對白。"
         "只要輸出固定三行，不要編號、不要額外說明、不要把括號裡的提示詞抄進內容。"
@@ -124,6 +125,34 @@ DEFAULT_DIALOG = {
     ),
 }
 
+DEFAULT_DIALOG = {
+    "system": (
+        "你在寫成人戀愛模擬遊戲裡從門縫看見的一幕場面與對白。"
+        "只要輸出固定三行，不要編號、不要額外說明、不要把括號裡的提示詞抄進內容。"
+        "旁白必須是第三人稱場面敘述：只寫房裡的妻子與客人正在做什麼，以及兩人各自的表情、態度、肢體語言。"
+        "旁白禁止出現對白或引號裡的話，禁止寫玩家、丈夫、門外偷看的人，也不要用「你聽見／從門外傳來」這種說法。"
+        "旁白寫成一行，60～120 字，必須比後面兩句對白長。"
+        "男：客人正在說出口的一句話，可以帶短促的喘息（嗯、哈），只要那句話本身（≤40 字）。"
+        "她：妻子正在說出口的一句話，要自然帶吟叫聲與斷續（話會被頂斷，夾著「啊…」「嗯…」「哈啊」），只要那句話本身（≤48 字）。"
+        "對白寫的是他們嘴裡實際說出的話，不要寫成門外聽不清楚的隻字片語。"
+        "雙方都是成年人、你情我願，可以粗口、激烈、求饒式撒嬌（慢一點、輕一點、會壞掉），"
+        "但絕對不要寫強迫、不同意、暴力、未成年或任何救命／報警類台詞。繁體中文。"
+    ),
+    "user": (
+        "劇本：{script_name}\n"
+        "這一幕的情境：{scenario}\n"
+        "體位：{pose_zh}。\n客人：{man_build_zh}，{who}。\n"
+        "她名叫{name}。對白裡她偶爾可以想到丈夫，但不要說出名字；旁白不要寫到玩家或開門的人。\n"
+        "{extra}"
+        "旁白要寫兩人的表情、態度、肢體，60～120 字，不要把男／她的台詞寫進旁白。\n"
+        "她的對白要帶自然的吟叫與斷續；男的對白可以有短促的嗯、哈。\n"
+        "輸出三行，格式如下：\n"
+        "旁白：\n"
+        "男：\n"
+        "她：\n"
+    ),
+}
+
 FALLBACKS = [
     {
         "narration": "暖黃燈下，她仰躺在凌亂的床單上，眉心微蹙、唇瓣微張，眼尾含著水光卻還是看著壓上來的男人；他額角沁著汗，眼神發亮、嘴角帶著得意，腰一下一下深深頂進去，床板跟著輕輕響。",
@@ -132,7 +161,7 @@ FALLBACKS = [
     },
     {
         "narration": "她跨坐在他大腿上自己起伏，臉頰潮紅、睫毛濕濕的，偶爾咬住下唇把呻吟壓低；男人仰躺著，一隻手捏著她的腰，表情又饞又滿意，不時往上頂，看她肩頭輕輕發抖。",
-        "man": "對，再坐深一點，自己動啊。",
+        "man": "嗯，對，再坐深一點，自己動啊。",
         "wife": "哈啊……進、進到最裡面了……",
     },
     {
@@ -241,6 +270,407 @@ def type_delay_ms(ch, char_sec: float = CHAR_SEC_DEFAULT) -> int:
     return base
 
 
+# --- 隔門聽不清：隻字片語／吟叫穿插（與 web/content/wifepay_heard.js 同一套規則）---
+_HEAR_ELLIPSIS_CHARS = set("…⋯.")
+_HEAR_PUNCT_CHARS = set("、，。！？!?~～・·「」『』【】（）()—─－-．,")
+_HEAR_PARTICLES = set("的了嗎呢吧啊嗯哈喔哦噢唉阿痾唔呀嘛啦咯呵喲欸")
+_HEAR_FUNC = {
+    "怎麼", "什麼", "那個", "這個", "就是", "還是", "然後", "因為", "所以",
+    "但是", "而且", "的話", "一下", "這樣", "那樣", "這麼", "那麼", "有點",
+    "不是", "沒有", "已經", "還要", "一個", "一些", "一樣",
+}
+_HEAR_KEY_BITS = (
+    "射", "進", "出", "深", "慢", "快", "爽", "愛", "要", "給", "夾", "頂", "插",
+    "吻", "舔", "摸", "碰", "滿", "壞", "去", "來", "可以", "不行", "不要",
+    "裡面", "後面", "前面", "舒服", "喜歡", "坐", "動", "翹", "高", "緊", "值",
+    "近", "羞", "跪", "痠", "腰", "抱", "停", "黏", "錢", "舌", "嘴", "再", "點",
+    "幹", "濕", "熱", "硬", "大",
+)
+_HEAR_LEXICON = (
+    "射進去", "慢一點", "快一點", "坐深一點", "最裡面", "從後面",
+    "再近一點", "不要停", "好害羞", "好舒服", "好喜歡", "進到", "太深了",
+    "不可以", "怎麼了", "射進來", "自己動", "深一點", "翹高一點", "有點愛上",
+    "愛上了", "這麼黏", "伸出來", "貼這麼緊", "喜歡嗎", "膝蓋好痠",
+    "怎麼", "可以", "射進", "進去", "進來", "出來", "不要", "不行", "一點",
+    "裡面", "後面", "前面", "好爽", "好深", "好滿", "好近", "舒服", "喜歡",
+    "自己", "愛上", "這麼", "那麼", "這樣", "那樣", "舌頭", "太深", "太快",
+    "慢慢", "害羞", "膝蓋", "好痠", "姿勢", "最深", "真值", "再坐", "再近",
+    "不要停", "有點", "太深了", "慢一點", "快一點",
+)
+WIFE_MOANS = ("啊…", "嗯…", "哈啊", "痾…", "痾痾", "好爽…", "嗯啊", "啊啊", "唔…", "哈…", "啊")
+MAN_MOANS = ("嗯", "哈", "呼…", "呃", "嗯…")
+WIFE_TAILS = ("啊…", "嗯…", "好爽…", "哈啊…")
+MAN_TAILS = ("嗯…", "哈…")
+_HEAR_LEVELS = {
+    "light": dict(clear=0.22, a=0.34, b=0.28, ab=0.16, drop=0.45, keyKeep=0.85,
+                  moanGap=0.28, moanBreak=0.12, moanTail=0.28, moanMax=2),
+    "mid": dict(clear=0.12, a=0.30, b=0.30, ab=0.28, drop=0.62, keyKeep=0.70,
+                moanGap=0.45, moanBreak=0.28, moanTail=0.45, moanMax=3),
+    "heavy": dict(clear=0.05, a=0.26, b=0.28, ab=0.41, drop=0.78, keyKeep=0.55,
+                  moanGap=0.65, moanBreak=0.45, moanTail=0.70, moanMax=4),
+}
+_HEAR_LEX_SORTED = tuple(sorted(set(_HEAR_LEXICON), key=lambda w: (-len(w), w)))
+MUFFLE_DEFAULT = True
+MUFFLE_LEVEL_DEFAULT = "mid"
+MUFFLE_LEVELS = ("light", "mid", "heavy")
+_MOAN_SET = set(WIFE_MOANS) | set(MAN_MOANS) | set(WIFE_TAILS) | set(MAN_TAILS)
+
+
+def normalize_muffle_level(v) -> str:
+    s = str(v or "").strip().lower()
+    if s in ("light", "輕", "lo", "low", "1"):
+        return "light"
+    if s in ("heavy", "重", "hi", "high", "3"):
+        return "heavy"
+    return "mid"
+
+
+def parse_muffle_enabled(v, default: bool = True) -> bool:
+    if v is None or v == "":
+        return default
+    if isinstance(v, bool):
+        return v
+    s = str(v).strip().lower()
+    if s in ("0", "false", "off", "no", "否", "關"):
+        return False
+    if s in ("1", "true", "on", "yes", "是", "開"):
+        return True
+    return default
+
+
+def fnv1a(text: str) -> int:
+    h = 2166136261
+    for b in str(text or "").encode("utf-8"):
+        h ^= b
+        h = (h * 16777619) & 0xFFFFFFFF
+    return h or 1
+
+
+class HearRng:
+    def __init__(self, seed: int):
+        self.s = int(seed) & 0xFFFFFFFF
+        if not self.s:
+            self.s = 0x9E3779B9
+
+    def next(self) -> float:
+        self.s = (1664525 * self.s + 1013904223) & 0xFFFFFFFF
+        return self.s / 4294967296.0
+
+    def randint(self, n: int) -> int:
+        if n <= 1:
+            return 0
+        return int(self.next() * n) % n
+
+    def chance(self, p: float) -> bool:
+        return self.next() < p
+
+    def pick(self, items):
+        return items[self.randint(len(items))]
+
+
+def _is_cjk(ch: str) -> bool:
+    o = ord(ch)
+    return (0x3400 <= o <= 0x9FFF) or (0xF900 <= o <= 0xFAFF)
+
+
+def tokenize_heard(text: str) -> list[str]:
+    s = str(text or "")
+    out: list[str] = []
+    i, n = 0, len(s)
+    while i < n:
+        ch = s[i]
+        if ch.isspace():
+            j = i + 1
+            while j < n and s[j].isspace():
+                j += 1
+            out.append(s[i:j])
+            i = j
+            continue
+        if ch in _HEAR_ELLIPSIS_CHARS or ch in _HEAR_PUNCT_CHARS:
+            j = i + 1
+            while j < n and (s[j] in _HEAR_ELLIPSIS_CHARS or s[j] in _HEAR_PUNCT_CHARS):
+                j += 1
+            out.append(s[i:j])
+            i = j
+            continue
+        if _is_cjk(ch):
+            hit = ""
+            for w in _HEAR_LEX_SORTED:
+                if s.startswith(w, i):
+                    hit = w
+                    break
+            if hit:
+                out.append(hit)
+                i += len(hit)
+                continue
+            out.append(ch)
+            i += 1
+            continue
+        j = i + 1
+        while (
+            j < n
+            and (not s[j].isspace())
+            and s[j] not in _HEAR_ELLIPSIS_CHARS
+            and s[j] not in _HEAR_PUNCT_CHARS
+            and not _is_cjk(s[j])
+        ):
+            j += 1
+        out.append(s[i:j])
+        i = j
+    return out
+
+
+def _is_ellipsis_tok(tok: str) -> bool:
+    return bool(re.fullmatch(r"[.…⋯\s]+", tok or "") and re.search(r"[.…⋯]", tok or ""))
+
+
+def _is_punct_tok(tok: str) -> bool:
+    if not tok:
+        return True
+    if tok.isspace():
+        return True
+    return all(c in _HEAR_ELLIPSIS_CHARS or c in _HEAR_PUNCT_CHARS or c.isspace() for c in tok)
+
+
+def _is_content_tok(tok: str) -> bool:
+    return bool(tok) and not _is_punct_tok(tok)
+
+
+def _is_key_tok(tok: str) -> bool:
+    if not _is_content_tok(tok) or _is_ellipsis_tok(tok):
+        return False
+    if tok in _HEAR_FUNC or (len(tok) == 1 and tok in _HEAR_PARTICLES):
+        return False
+    if any(b in tok for b in _HEAR_KEY_BITS):
+        return True
+    return len(tok) >= 2 and not all(c in _HEAR_PARTICLES for c in tok)
+
+
+def _pick_mode(rng: HearRng, level: str, side: str) -> str:
+    L = _HEAR_LEVELS.get(level) or _HEAR_LEVELS["mid"]
+    clear, a, b = L["clear"], L["a"], L["b"]
+    if side == "man":
+        a += 0.08
+        b -= 0.04
+    x = rng.next()
+    if x < clear:
+        return "clear"
+    if x < clear + a:
+        return "a"
+    if x < clear + a + b:
+        return "b"
+    return "ab"
+
+
+def _ellipsis_mark(rng: HearRng) -> tuple[str, str, str]:
+    mark = rng.pick(("……", "...", "...."))
+    left = " " if rng.chance(0.6) else ""
+    right = " " if rng.chance(0.5) else ""
+    return mark, left, right
+
+
+def _apply_a(tokens: list[str], rng: HearRng, L: dict) -> dict:
+    decisions = [{"tok": tok, "keep": tok} for tok in tokens]
+    first_content = next((i for i, tok in enumerate(tokens) if _is_content_tok(tok)), -1)
+
+    for i, tok in enumerate(tokens):
+        if not _is_content_tok(tok):
+            decisions[i]["keep"] = tok if rng.chance(0.7) else ""
+            continue
+        key = _is_key_tok(tok)
+        if i == first_content:
+            if key and (len(tok) <= 2 or rng.chance(L["keyKeep"])):
+                decisions[i]["keep"] = tok
+            else:
+                n = 2 if (rng.chance(0.45) and len(tok) >= 2) else 1
+                decisions[i]["keep"] = tok[: max(1, n)]
+            continue
+        if key:
+            if rng.chance(L["keyKeep"]):
+                decisions[i]["keep"] = tok
+            elif len(tok) >= 2 and rng.chance(0.7):
+                n = 2 if (len(tok) >= 3 and rng.chance(0.5)) else 1
+                decisions[i]["keep"] = tok[:n]
+            else:
+                decisions[i]["keep"] = ""
+        elif rng.chance(L["drop"]):
+            decisions[i]["keep"] = ""
+        else:
+            decisions[i]["keep"] = tok
+
+    def restore(idx: int) -> None:
+        tok = tokens[idx]
+        if not _is_content_tok(tok):
+            return
+        if len(tok) >= 2 and _is_key_tok(tok) and rng.chance(0.4):
+            decisions[idx]["keep"] = tok[: 2 if len(tok) >= 3 else 1]
+        else:
+            decisions[idx]["keep"] = tok
+
+    def fragments_of() -> list[str]:
+        return [d["keep"] for d in decisions if _is_content_tok(d["keep"])]
+
+    frags = fragments_of()
+    if len(frags) < 2:
+        keys = [i for i, tok in enumerate(tokens) if _is_key_tok(tok) and not _is_content_tok(decisions[i]["keep"])]
+        for i in keys:
+            if len(fragments_of()) >= 2:
+                break
+            restore(i)
+    frags = fragments_of()
+    if len(frags) < 2:
+        for i in range(len(tokens) - 1, -1, -1):
+            if len(fragments_of()) >= 2:
+                break
+            if _is_content_tok(tokens[i]) and not _is_content_tok(decisions[i]["keep"]):
+                restore(i)
+    frags = fragments_of()
+    if len(frags) < 2 and first_content >= 0:
+        last_c = next((i for i in range(len(tokens) - 1, -1, -1) if _is_content_tok(tokens[i])), -1)
+        if last_c > first_content:
+            decisions[first_content]["keep"] = decisions[first_content]["keep"] or tokens[first_content][:1]
+            tok = tokens[last_c]
+            decisions[last_c]["keep"] = tok[:2] if len(tok) >= 2 else tok
+    frags = fragments_of()
+
+    parts: list[str] = []
+    pending = False
+
+    def push_ellipsis() -> None:
+        mark, left, right = _ellipsis_mark(rng)
+        prev = parts[-1] if parts else ""
+        parts.append((left if prev and left else "") + mark + right)
+
+    for d in decisions:
+        if not d["keep"]:
+            if _is_content_tok(d["tok"]) or _is_ellipsis_tok(d["tok"]):
+                pending = True
+            continue
+        if pending and _is_content_tok(d["keep"]):
+            push_ellipsis()
+            pending = False
+        if d["keep"].isspace() and pending:
+            continue
+        parts.append(d["keep"])
+    if pending and any(_is_content_tok(x) for x in parts):
+        push_ellipsis()
+    text = re.sub(r"[ \t]+", " ", "".join(parts)).strip()
+    return {"text": text, "fragments": fragments_of()}
+
+
+def _apply_b(text: str, rng: HearRng, L: dict, side: str) -> str:
+    tokens = tokenize_heard(text)
+    if not tokens:
+        return text
+    moans = MAN_MOANS if side == "man" else WIFE_MOANS
+    tails = MAN_TAILS if side == "man" else WIFE_TAILS
+    gap_p = L["moanGap"] * (0.55 if side == "man" else 1)
+    break_p = L["moanBreak"] * (0.4 if side == "man" else 1)
+    tail_p = L["moanTail"] * (0.5 if side == "man" else 1)
+    used = 0
+    out: list[str] = []
+
+    def maybe_moan() -> None:
+        nonlocal used
+        if used >= L["moanMax"] or not rng.chance(gap_p):
+            return
+        out.append(f" {rng.pick(moans)} " if rng.chance(0.5) else rng.pick(moans))
+        used += 1
+
+    seen = False
+    for tok in tokens:
+        if _is_content_tok(tok) and not _is_ellipsis_tok(tok) and len(tok) >= 2 and used < L["moanMax"] and rng.chance(break_p):
+            if seen:
+                maybe_moan()
+            cut = 2 if (len(tok) >= 3 and rng.chance(0.4)) else 1
+            out.append(tok[:cut])
+            out.append(f" {rng.pick(moans)} " if rng.chance(0.5) else rng.pick(moans))
+            used += 1
+            out.append(tok[cut:])
+            seen = True
+            continue
+        if _is_content_tok(tok) and seen:
+            maybe_moan()
+        out.append(tok)
+        if _is_content_tok(tok):
+            seen = True
+    if used < L["moanMax"] and rng.chance(tail_p):
+        out.append(f" {rng.pick(tails)}" if rng.chance(0.6) else rng.pick(tails))
+    return re.sub(r"[ \t]+", " ", "".join(out)).strip()
+
+
+def hear_line(text, *, side: str = "wife", level: str = "mid", seed: int = 0,
+              enabled: bool = True, mode: str = "") -> dict:
+    """隔門聽不清轉換。side=narration 時原樣回傳。回 {text, mode, fragments, original}。"""
+    original = str(text or "")
+    side = str(side or "wife").strip().lower()
+    enabled = bool(enabled)
+    level = normalize_muffle_level(level)
+    forced = str(mode or "").strip().lower()
+    if (not enabled) or side in ("narration", "nar", "旁白"):
+        return {"text": original, "mode": "off", "fragments": [original] if _is_content_tok(original) else [], "original": original}
+    compact = re.sub(r"\s+", "", original)
+    if (not compact) or compact in ("—", "-", "–") or len(original) < 2:
+        return {"text": original, "mode": "clear", "fragments": [original] if compact else [], "original": original}
+    try:
+        seed_i = int(seed)
+    except (TypeError, ValueError):
+        seed_i = 0
+    rng = HearRng(fnv1a(f"{seed_i}|{side}|{original}|{level}|{forced}"))
+    L = _HEAR_LEVELS.get(level) or _HEAR_LEVELS["mid"]
+    if forced not in ("a", "b", "ab", "clear"):
+        forced = _pick_mode(rng, level, side)
+    out = original
+    fragments: list[str] = []
+    if forced == "clear":
+        fragments = [t for t in tokenize_heard(original) if _is_content_tok(t)]
+        out = original
+    elif forced == "a":
+        r = _apply_a(tokenize_heard(original), rng, L)
+        out = r["text"] or original
+        fragments = r["fragments"]
+    elif forced == "b":
+        out = _apply_b(original, rng, L, side) or original
+        fragments = [
+            t for t in tokenize_heard(out)
+            if _is_content_tok(t) and not _is_ellipsis_tok(t) and t not in _MOAN_SET
+        ]
+    else:
+        r = _apply_a(tokenize_heard(original), rng, L)
+        out = _apply_b(r["text"] or original, rng, L, side) or r["text"] or original
+        fragments = r["fragments"]
+    out = re.sub(r"[ \t]+", " ", str(out or "")).strip() or original
+    if _banned(out) and not _banned(original):
+        out = original
+    if not out:
+        out = original
+    if forced in ("a", "ab") and len(fragments) < 2 and len(re.sub(r"\s+", "", original)) >= 3:
+        chars = list(re.sub(r"\s+", "", original))
+        out = f"{chars[0]}……{''.join(chars[-2:])}"
+        fragments = [chars[0], "".join(chars[-2:])]
+    return {"text": out, "mode": forced, "fragments": fragments, "original": original}
+
+
+def hear_through_door(text, *, side: str = "wife", level: str = "mid", seed: int = 0,
+                      enabled: bool = True, mode: str = "") -> str:
+    return hear_line(text, side=side, level=level, seed=seed, enabled=enabled, mode=mode)["text"]
+
+
+def hear_dialog(row: dict | None, *, enabled: bool = True, level: str = "mid", seed: int = 0) -> dict:
+    row = row if isinstance(row, dict) else {}
+    narration = str(row.get("narration") or "")
+    man = str(row.get("man") or "")
+    wife = str(row.get("wife") or "")
+    return {
+        "narration": narration,
+        "man": hear_through_door(man, side="man", level=level, seed=seed, enabled=enabled),
+        "wife": hear_through_door(wife, side="wife", level=level, seed=seed, enabled=enabled),
+        "man_orig": man,
+        "wife_orig": wife,
+        "narration_orig": narration,
+    }
+
+
 def _normalize_frac(v) -> str:
     s = str(v or "").strip().lower()
     if v in (2, 0.5) or s in ("2", "1/2", "0.5", "half"):
@@ -331,11 +761,16 @@ def _config_from_raw(raw: dict | None) -> tuple[dict, bool]:
         "poses": clean_tags(raw.get("poses")),
         "global_prompt": _prompt_field(raw, "global_prompt", GLOBAL_POS_DEFAULT),
         "global_negative": _prompt_field(raw, "global_negative", GLOBAL_NEG_DEFAULT),
+        "door_muffle": parse_muffle_enabled(raw.get("door_muffle") if "door_muffle" in raw else None, MUFFLE_DEFAULT),
+        "door_muffle_level": (
+            normalize_muffle_level(raw.get("door_muffle_level"))
+            if "door_muffle_level" in raw else MUFFLE_LEVEL_DEFAULT
+        ),
     }, wrote
 
 
 def load_config(assets: Path) -> dict:
-    """打字速度、自訂姿勢、預設正面／負面提示詞。缺檔或壞檔用程式預設，不依賴被 gitignore 的資產檔。
+    """打字速度、自訂姿勢、預設正面／負面提示詞、隔門聽不清。缺檔或壞檔用程式預設，不依賴被 gitignore 的資產檔。
     若檔裡還是舊預設 1.2，自動遷到 0.9 並寫回（其他欄位保留）；使用者改過的其他值不動。"""
     ensure_dirs(assets)
     raw = {}
@@ -364,6 +799,10 @@ def save_config(assets: Path, data: dict | None = None) -> dict:
             cur["global_prompt"] = clip_prompt(data.get("global_prompt"), GLOBAL_POS_DEFAULT)
         if "global_negative" in data:
             cur["global_negative"] = clip_prompt(data.get("global_negative"), GLOBAL_NEG_DEFAULT)
+        if "door_muffle" in data:
+            cur["door_muffle"] = parse_muffle_enabled(data.get("door_muffle"), MUFFLE_DEFAULT)
+        if "door_muffle_level" in data:
+            cur["door_muffle_level"] = normalize_muffle_level(data.get("door_muffle_level"))
     _atomic_write(config_path(assets), json.dumps(cur, ensure_ascii=False, indent=2))
     return cur
 
@@ -529,10 +968,10 @@ def load_dialog_prompt(assets: Path) -> dict:
                 system = _clip(data.get("system"), 4000) or DEFAULT_DIALOG["system"]
                 user = _clip(data.get("user"), 4000) or DEFAULT_DIALOG["user"]
                 changed = False
-                if any(_same_tpl(system, d["system"]) for d in (OLD_DIALOG, PREV_DIALOG)):
+                if any(_same_tpl(system, d["system"]) for d in (OLD_DIALOG, PREV_DIALOG, PREV2_DIALOG)):
                     system = DEFAULT_DIALOG["system"]
                     changed = True
-                if any(_same_tpl(user, d["user"]) for d in (OLD_DIALOG, PREV_DIALOG)):
+                if any(_same_tpl(user, d["user"]) for d in (OLD_DIALOG, PREV_DIALOG, PREV2_DIALOG)):
                     user = DEFAULT_DIALOG["user"]
                     changed = True
                 row = {"system": system, "user": user}
@@ -746,7 +1185,7 @@ STOCK_SCRIPTS = [
         "fallback": {
             "narration": "他一壓上來就頂到最深處，節奏又重又急，額角是汗、眼神發亮；她被頂得聲音發顫，眉心皺緊、手指死死抓著床單，腿卻主動纏上他的腰，身體一下一下地發抖，顯然被弄得很有感覺。",
             "man": "一進來就這麼緊，再夾一下。",
-            "wife": "太、太深了……好舒服，稍、稍慢一點……",
+            "wife": "啊……太、太深了……好舒服，稍、稍慢一點……",
         },
     },
     {
@@ -760,12 +1199,12 @@ STOCK_SCRIPTS = [
             "這是這一刻的迷戀，不要寫強迫。"
         ),
         "man_tone": "又得意又寵，回應她的黏人，問她是不是離不開。",
-        "wife_tone": "黏人、撒嬌、當下告白式的迷戀，求他再近一點、不要停。",
+        "wife_tone": "黏人、撒嬌、當下告白式的迷戀，求他再近一點、不要停；說話帶自然的吟叫與斷續。",
         "system": "",
         "user": "",
         "fallback": {
             "narration": "做到後來她整個人軟在他身上，眼神迷離、雙手緊緊環住他的脖子不讓他退開，腰還主動往上貼；男人被她這副黏人的樣子取悅，吻著她發燙的耳尖，動作又深又穩，看她一下一下把自己送上來。",
-            "man": "這麼黏我，是不是有點愛上了？",
+            "man": "嗯……這麼黏我，是不是有點愛上了？",
             "wife": "嗯……再近一點，不要停，好喜歡……",
         },
     },
@@ -774,8 +1213,8 @@ STOCK_SCRIPTS = [
 
 def _is_builtin_tpl(system: str, user: str) -> bool:
     """系統或使用者提示是否等於某一版內建預設（含舊版）。"""
-    sys_hit = any(_same_tpl(system, d["system"]) for d in (OLD_DIALOG, PREV_DIALOG, DEFAULT_DIALOG))
-    user_hit = any(_same_tpl(user, d["user"]) for d in (OLD_DIALOG, PREV_DIALOG, DEFAULT_DIALOG))
+    sys_hit = any(_same_tpl(system, d["system"]) for d in (OLD_DIALOG, PREV_DIALOG, PREV2_DIALOG, DEFAULT_DIALOG))
+    user_hit = any(_same_tpl(user, d["user"]) for d in (OLD_DIALOG, PREV_DIALOG, PREV2_DIALOG, DEFAULT_DIALOG))
     return sys_hit and user_hit
 
 
