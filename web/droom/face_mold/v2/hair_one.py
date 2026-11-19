@@ -124,9 +124,9 @@ def render(img,stage):
   rl=random.Random(5 if HS!='bob' else 9)
   ytop,ybot=int(CY-RO*.86),BANG_Y+6
   for ph in MER[1:-1]:
-    kind=rl.choices(['none','thin','thick'],[.3,.42,.28])[0]
+    kind=rl.choices(['none','thin','thick'],[.52,.26,.22])[0]   # 使用者：線太多 → 一半以上不畫
     if kind=='none':continue
-    y0=rl.randint(ytop,int(CY-RO*.35));y1=ybot if rl.random()<.7 else rl.randint(int(CY-RO*.1),ybot)
+    y0=rl.randint(int(CY-RO*.6),int(CY-RO*.15));y1=ybot if rl.random()<.6 else rl.randint(int(CY-RO*.1),ybot)   # 多半只畫中下段
     side=rl.choice([-1,1])                                  # 粗陰影長在分界的哪一邊（被另一束壓住的那邊）
     for y in range(y0,y1):
       x=round(mer_x(ph,y))
@@ -141,8 +141,8 @@ def render(img,stage):
   for s in(-1,1):
     # 兩側也照瀏海的規則：分界線有的沒有、有的細、有的粗陰影，長短不一（不再是虛線）
     rs=random.Random(21+s)
-    for x in range(CX+s*58,CX+s*(RO+3),s*rs.choice([3,4,5])):
-      kind=rs.choices(['none','thin','thick'],[.35,.4,.25])[0]
+    for x in range(CX+s*58,CX+s*(RO+3),s*rs.choice([6,7,8])):
+      kind=rs.choices(['none','thin','thick'],[.5,.28,.22])[0]
       if kind=='none':continue
       y0=rs.randint(118,160);y1=rs.randint(190,236 if HS!='bob' else 212)
       for y in range(y0,y1):
