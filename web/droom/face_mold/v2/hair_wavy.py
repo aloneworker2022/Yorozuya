@@ -37,22 +37,40 @@ def pixels(pts):
     out.append(path[i]);i+=1
   return out
 def mirror(pts,dx=0,dy=0):return [(2*CX-x+dx,y+dy) for x,y in pts]
+def wave(y,y0=148,per=54,ph=0):return math.sin(2*math.pi*(y-y0+ph)/per)
 def curves():
+  # 使用者 2026-11-19：上一步錯了（前髮、後髮都很假）→ 照教學圖第 2 步重畫：
+  #   ① 整個頭髮的大輪廓要大：頭頂高出頭殼一截，耳朵那層已經在耳朵外面很遠，往下越來越寬，到胸口
+  #   ② 前面是一個「方塊」：左右兩條線從頭頂直直下到太陽穴，眉毛高度一條橫線
+  #   ③ 內側那束從臉頰（耳朵下緣那層）才開始，往下蓋過下巴邊緣
+  #   波浪從頭的一半（眼睛那層）開始，大而柔，一個起伏約 54 格
   C=[]
-  # 頭頂圓頂（左右兩半，從頭頂中間往兩邊下來）
-  domeL=[(CX+80*math.cos(a),CY-1+79*math.sin(a)) for a in np.radians(np.linspace(-90,-178,10))]   # a=-90 頭頂、-178 左邊
-  # 外輪廓（左）：從太陽穴下來，眼睛那層開始波浪（大而柔的 S 形，一個起伏約 60 格），往下往外散
-  outerL=domeL[-1:]+[(46,128),(42,145),(33,166),(32,186),(39,203),(34,222),(24,242),(25,262),(33,280),(27,296),(22,304)]
-  # 內側那束（左）：太陽穴→蓋到臉頰邊→過下巴往外→跟外輪廓同步擺動往下
-  innerL=[(60,128),(62,146),(67,164),(76,186),(83,204),(84,214),(79,230),(70,250),(73,268),(82,284),(80,298),(74,306)]
-  # 髮尾（左）：兩三個圓圓捲起來的尾巴（不是尖的）
-  tipsL=[(22,304),(26,311),(35,313),(42,307),(46,312),(55,315),(63,310),(68,314),(74,306)]
-  # 後髮的下緣（左）：內側那束後面到脖子
-  backL=[(80,298),(90,304),(100,300),(109,305)]
-  for c in(domeL,outerL,innerL,tipsL,backL):
-    C.append(c);C.append(mirror(c,dx=1))
-  # 前髮：眉毛高度一條線（中間稍微低一點），寬到兩邊太陽穴
-  C.append([(60,128),(80,132),(104,134),(128,135),(152,134),(176,132),(197,128)])
+  for s,ph,amp in((-1,0,1.0),(1,9,.9)):
+    X=lambda x,s=s:CX+s*(CX-x) if s>0 else x
+    # ① 外輪廓：頭頂圓頂（半寬 86、比頭殼高 12 格）→ 太陽穴 → 波浪往下往外
+    dome=[(CX+86*math.cos(math.radians(a)),CY+1-84*math.sin(math.radians(a))) for a in np.linspace(90,180,12)]
+    side=[]
+    for y in np.arange(118,301,6):
+      base=42-16*max(0,(y-140)/160)
+      A=amp*(0 if y<140 else min(1,(y-140)/30))*7
+      side.append((base-A*wave(y,ph=ph),y))
+    outer=dome+side
+    C.append([(X(x),y) for x,y in outer])
+    # ③ 內側那束：臉頰那層開始，往下蓋過下巴邊緣，過了下巴往外，跟外輪廓同步擺動
+    inner=[]
+    for y in np.arange(150,301,6):
+      base=60+22*min(1,(y-150)/50)-6*max(0,(y-215)/85)
+      A=amp*min(1,(y-150)/40)*5
+      inner.append((base-A*wave(y,ph=ph),y))
+    C.append([(X(x),y) for x,y in inner])
+    # 髮尾：外輪廓尾巴和內側尾巴之間，兩個圓圓的捲
+    xo,yo=outer[-1];xi,yi=inner[-1]
+    tip=[(xo,yo),(xo+3,yo+7),(xo+(xi-xo)*.35,yo+9),(xo+(xi-xo)*.5,yo+4),(xo+(xi-xo)*.7,yo+10),(xi+2,yi+7),(xi,yi)]
+    C.append([(X(x),y) for x,y in tip])
+    # ② 前面的方塊：左右兩條線從頭頂下到太陽穴（順著額頭一點點弧度）
+    blk=[(CX-30,40),(CX-48,52),(CX-58,72),(CX-62,96),(CX-63,118),(CX-63,132)]
+    C.append([(X(x),y) for x,y in blk])
+  C.append([(CX-63,132),(CX-30,134),(CX,135),(CX+30,134),(CX+64,132)])   # 眉毛高度的橫線
   return C
 def extend(img):
   # 畫布往下加長到 H（頭髮到肩膀下面）：脖子照最後一列往下延
