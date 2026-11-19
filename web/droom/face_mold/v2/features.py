@@ -14,7 +14,7 @@ HERE=os.path.dirname(os.path.abspath(__file__))
 LT=(229,185,158)
 CXF=128
 # ── 眼睛（照舊 eye.cjs，第一版使用者說先不用改）──
-EPAL=dict(K=(58,36,36),k=(110,70,62),W=(250,247,244),w=(214,206,214),I=(84,52,44),i=(140,88,62),j=(190,132,88),P=(38,22,22),O=(112,66,50),g1=(176,64,116),g2=(228,112,140),g3=(244,156,118),g4=(250,204,140),H=(255,255,255),L=DK,c=SH)
+EPAL=dict(K=(58,36,36),k=(110,70,62),W=(250,247,244),w=(214,206,214),I=(84,52,44),i=(140,88,62),j=(190,132,88),P=(38,22,22),O=(112,66,50),Z=(58,36,36),g1=(176,64,116),g2=(228,112,140),g3=(244,156,118),g4=(250,204,140),H=(255,255,255),L=DK,c=SH)
 from eyeframe import IRIS_COLORS,ICOL
 EPAL.update(IRIS_COLORS[ICOL])
 from eyeframe import extra_pal
@@ -192,8 +192,9 @@ def eyes_turn(img,ca,sa,cx):
   # 兩隻都用正面那隻眼睛，橫向壓的倍率＝臉表面在那裡的縮短量（ca－斜率×sa），黑眼珠往臉朝的那邊（左）靠一點
   BR=bridge_pts(sa,cx)
   from eyeframe import Frame
-  LF=float(os.environ.get('LASHFWD','1.1'))   # 睫毛往前倒的強度（× sin 角度）
-  FRS={1:Frame(EYET,fwd=-min(.9,LF*sa)),-1:Frame(EYET,fwd=min(.9,LF*sa))} if FR else {}
+  LF=float(os.environ.get('LASHFWD','1.1'))   # 遠側眼睛睫毛往前倒的強度
+  # 使用者 2026-11-19：近側（正面那顆）睫毛照原本不要動；遠側那顆偏側面，睫毛往前（畫面左＝它的 +x）或往前上翹
+  FRS={1:Frame(EYET),-1:Frame(EYET,fwd=min(.9,LF*.8))} if FR else {}
   for s in(1,-1):
     xr=s*EYEX/S;yr=EYEY;z=surf(xr,yr)
     Xc=cx+(xr*ca-z*sa)*S;Yc=Y(yr)
@@ -206,7 +207,7 @@ def eyes_turn(img,ca,sa,cx):
         if s<0 and Yp in BR and X>=min(BR[Yp]):continue   # 遠側內眼角藏在鼻樑後面
         if FR:ch=FRS[s].at(s*(X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/(ES*EH),s,idx=(-1.3 if s==1 else 1.3))
         else:ch=eyeAt(s*(X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/(ES*EH),s,IC=ic)
-        if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
+        if ch and (isface(img,X,Yp) or (ch=='Z' and 0<=X<N and 0<=Yp<N)):img[Yp,X]=EPAL[ch]
 # ── 側臉的眼睛（使用者給的教學：臉是圓的，側面看眼睛是三角形）──
 # 上眼線厚、橫的、眼尾往後收成一個尖角（下面一小撇）；前緣斜斜往後下到底下的尖；黑眼珠是窄窄的直橢圓、貼在前緣；
 # 前面幾根睫毛往前刺出去（トゲトゲ）；雙眼皮線往前淡掉；眼睛前緣離鼻樑往後縮
@@ -261,7 +262,7 @@ def side_eye(img,cx):
     for Yp in range(math.floor(Yc+y0*ES*EH),math.ceil(Yc+y1*ES*EH)):
       for X in range(math.floor(X0-4*ES),math.ceil(X0+20*ES)):
         ch=FS.at_side((X+.5-X0)/ES,(Yp+.5-Yc)/(ES*EH))
-        if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
+        if ch and (isface(img,X,Yp) or (ch=='Z' and 0<=X<N and 0<=Yp<N)):img[Yp,X]=EPAL[ch]
     side_brow(img,X0)   # 眉毛最後畫（眼影不能蓋到眉毛）
     return
   side_brow(img,X0)

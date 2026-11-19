@@ -228,7 +228,7 @@ class Frame:
     for seg,w in s.elsegs:
       if s._near(x,y,seg,w):return 'K' if LINE else 'E'   # 眼線色：黑或配合眼影（ELC）
     for seg in s.lashsegs:
-      if s._near(x,y,seg,.8):return 'K'
+      if s._near(x,y,seg,.8):return 'Z'   # 睫毛（顏色同上眼線；可以畫出臉的輪廓外）
     for seg,w in T.get('hooks',[]):
       if s._near(x,y,seg,w*HOOKK):return 'K'
     if s.side and s._near(x,y,s.side,T['sidew']):return 'K'
@@ -328,7 +328,7 @@ class Frame:
           px,py=pts[-1];pts.append((px+math.cos(aa)*ln/6,py+math.sin(aa)*ln/6))
         s._sidelash.append(pts)
     for seg in s._sidelash:
-      if s._near(u,v,seg,.8):return 'K'
+      if s._near(u,v,seg,.8):return 'Z'
     if u<cut:return None
     keep=s.lashsegs;s.lashsegs=[]          # 正面那套睫毛側臉不用
     ch=s.at(x,v,1,idx=-.8);s.lashsegs=keep
