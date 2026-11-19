@@ -38,6 +38,7 @@ import discover_bonus
 import jp_news
 import life_agent
 import escort_lines
+import wifepay
 import rental_lines
 import rental_scene
 import line_group
@@ -80,6 +81,8 @@ PORTRAIT_DIR = ASSETS_DIR / "portraits"
 # 姿勢／骨架參考圖（使用者上傳，不當正式立繪；做愛局部動畫骨架會用）
 POSE_REF_DIR = ASSETS_DIR / "pose_refs"
 FRAME_PACK_DIR = ASSETS_DIR / "frame_packs"
+WIFEPAY_GALLERY_DIR = ASSETS_DIR / "wifepay" / "gallery"
+WIFEPAY_OUT_DIR = ASSETS_DIR / "wifepay" / "out"
 FRAME_PACK_INDEX = FRAME_PACK_DIR / "index.json"
 _POSE_MAX_BYTES = 15 * 1024 * 1024
 _POSE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -1635,7 +1638,7 @@ _RATING_ZH = {"sfw": "全年齡", "nsfw": ""}
 def _resolve_ref_image(ref: str) -> Path | None:
     """把前端傳來的 /assets/… 換成本機絕對路徑。
 
-    認 portraits（立繪鎖臉）、testword（分段第二輪／實驗圖）、pose_refs（姿勢構圖）。
+    認 portraits（立繪鎖臉）、testword（分段第二輪／實驗圖）、pose_refs（姿勢構圖）、wifepay 圖庫。
     只取 basename，擋路徑穿越。URL 有目錄前綴時只在那個目錄找。
     """
     ref = (ref or "").strip()
@@ -1673,6 +1676,12 @@ def _resolve_ref_image(ref: str) -> Path | None:
         if u.startswith(prefix):
             p = base / name
             return p if p.is_file() and p.stat().st_size > 0 else None
+    if u.startswith("/assets/wifepay/gallery/"):
+        p = WIFEPAY_GALLERY_DIR / name
+        return p if Path(name).suffix.lower() in _POSE_EXTS and p.is_file() and p.stat().st_size > 0 else None
+    if u.startswith("/assets/wifepay/out/"):
+        p = WIFEPAY_OUT_DIR / name
+        return p if Path(name).suffix.lower() in _POSE_EXTS and p.is_file() and p.stat().st_size > 0 else None
     if u.startswith("/assets/swap_cafe/"):
         # 換妻圖庫（只有明確寫這個前綴才找；只取 basename）
         p = _SWAP_DIR / name
@@ -2237,6 +2246,7 @@ def _dest_for_image(opts: dict) -> tuple[Path, str, str]:
 
     - shot + char_id → portraits/{id}_{shot}.png（覆寫；.buff 原子寫）
     - char_id + card_id／scene_kind∈{card,watch,scene} → portraits/{id}_card_{tag}.png（覆寫）
+    - scene_kind=wifepay → assets/wifepay/out/{stamp}.png
     - scene_kind=script／sex_strip／其餘 → testword/{stamp}.png（每次新檔，不與立繪同路徑）
     """
     shot = str(opts.get("shot") or "").lower()
@@ -2245,6 +2255,10 @@ def _dest_for_image(opts: dict) -> tuple[Path, str, str]:
     scene_kind = str(opts.get("scene_kind") or "").strip().lower()
     part = str(opts.get("part") or "").lower()
     # 劇本／sex_strip 優先：就算誤帶 portrait shot 也不進 portraits/
+    if scene_kind == "wifepay":
+        WIFEPAY_OUT_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
+        return WIFEPAY_OUT_DIR, "/assets/wifepay/out", f"{stamp}.png"
     if scene_kind in ("script", "sex_strip"):
         IMG_TEST_DIR.mkdir(parents=True, exist_ok=True)
         stamp = f"{int(time.time() * 1000)}_{uuid.uuid4().hex[:8]}"
@@ -2603,7 +2617,9 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         fr = "half" if shot.startswith("half") else shot
     if fr not in sdtags.FRAMING:
         fr = str(opts.get("framing") or "half")
-    script_mode = str(opts.get("scene_kind") or "").strip().lower() == "script"
+    scene_kind = str(opts.get("scene_kind") or "").strip().lower()
+    script_mode = scene_kind == "script"
+    wifepay_mode = scene_kind == "wifepay"
     # 有 extra 且 lock_identity（出卡）→ 場景模式；純立繪仍 solo
     # 感應調戲一律當雙人場景（玩家 POV），不要畫成 solo 立繪
     # 劇本預產：即使 extra 弱／中文，也強制場景，勿畫成證件照半身
@@ -2613,7 +2629,7 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
     # 做愛開場圖＝脫衣全身立繪那一族：solo 立繪構圖（1girl, solo），就算舊前端帶 lock_identity 也不當雙人場景
     if comfy.is_solo_pose_shot(shot):
         scene = False
-    if script_mode:
+    if script_mode or wifepay_mode:
         scene = True
         extra = str(opts.get("extra") or "").strip()
         boost: list[str] = []
@@ -2632,7 +2648,7 @@ def _comfy_prompt_for(opts: dict) -> tuple[str, list[str]]:
         # 劇本禁止證件照構圖詞；half 仍用 upper body，但不寫 looking at viewer（scene 已擋）
         if fr == "head":
             fr = "half"
-    want_flat = False if script_mode else (
+    want_flat = False if (script_mode or wifepay_mode) else (
         bool((comfy.portrait_shot_spec(shot) or {}).get("cutout")) or bool(opts.get("flat_bg"))
     )
     return sdtags.build_prompt(
@@ -3340,17 +3356,19 @@ def _imggen_opts(t: ImgGenIn) -> tuple[str, str, dict]:
         or pose_in.startswith("/assets/testword/")
         or pose_in.startswith("/assets/portraits/")
         or pose_in.startswith("/assets/frame_packs/")
+        or pose_in.startswith("/assets/wifepay/gallery/")
         # 換妻雙人圖：起始圖可以是換妻圖庫（雙人圖／她的半身立繪）
         or (pose_in.startswith("/assets/swap_cafe/") and key.startswith("swap-pair:"))
     )
     shot_in = (t.shot or "").strip().lower()
     sex_strip = (t.scene_kind or "").strip().lower() == "sex_strip"
     script_kind = (t.scene_kind or "").strip().lower() == "script"
+    wifepay_kind = (t.scene_kind or "").strip().lower() == "wifepay"
     # 劇本／sex_strip 絕不能當 portrait shot（否則落到 portraits/ 變立繪路徑）
-    if script_kind or sex_strip:
+    if script_kind or sex_strip or wifepay_kind:
         shot_in = ""
     # 立繪 shot 看規格（調戲場景 cutout=False）；沒登記才吃前端 cutout
-    portrait_cut = False if (script_kind or sex_strip) else comfy.shot_wants_cutout(shot_in, bool(t.cutout))
+    portrait_cut = False if (script_kind or sex_strip or wifepay_kind) else comfy.shot_wants_cutout(shot_in, bool(t.cutout))
     opts = {
         "kind": "sex_strip" if sex_strip else "girl_image",
         "part": part if part in IMG_PARTS else "",
@@ -3376,8 +3394,8 @@ def _imggen_opts(t: ImgGenIn) -> tuple[str, str, dict]:
         "char_id": (t.char_id or "").strip(),
         "card_id": (t.card_id or "").strip(),
         "scene_kind": (t.scene_kind or "").strip(),
-        "cutout": False if script_kind else portrait_cut,
-        "flat_bg": False if script_kind else bool(t.flat_bg or portrait_cut),
+        "cutout": False if (script_kind or wifepay_kind) else portrait_cut,
+        "flat_bg": False if (script_kind or wifepay_kind) else bool(t.flat_bg or portrait_cut),
         # Comfy：prompt 有值才原樣送；出卡應留空，讓 _comfy_prompt_for 用人設 + extra
         # Grok：整張圖不吃前端 prompt（只在分段 part、或做愛局部橫幅時吃）
         "prompt": (t.prompt or "") if (ep == "comfy-img" or part in IMG_PARTS or sex_strip) else "",
@@ -5065,6 +5083,141 @@ async def escort_peek_lines(body: dict):
     if len(_PEEK_LINES) > 200:
         _PEEK_LINES.pop(next(iter(_PEEK_LINES)))
     return {"lines": row["lines"], "cached": False}
+
+
+# ──── 老婆還債偷看（wifepay：圖庫＋三段對話＋圖生圖） ────
+
+
+@app.get("/api/wifepay/gallery")
+def wifepay_gallery_list():
+    return {"items": wifepay.load_index(ASSETS_DIR)}
+
+
+@app.post("/api/wifepay/gallery")
+async def wifepay_gallery_upload(file: UploadFile = File(...)):
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="空檔")
+    if len(data) > _POSE_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="圖太大（上限 15MB）")
+    png, w, h = _normalize_pose_image(data)
+    try:
+        item = wifepay.add_item(ASSETS_DIR, png, width=w, height=h)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"item": item}
+
+
+class WifepayItemPatch(BaseModel):
+    prompt: str | None = None
+    negative: str | None = None
+    denoise: float | None = None
+    tags: list | None = None
+
+
+@app.patch("/api/wifepay/gallery/{item_id}")
+def wifepay_gallery_patch(item_id: str, body: WifepayItemPatch):
+    fields = (body.model_dump if hasattr(body, "model_dump") else body.dict)(exclude_unset=True)
+    if not fields:
+        raise HTTPException(status_code=400, detail="沒有要改的欄位")
+    hit = wifepay.patch_item(ASSETS_DIR, item_id, fields)
+    if not hit:
+        raise HTTPException(status_code=404, detail="沒有這張圖")
+    return {"item": hit}
+
+
+@app.delete("/api/wifepay/gallery/{item_id}")
+def wifepay_gallery_delete(item_id: str):
+    if not wifepay.delete_item(ASSETS_DIR, item_id):
+        raise HTTPException(status_code=404, detail="沒有這張圖")
+    return {"ok": True}
+
+
+@app.get("/api/wifepay/dialog-prompt")
+def wifepay_dialog_prompt_get():
+    return wifepay.load_dialog_prompt(ASSETS_DIR)
+
+
+@app.put("/api/wifepay/dialog-prompt")
+def wifepay_dialog_prompt_put(body: dict):
+    return wifepay.save_dialog_prompt(ASSETS_DIR, body or {})
+
+
+@app.post("/api/wifepay/dialog")
+async def wifepay_dialog(body: dict):
+    """回 {narration, man, wife, ai}。模型約 20 秒沒回或寫壞／觸礁 → 本地三段後備。"""
+    body = body or {}
+    tpl = wifepay.load_dialog_prompt(ASSETS_DIR)
+    system, user = wifepay.dialog_messages(body, tpl)
+    try:
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=20)
+    except Exception:
+        reply = ""
+    row, ai = wifepay.resolve_dialog(reply, body)
+    return {**row, "ai": ai}
+
+
+@app.post("/api/wifepay/pick")
+def wifepay_pick(body: dict | None = None):
+    """隨機抽 1 或 2 張圖庫（可帶 pose 優先對 tags）。空圖庫 items=[]。不生圖。"""
+    body = body or {}
+    items = wifepay.load_index(ASSETS_DIR)
+    pose = str(body.get("pose") or "")
+    count = body.get("count")
+    n = int(count) if count in (1, 2) else None
+    picked = wifepay.pick_items(items, pose=pose, count=n)
+    return {"items": picked, "empty": not items, "total": len(items)}
+
+
+@app.post("/api/wifepay/gen")
+def wifepay_gen(body: dict):
+    """用圖庫底圖走既有 /api/imggen 的 img2img。沒有底圖就 400，不改文生圖。
+    回與 imggen 相同的任務狀態（用 key 再 POST /api/imggen 輪詢）。"""
+    body = body or {}
+    item = wifepay.get_item(ASSETS_DIR, str(body.get("item_id") or ""))
+    if not item:
+        raise HTTPException(status_code=400, detail="沒有這張底圖")
+    src = wifepay.item_file(ASSETS_DIR, item)
+    if not src.is_file() or src.stat().st_size <= 0:
+        raise HTTPException(status_code=400, detail="圖庫沒有底圖檔，不能文生圖。請先到 /wifepay 上傳。")
+    info = dict(body)
+    variables = wifepay.persona_vars(info)
+    prompt = wifepay.expand(str(body.get("prompt") if body.get("prompt") is not None else item.get("prompt") or ""), variables)
+    negative = wifepay.expand(
+        str(body.get("negative") if body.get("negative") is not None else item.get("negative") or ""),
+        variables,
+    )
+    if not prompt.strip():
+        prompt = wifepay.expand(wifepay.DEFAULT_ITEM_PROMPT, variables)
+    denoise = wifepay.clamp_denoise(
+        body["denoise"] if body.get("denoise") is not None else item.get("denoise")
+    )
+    ch = body.get("character") if isinstance(body.get("character"), dict) else None
+    t = ImgGenIn(
+        key=str(body.get("key") or "") or f"wifepay:{int(time.time() * 1000)}:{uuid.uuid4().hex[:8]}",
+        provider="comfy",
+        character=ch,
+        name=str(body.get("name") or (ch or {}).get("name") or ""),
+        rating="nsfw",
+        style=str(body.get("style") or "anime"),
+        framing="full",
+        extra=prompt,
+        prompt="",
+        negative=negative or wifepay.DEFAULT_NEGATIVE,
+        pose_ref=item["url"],
+        pose_denoise=denoise,
+        width=int(body.get("width") or wifepay.GEN_WIDTH),
+        height=int(body.get("height") or wifepay.GEN_HEIGHT),
+        scene_kind="wifepay",
+        lock_identity=True,
+        cutout=False,
+        flat_bg=False,
+        seed=int(body.get("seed") or 0),
+        ckpt=str(body.get("ckpt") or (ch or {}).get("comfyCkpt") or ""),
+        comfy_url=str(body.get("comfy_url") or ""),
+        retry=body.get("retry") is not False,
+    )
+    return imggen_submit(t)
 
 
 @app.post("/api/rental/line")

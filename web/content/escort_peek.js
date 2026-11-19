@@ -1,9 +1,10 @@
 /* 接客偷看畫面（2026-10-10 Al；樣板 mockups/peek/half4.py）。
  * 全螢幕：走廊、掛粉紅牌子「工作室・接客中」的門 → 點門 → 門往內開一半 → 門縫裡：床、暖黃燈、
  * 她（房間同一套人偶 RoomDoll，自己的身材／髮型／罩杯／乳搖，側面體位）＋藍色剪影客人（大半被門擋住，只露腰／手）。
- * 「她沒發現你……」；門開著時每 2～4 秒冒一句字幕（客人藍字粗話／她呻吟），點門關上。
+ * 「她沒發現你……」。遊戲偷看（mode=peek）：點門後中央對話框先出（旁白→男→她），同時生 1～2 張圖生圖，圖好了淡入、對話框下移；失敗只留對話。日租 mode=door/room 仍用舊字幕。
  * 不扣錢、不決定發現與否：這些由呼叫端（app.js）先算好傳進來。 */
 import { peekLine, nextGapMs, flavorWife } from "./escort_voices.js?v=3";
+import { startWifepayPeek } from "./wifepay_reveal.js?v=1";
 
 const LW = 195, LH = 422;                    // 邏輯像素（畫面 ×2 放大）
 const DX0 = 8, DX1 = 187, DY0 = 112, DY1 = 340;
@@ -341,7 +342,7 @@ const CSS = `
 .peek-bub.c{background:rgba(20,30,70,.82);color:#8fb2ff;border:1px solid #3f62c0}
 .peek-bub.w{background:rgba(60,20,40,.82);color:#ffb0cf;border:1px solid #c0608c}
 .peek-ov.door .peek-bub{opacity:0;filter:blur(.4px)}.peek-ov.door .peek-bub.on{opacity:.78}
-.peek-close{position:absolute;top:8px;right:8px;background:none;border:0;color:#998;font-size:22px}`;
+.peek-close{position:absolute;top:8px;right:8px;background:none;border:0;color:#998;font-size:22px;z-index:8}`;
 
 /**
  * 打開偷看。opts：{ who, doll, pose('missionary'…), man（客人體型，見 MAN_BUILDS）, lines（(more)=>Promise<[{side,text}]>，AI 台詞；失敗回 []）, noticed, cost, voice, family, onClose(state) }。
@@ -425,11 +426,12 @@ export function openPeek(opts = {}) {
       while (acc >= D.SEX_FRAME_MS[st.fi] * tempo) { acc -= D.SEX_FRAME_MS[st.fi] * tempo; st.fi = (st.fi + 1) % st.frames.length; }
       st.anchor = { ...D.sexAnchor(doll, dpose, st.fi), man };
     }
-    if ((st.open >= 0.98 || mode === "door") && (st.frames || mode === "door") && !st.closed && now >= talkAt) { say(); talkAt = now + nextGapMs(); }
+    if (!st.reveal && (st.open >= 0.98 || mode === "door") && (st.frames || mode === "door") && !st.closed && now >= talkAt) { say(); talkAt = now + nextGapMs(); }
     drawScene(g, st);
     raf = requestAnimationFrame(tick);
   };
   const framesReady = (async () => {
+    if (mode === "peek") return;   // 還債偷看改走圖生圖對話框，不派人偶
     let dr = null, dl = doll, DD = D;
     // 2026-11-06 使用者看過：人物完全沒有律動（droom 模型還沒完成）→ 先不要用，預設關回去；程式留著，opts.droom 明確給值才用。
     const droomMode = opts.droom ?? false;
@@ -440,16 +442,37 @@ export function openPeek(opts = {}) {
     const fr = await dollFrames(dl, dpose, MAN_BUILDS[man], dr);
     D = DD; doll = dl; st.frames = fr; st.anchor = { ...D.sexAnchor(doll, dpose, 0), man };
   })().catch((err) => { console.warn("[peek]", err); });
+  const startReveal = () => {
+    if (st.reveal) return;
+    st.reveal = true;
+    bubC.classList.remove("on"); bubW.classList.remove("on");
+    const wp = opts.wifepay || {};
+    hint.textContent = "門後傳來聲音……";
+    st.wp = startWifepayPeek(ov.querySelector(".peek-box"), {
+      who: opts.who, character: wp.character || opts.who,
+      pose, man, build: wp.build || man,
+      family: wp.family || opts.family || "",
+      voice: wp.voice || opts.voice || "",
+      stage: wp.stage || opts.who?.roomStage || opts.who?.stage || "",
+      guest: wp.guest, guestName: wp.guestName || wp.guest?.name || "",
+      regular: !!(wp.regular || wp.guest?.named),
+      ckpt: wp.ckpt || "", comfy_url: wp.comfy_url || "",
+      onStatus: (m) => { hint.textContent = m || ""; },
+    });
+  };
   const openDoor = () => {
     if (opts.onOpen && opts.onOpen() === false) return;
     st.opened = true; st.target = 1; talkAt = performance.now() + 900;
     status.textContent = opts.noticed ? "……她好像看到門縫了！" : "她沒發現你……";
     status.style.color = opts.noticed ? "#ff8a8a" : "";
-    hint.textContent = "點門關上";
+    hint.textContent = mode === "peek" ? "門後傳來聲音……" : "點門關上";
+    if (mode === "peek") startReveal();
   };
   const finish = () => {
     if (!ov.isConnected) return;
-    cancelAnimationFrame(raf); ov.remove();
+    cancelAnimationFrame(raf);
+    try { st.wp?.close?.(); } catch { /* */ }
+    ov.remove();
     try { opts.onClose?.(st); } catch { /* */ }
   };
   const closeDoor = () => { st.closed = true; st.target = 0; hint.textContent = ""; bubC.classList.remove("on"); bubW.classList.remove("on"); if (st.open === 0) finish(); };

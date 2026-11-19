@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#16101f">
+<title>Wife Pay — 老婆還債編輯</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #12101c; color: #d8d0ec; font-family: system-ui, "PingFang TC", "Noto Sans CJK TC", sans-serif;
+         font-size: 15px; padding: 1em; max-width: 920px; margin: 0 auto; line-height: 1.5; }
+  h1 { color: #ff4fd8; font-size: 1.2em; letter-spacing: .08em; margin-bottom: .2em; }
+  .warn { color: #ff9d4d; font-size: .8em; margin-bottom: 1em; }
+  section { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+            border-radius: 10px; padding: 1em 1.1em; margin-bottom: 1em; }
+  h2 { color: #6fe3e1; font-size: .9em; letter-spacing: .1em; margin-bottom: .35em; }
+  .mini { font-size: .78em; color: #8a82a5; margin-bottom: .55em; }
+  label { display: block; font-size: .75em; color: #9a92b5; margin: .5em 0 .2em; }
+  textarea, input, select { width: 100%; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 7px; color: #d8d0ec; font: inherit; padding: .45em .6em; outline: none; }
+  textarea { min-height: 5em; resize: vertical; line-height: 1.55; }
+  textarea:focus, input:focus, select:focus { border-color: rgba(111,227,225,.45); }
+  .row { display: flex; gap: .5em; flex-wrap: wrap; align-items: flex-end; }
+  .row > span { min-width: 0; }
+  button { background: rgba(255,79,216,.18); border: none; border-radius: 7px; color: #ff8fe6;
+           font: inherit; padding: .45em .9em; cursor: pointer; }
+  button:hover { background: rgba(255,79,216,.3); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.cy { background: rgba(111,227,225,.16); color: #6fe3e1; }
+  button.del { background: rgba(255,95,122,.16); color: #ff8fa3; }
+  button.big { font-size: 1.05em; padding: .7em 1.4em; letter-spacing: .08em; }
+  .status { font-size: .8em; color: #6bcb77; min-height: 1.2em; margin-top: .4em; }
+  .status.err { color: #ff5f7a; }
+  a { color: #6fe3e1; }
+  code { font-size: .92em; }
+  .grow { flex: 1 1 12em; }
+  .fix0 { flex: 0 1 9em; }
+  .girl-card { display: flex; gap: .8em; align-items: flex-start; margin-top: .5em;
+                background: rgba(0,0,0,.22); border-radius: 8px; padding: .7em .8em; }
+  .girl-card .port { width: 72px; height: 108px; object-fit: cover; border-radius: 6px;
+                     background: rgba(0,0,0,.35); flex: 0 0 auto; }
+  .girl-card .meta { flex: 1; min-width: 0; font-size: .88em; }
+  .girl-card .meta b { color: #ff8fe6; }
+  .mode-row { display: flex; gap: 1em; flex-wrap: wrap; margin: .4em 0 .6em; }
+  .mode-row label { display: inline-flex; align-items: center; gap: .35em; margin: 0;
+                    font-size: .85em; color: #d8d0ec; cursor: pointer; }
+  .mode-row input { width: auto; }
+  .thumbs { display: flex; flex-wrap: wrap; gap: .5em; margin-top: .5em; }
+  .thumbs button { padding: .25em; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1); position: relative; }
+  .thumbs button.sel { border-color: #ff4fd8; }
+  .thumbs img { width: 72px; height: 108px; object-fit: cover; border-radius: 4px; display: block; }
+  .sheet { background: rgba(0,0,0,.28); border-radius: 8px; padding: .7em .8em; white-space: pre-wrap;
+           font-size: .85em; color: #c8c0dc; min-height: 3em; max-height: 14em; overflow: auto; }
+  #reveal-host { margin-top: .6em; }
+</style>
+</head>
+<body>
+<h1>✦ Wife Pay — 老婆還債編輯</h1>
+<p class="warn">
+  圖庫底圖由你上傳，生圖是圖生圖（832×1216），沒有底圖不會改走文生圖。
+  遊戲裡點門會先出對話（旁白→男→她），圖好了再慢慢顯現。
+  變數：<code>{name}</code> <code>{hair}</code> <code>{breasts}</code> <code>{body}</code> <code>{pose}</code> <code>{pose_zh}</code> <code>{man_build}</code> <code>{man_build_zh}</code> <code>{family}</code> <code>{voice}</code> <code>{stage}</code>。
+  <a href="/edit_pic">Edit Pic</a> | <a href="/test_room">房間沙盒</a> | <a href="/">回遊戲</a>
+</p>
+
+<section>
+  <h2>1. 妹子</h2>
+  <p class="mini">存檔名冊從 <code>/api/save</code> 讀；抽一隻只在本頁暫用，不寫進存檔。</p>
+  <div class="mode-row">
+    <label><input type="radio" name="girl-mode" value="saved" checked> 存檔魅子</label>
+    <label><input type="radio" name="girl-mode" value="draw"> 抽一隻新的</label>
+  </div>
+  <div class="row" id="saved-row">
+    <span class="grow"><label>存檔名冊</label>
+      <select id="girl-sel"><option value="">（讀取中…）</option></select></span>
+    <button type="button" id="btn-reload-girls">重新讀名冊</button>
+  </div>
+  <div class="row" id="draw-row" style="display:none;margin-top:.4em">
+    <button class="cy" type="button" id="btn-draw">抽一隻</button>
+  </div>
+  <div class="girl-card" id="girl-card">
+    <img class="port" id="girl-port" alt="" style="display:none">
+    <div class="meta" id="girl-meta"><span class="mini">尚未選擇魅子</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>2. 圖庫</h2>
+  <p class="mini">上傳／刪除底圖，點一張編該張的 prompt、negative、denoise、tags（可填體位如 missionary、cowgirl，抽圖時優先對上）。</p>
+  <div class="row">
+    <input id="gal-file" type="file" accept="image/*" style="flex:1 1 14em">
+    <button class="cy" type="button" id="btn-gal-up">上傳</button>
+    <button class="del" type="button" id="btn-gal-del">刪除選中</button>
+  </div>
+  <div class="thumbs" id="gal-thumbs"><span class="mini">（尚無圖）</span></div>
+  <div class="row">
+    <span class="grow"><label>這張 prompt（可含變數）</label>
+      <textarea id="item-prompt" placeholder="1girl, 1boy, {hair}, {breasts}, {pose} pose…"></textarea></span>
+  </div>
+  <label>這張 negative</label>
+  <textarea id="item-neg"></textarea>
+  <div class="row">
+    <span class="fix0"><label>denoise</label>
+      <input id="item-denoise" type="number" min="0.35" max="0.85" step="0.05" value="0.55"></span>
+    <span class="grow"><label>tags（逗號分隔，例如 cowgirl, bedroom）</label>
+      <input id="item-tags" type="text" placeholder="cowgirl, bed"></span>
+    <button type="button" id="btn-item-save">儲存這張</button>
+  </div>
+</section>
+
+<section>
+  <h2>3. 測試參數</h2>
+  <div class="row">
+    <span class="fix0"><label>體位 pose</label>
+      <select id="ig-pose">
+        <option value="missionary">missionary 傳教士</option>
+        <option value="cowgirl" selected>cowgirl 騎乘</option>
+        <option value="doggy">doggy 老漢推車</option>
+        <option value="kiss">kiss 擁吻</option>
+        <option value="reverse">reverse 背向</option>
+      </select></span>
+    <span class="fix0"><label>客人體型</label>
+      <select id="ig-build">
+        <option value="average" selected>average</option>
+        <option value="slim">slim</option>
+        <option value="muscular">muscular</option>
+        <option value="fat">fat</option>
+        <option value="tall">tall</option>
+        <option value="short">short</option>
+        <option value="old">old</option>
+      </select></span>
+    <span class="grow"><label>Comfy checkpoint</label>
+      <select id="ig-ckpt"><option value="">（測引擎後載入／用魅子綁定）</option></select></span>
+  </div>
+  <div class="row">
+    <span class="grow"><label>Comfy URL</label>
+      <input id="ig-comfy" type="text" placeholder="http://192.168.x.x:8188"></span>
+    <span class="fix0"><label>denoise 覆蓋（空＝用該張）</label>
+      <input id="ig-denoise" type="number" min="0.35" max="0.85" step="0.05" placeholder=""></span>
+    <span class="fix0"><label>seed（0＝隨機）</label>
+      <input id="ig-seed" type="number" min="0" step="1" value="0"></span>
+  </div>
+  <div class="row" style="margin-top:.55em">
+    <button class="cy" type="button" id="btn-ig-ping">測試引擎</button>
+    <button type="button" id="btn-preview-prompt">預覽展開後的 prompt</button>
+  </div>
+  <div class="status" id="ig-eng-status"></div>
+  <div class="sheet" id="prompt-sheet">選妹子與圖庫後可預覽。</div>
+</section>
+
+<section>
+  <h2>4. 對話模板</h2>
+  <p class="mini">系統／使用者提示詞（可含變數）。測試會呼叫 <code>POST /api/wifepay/dialog</code>，用下面同一個揭示元件顯示。</p>
+  <label>system</label>
+  <textarea id="dlg-sys" style="min-height:7em"></textarea>
+  <label>user</label>
+  <textarea id="dlg-user" style="min-height:5em"></textarea>
+  <div class="row" style="margin-top:.45em">
+    <button type="button" id="btn-dlg-save">儲存模板</button>
+    <button type="button" id="btn-dlg-test">測試對話框</button>
+  </div>
+</section>
+
+<section>
+  <h2>5. 測試</h2>
+  <p class="mini">「測試這張圖」只用目前選中的底圖生一張。「全部一起測試」隨機 1 或 2 張＋對話，播完整動畫（對話在中央，圖淡入後對話框下移）。</p>
+  <div class="row">
+    <button type="button" id="btn-test-img">測試這張圖</button>
+    <button class="big" type="button" id="btn-test-all">全部一起測試</button>
+  </div>
+  <div class="status" id="gen-status"></div>
+  <div id="reveal-host"></div>
+</section>
+
+<script type="module" src="/content/wifepay.js?v=1"></script>
+</body>
+</html>
