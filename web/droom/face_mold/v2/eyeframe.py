@@ -10,6 +10,7 @@ import math
 import os
 LINE=os.environ.get('LINE')=='1'
 LOWC='c';HOOKK=.7
+IRCENTER=os.environ.get('IRCENTER','1')=='1';IRIN=float(os.environ.get('IRIN','.6'))
 # 2026-11-19 第二本教學（普通／つり目／たれ目各 6 個）：上眼線外半段長出一根根細睫毛、下眼線外側幾根小短毛、
 # 雙眼皮線拉長貼著上眼線、黑眼珠改成直的橢圓（比較高、比較窄）
 LASHN=4;LASHL=3.0;IRISW,IRISH=5.6,7.8
@@ -166,6 +167,15 @@ class Frame:
         (x0,y0),(x1,y1)=lo[i],lo[i+1];tx,ty=x1-x0,y1-y0;L=math.hypot(tx,ty) or 1;tx/=L;ty/=L
         nx,ny=-ty,tx;dx,dy=nx*.8+tx*.5,ny*.8+ty*.5;D=math.hypot(dx,dy)
         s.lolash.append([(x0,y0),(x0+dx/D*1.5,y0+dy/D*1.5)])
+    # 黑眼珠橫向放在眼睛開口（黑眼珠中心那一列）的正中間，再往內眼角偏 IRIN（使用者 2026-11-19：眼珠太外面了；
+    # 教學是單眼示範，黑眼珠常常偏外眼角，兩眼放到臉上會像往外看）
+    s.irx=None
+    if 'ir' in T:
+      cy=T['ir'][1];xs=[]
+      for i in range(len(s.poly)):
+        (x1,y1),(x2,y2)=s.poly[i-1],s.poly[i]
+        if (y1-cy)*(y2-cy)<=0 and y1!=y2:xs.append(x1+(x2-x1)*(cy-y1)/(y2-y1))
+      if len(xs)>=2:s.irx=(min(xs)+max(xs))/2-IRIN
     s.box=(min(p[0] for p in s.poly)-5,max(p[0] for p in s.poly)+6,min(p[1] for p in s.poly)-8,max(p[1] for p in s.poly)+4)
   def _near(s,x,y,pts,w):
     best=None
@@ -202,7 +212,7 @@ class Frame:
     if not _inpoly(x,y,s.poly):return None
     # 眼睛裡面（同舊眼睛的配色）
     if 'ir' in T:   # 照教學量的黑眼珠：中心、橫半徑、直半徑（大、上緣藏在上眼線下面）
-      ic=(T['ir'][0]+idx,T['ir'][1]);IRX,IRY=T['ir'][2],T['ir'][3];k=min(IRX/IRISW,IRY/IRISH)
+      ic=((s.irx if (s.irx is not None and IRCENTER) else T['ir'][0])+idx,T['ir'][1]);IRX,IRY=T['ir'][2],T['ir'][3];k=min(IRX/IRISW,IRY/IRISH)
     else:ic=(.5+T['iris'][0]+idx,.3+T['iris'][1]);k=T.get('irs',1);IRX,IRY=IRISW*k,IRISH*k
     r=math.hypot((x-ic[0])/IRX,(y-ic[1])/IRY)
     if LINE:   # 線稿模式（使用者：先只看眼眶和瞳孔、不要著色）：黑眼珠只畫一圈外框
