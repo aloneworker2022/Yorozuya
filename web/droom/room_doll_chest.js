@@ -329,6 +329,39 @@
     }
     const F = (b, k) => b[k] * b.frame;
     let FOOT_HD = false, TIPTOE = 0;   // pt39u：赤腳走路微墊腳（腳跟抬高量）   // pt38u：build 時 opts.scale≥2 才開
+    /** 2026-11-19 大腿模組（坐姿用；使用者參考圖「横座り」）：大腿從根部扭轉——給大腿「正面」朝哪（front），
+     *  根部外鼓、股四頭肌、膝蓋骨、小腿肚都照這個方向放（不像 legRaw 假設站著、外側固定是 ±x）。膝關節跟著斜。
+     *  side：−1 右腿／＋1 左腿；toe：腳尖方向。坐在地上時 sh.floor 會把貼地那面切平（大腿躺地被壓扁）。 */
+    function sitLeg(sh, P, side, hip, knee, ankle, toe, front) {
+      const b = P.b, wT = F(b, 'thigh'), wC = F(b, 'calf'), fr = b.frame, pl = sh.part; sh.limb = 1; sh.part = 'legs';
+      const sub = (a, c) => [a[0] - c[0], a[1] - c[1], a[2] - c[2]], add = (a, c, k = 1) => [a[0] + c[0] * k, a[1] + c[1] * k, a[2] + c[2] * k];
+      const dot = (a, c) => a[0] * c[0] + a[1] * c[1] + a[2] * c[2], nrm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+      const cross = (a, c) => [a[1] * c[2] - a[2] * c[1], a[2] * c[0] - a[0] * c[2], a[0] * c[1] - a[1] * c[0]];
+      const Lt = Math.hypot(...sub(knee, hip)), d = nrm(sub(knee, hip));
+      const f = nrm(sub(front, add([0, 0, 0], d, dot(front, d))));      // 大腿正面（跟大腿軸垂直）
+      let o = nrm(cross(f, d)); if (o[0] * side < 0) o = o.map(v => -v);   // 外側
+      const at = (u) => add(hip, d, Lt * u);
+      const knee_r = b.bone ? 2.55 : 2.75 * Math.min(wT, 1.08) * fr ** .3, mid = at(.4);
+      sh.cone(BODY, hip, mid, 4.7 * wT, 4.15 * wT);
+      sh.cone(BODY, mid, knee, 4.15 * wT, knee_r);
+      sh.cone(BODY, add(at(.08), o, 1.25 * wT), add(at(.42), o, .55 * wT), 4.45 * wT, 3.7 * wT);   // 大腿根部往外鼓（跟著扭轉的外側）
+      sh.ell(BODY, add(at(.55), f, 1.1 * wT), [3.4 * wT, 3.4 * wT, 3.4 * wT]);                        // 股四頭肌：正面（朝內）
+      // 膝蓋：膝蓋骨在正面、關節兩側的鼓包沿著斜的關節軸
+      const s2 = nrm(sub(ankle, knee)), axis = nrm(cross(d, s2));
+      sh.ell(BODY, add(knee, f, 1.3 * fr ** .3), [1.7, 1.7, 1.7]);
+      sh.ell(BODY, add(knee, axis, 1.35 * fr ** .3), [1.45, 1.45, 1.5]);
+      sh.ell(BODY, add(knee, axis, -1.35 * fr ** .3), [1.45, 1.45, 1.5]);
+      // 小腿：小腿肚在背面（折起來的那一側，朝大腿）
+      const Ls = Math.hypot(...sub(ankle, knee)), toThigh = sub(hip, knee), back = nrm(sub(toThigh, s2.map(v => v * dot(toThigh, s2))));
+      const calf_r = 3.05 * wC * (1 + .08 * b.muscle), cpos = add(add(knee, s2, Ls * .26), back, .8);
+      sh.cone(BODY, knee, cpos, knee_r * .95, calf_r);
+      sh.cone(BODY, cpos, ankle, calf_r, 1.55 * Math.min(wC, 1.1) * fr ** .5);
+      // 腳：腳跟＋腳掌（聊天黑影的大小不用畫腳趾）
+      const t = nrm(toe), fl = 6.4 * fr ** .7 * 1.2;
+      sh.ell(BODY, add(ankle, t, -.8), [1.6 * fr ** .5, 1.6 * fr ** .5, 1.5 * fr ** .5]);
+      sh.cone(BODY, add(ankle, t, -.6), add(ankle, t, fl), 2.0 * fr ** .5, 1.3 * fr ** .5);
+      sh.limb = 0; sh.part = pl;
+    }
     function legRaw(sh, P, side, hip, knee, ankle, toe) {
       const b = P.b, wT = F(b, 'thigh'), wC = F(b, 'calf'), fr = b.frame;
       const [hx, hy, hz] = hip, [kx, ky, kz] = knee, [ax, ay, az] = ankle;
@@ -1824,30 +1857,35 @@
         sh.xf = null; sh.floor = false;
         return { sh, P };
       }
-      if (pose === 'mermaid') {   // 2026-11-19 聊天黑影脫衣時（使用者）：美人魚坐姿——屁股坐地、兩腿併攏往她右邊（＋x）收，上身坐直，左手撐地、右手放在腿上
+      if (pose === 'mermaid') {   // 2026-11-19 聊天黑影脫衣時（使用者）：美人魚坐姿（横座り，照使用者參考圖）——
+        //   膝蓋往她左邊（＋x）、腳往她右邊（−x）：右腿大腿往前、小腿往右邊折、腳在右邊屁股旁；左腿大腿躺在地上往左、小腿收在大腿下面往後。
+        //   大腿從根部扭轉（正面朝內）、膝關節斜、屁股和右腳之間有段差（sitLeg）。右手撐地、左手放在左大腿上。
         sh.floor = true;
         const dz = 2.4 - P.C, hz = P.hipz + dz, hy = -1.2;
-        const tor = torso(sh, P, doll, hy, dz, -.04);
-        const L = Lt + Ls;
-        // 兩膝併在前面偏右、小腿往右後方收（右腿在下、左腿疊在上面一點）
-        const ank = { [-1]: [L * .52, hy + 1.5, 2.3], [1]: [L * .6, hy - 2.2, 1.9] };
-        const pole = { [-1]: [.25, 1, .55], [1]: [.35, 1, .3] };
-        const knees = {};
-        for (const s of [-1, 1]) {
-          const hip = [s * hip_x, hy, hz];
-          knees[s] = ik(hip, ank[s], Lt, Ls, pole[s]);
-          leg(sh, P, s, hip, knees[s], ank[s], [.62, -.7, -.15]);
+        const tor = torso(sh, P, doll, hy, dz, -.03);
+        const Hr = [-hip_x, hy, hz], Hl = [hip_x, hy, hz];
+        // 右腿（−1）：腳在右邊屁股旁、腳尖往後往外
+        const Ar = [-(hip_x + Ls * .5), hy + Ls * .12, 2.0];
+        const Kr = ik(Hr, Ar, Lt, Ls, [.35, 1, .45]);
+        sitLeg(sh, P, -1, Hr, Kr, Ar, [-.5, -.82, -.15], [.55, .2, .8]);
+        // 左腿（＋1）：大腿躺在地上往左前、小腿從膝蓋往後收到大腿下面
+        const Kl0 = [Hl[0] + Lt * .82, hy + Lt * .5, 3.2];
+        const Al = [Kl0[0] - Ls * .42, Kl0[1] - Ls * .88, 1.8];
+        const Kl = ik(Hl, Al, Lt, Ls, [.85, .5, .25]);
+        sitLeg(sh, P, 1, Hl, Kl, Al, [-.3, -.92, -.2], [-.45, .25, .85]);
+        {   // 段差①：右邊屁股坐在折起來的右腳上方，肉往外鼓出來；左邊屁股被地板壓扁
           const bt = F(b, 'butt');
-          sh.ell(BODY, [s * (hip_x + 1.2), hy - 2.6, 2.2], [5.2 * bt, 5.8 * bt, 2.6]);   // 坐在地上屁股被壓扁往外擠
+          sh.ell(BODY, [-(hip_x + 1.6), hy - 2.6, 4.6], [5.6 * bt, 6.0 * bt, 3.9]);
+          sh.ell(BODY, [hip_x + 1.2, hy - 2.6, 2.3], [5.3 * bt, 5.8 * bt, 2.7]);
         }
-        {   // 左手撐在身旁地上（手肘微彎）
-          const s = -1, sj = shj(s, tor), wrist = [s * (hip_out + 3.6), hy + 1.2, 2.8];
-          const elbow = [(sj[0] + wrist[0]) / 2 + s * 1.8, (sj[1] + wrist[1]) / 2 + .4, (sj[2] + wrist[2]) / 2 + 1];
+        {   // 右手撐在身旁地上（右腳後面一點、手肘微彎）
+          const s = -1, sj = shj(s, tor), wrist = [s * (hip_out + 4.4), hy - 4.5, 2.8];
+          const elbow = [(sj[0] + wrist[0]) / 2 + s * 1.8, (sj[1] + wrist[1]) / 2 + .2, (sj[2] + wrist[2]) / 2 + 1];
           arm(sh, P, sj, elbow, wrist);
         }
-        {   // 右手放在腿上（膝蓋上方）
-          const s = 1, sj = shj(s, tor), k = knees[-1], wrist = [k[0] - 1.5, k[1] - 1.5, k[2] + 3.2];
-          const elbow = [s * (waist_out + 4.2), hy + 2.5, tor.zW - 2.5];
+        {   // 左手放在左大腿上
+          const s = 1, sj = shj(s, tor), m = [Hl[0] + (Kl[0] - Hl[0]) * .5, Hl[1] + (Kl[1] - Hl[1]) * .5, Hl[2] + (Kl[2] - Hl[2]) * .5];
+          const wrist = [m[0] - 1, m[1] - .5, m[2] + 4.2], elbow = [s * (waist_out + 4.6), hy + 1.5, tor.zW - 3];
           arm(sh, P, sj, elbow, wrist);
         }
         if (front) definition(sh, P, tor);
