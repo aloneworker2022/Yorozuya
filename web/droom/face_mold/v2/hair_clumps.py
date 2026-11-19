@@ -13,7 +13,7 @@ C=dict(hi=(246,228,170),li=(222,192,124),mid=(190,152,90),sh=(150,114,64),dk=(11
 SKSH=(222,178,152)
 W=(128,36)
 BANG_Y=136 if HS!='bob' else 133
-CURL,CURLH=8,28   # 鮑伯髮尾往內收：最後 CURLH 格沿圓弧往內收 CURL 格（使用者 2026-11-19：鮑伯髮尾要往內收，不是直的）
+CURL,CURLH=13,40   # 鮑伯髮尾往內收：最後 CURLH 格沿圓弧往內收 CURL 格（使用者 2026-11-19：鮑伯髮尾要往內收，不是直的）
 def bob_in(y,tip):
   if HS!='bob':return 0
   u=min(1,max(0,(y-(tip-CURLH))/CURLH));return CURL*(1-math.sqrt(1-u*u))

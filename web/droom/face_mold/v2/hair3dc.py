@@ -54,7 +54,7 @@ def samples():
         if Yp<CY+8 and x*x+(Yp-CY)**2+zf*zf<(RO-1)**2:continue   # 在頭頂那圈裡面＝被蓋住，不取（側面看上端才順著頭的圓）
         zb=sum(1 for c in zcuts if c<=zf)
         sid=('side',zb,1 if x>0 else -1)               # 轉過去看到的是前後那幾刀（左右照片分會在每格跳來跳去、變成雜線）
-        a=HC.bob_in(Yp,cl.tip);zq=5+(zf-5)*(1-a/14)          # 鮑伯：髮尾前後也往內收（側面看前緣往後、後緣往前）
+        a=HC.bob_in(Yp,cl.tip);zq=5+(zf-5)*(1-a/22)          # 鮑伯：髮尾前後也往內收（側面看前緣往後、後緣往前）
         P.append((x,Yp,zq,sid,cl.layer,U and Yp>=cl.tip-2));P.append((x+.5,Yp+.5,zq,sid,cl.layer,U and Yp+.5>=cl.tip-2))
   for cl in backs:                                  # 後髮：頭後面往下垂，前後也切
     rows=np.nonzero(cl.mask.any(1))[0]
@@ -65,7 +65,7 @@ def samples():
         x=X-128;zo=-math.sqrt(max(0,(RO+2)**2-x*x))*BACK
         for f in(1,.8,.6,.4):
           bid=('back',sum(1 for c in bcuts if c>=zo*f))   # 後髮也照前後深度切（照片分的話側面看每一格都換片、變成一堆直線）
-          a=HC.bob_in(Yp,cl.tip);zq=zo*f+a*1.6                  # 鮑伯：後髮髮尾往脖子那邊收
+          a=HC.bob_in(Yp,cl.tip);zq=zo*f+a*1.5                  # 鮑伯：後髮髮尾往脖子那邊收
           for o in(0,.5):P.append((x+o,Yp,zq,bid,0,U and Yp>=cl.tip-2));P.append((x+o,Yp+.5,zq,bid,0,U and Yp+.5>=cl.tip-2))
   return P
 def render(img,deg,cx):
