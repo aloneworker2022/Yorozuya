@@ -75,29 +75,34 @@ def nose_px():
 def mouth_px():
   src=open(os.path.join(HERE,'..','mouth.cjs'),encoding='utf8').read()
   PAL={k:tuple(map(int,v.split(','))) for k,v in re.findall(r"(\w):\[(\d+,\d+,\d+)\]",src.split('\n')[1])}
-  PAL['e']=PAL['b'];PAL['h']=PAL['H']
+  PAL['e']=PAL['b'];PAL['h']=PAL['H'];PAL['q']=(238,192,170);PAL['Q']=(232,180,160)   # 只下唇樣式的上唇：微微的肉粉色
   def arr(name):return re.findall(r'"([^"]+)"',re.search(name+r'=\[(.*?)\];',src,re.S).group(1))
   def nums(name):return [float(v) for v in re.search(name+r'=\[(.*?)\]',src).group(1).split(',')]
   MT=os.environ.get('MT','closed')
   SP,DZ=(arr('OPEN'),nums('DZ1')) if MT=='open' else (arr('LIPS'),nums('DZ0'))
-  # 小、中嘴微張也用新的唇珠（使用者 2026-11-19：唇珠厚肉，正面看起來是上唇中間往下垂、壓在牙齒上；側面看是往前上翹）
+  # 唇珠（使用者 2026-11-19 改圖定案）：正面看＝上唇中間一塊深一點的肉往上鼓（蓋過上唇上緣），
+  # 下半壓進開口（中間一小塊淺粉、底下一條深線），牙齒在兩邊；側面看是往前上翹的厚肉（side_lips）
+  # 小、中嘴微張：左半 10 格（最後一格中線）鏡射；中＝小放大
   if MT=='open' and os.environ.get('MS','小')!='大':
-    SP=[h+h[:9][::-1] for h in [".....uuu..","...uuUUUuu","..LLLLUUUU","CLTTTTLeeh","..LTTTTTLL","..LMMMMMMM","...lPPPHHH","....DPPPHH",".....DDPPP","......DDDD"]]
-    DZ=[0,0,0,-.4,-1.6,-3.6,-1.8,-2.4,-3,-3.6]
-  # 大嘴（MS=大）用手點的一張（使用者 2026-11-19：放大的嘴角像分開的點；嘴角不要那麼勾、唇珠要大）；左半 16 格（最後一格是中線），右半鏡射
+    SP=[h+h[:9][::-1] for h in ["........UU",".....uuUUU","...uuUUUUU","..LLLLUUUU","CLTTTTLbbH","..LTTTTTLL","..LMMMMMMM","...lPPPHHH","....DPPPHH",".....DDPPP","......DDDD"]]
+    DZ=[0,0,0,0,-.4,-1.6,-3.6,-1.8,-2.4,-3,-3.6]
+  # 大嘴（MS=大）：使用者改的那張（嘴角不勾、唇珠在上唇中間往上鼓）；左半 16 格鏡射
   if os.environ.get('MS','小')=='大':
     mir=lambda rows:[h+h[:15][::-1] for h in rows]
     if MT=='open':
-      # 唇珠（使用者畫的紅線）：上唇下緣兩邊高、中間往下垂成一顆圓圓的珠子壓在牙齒上；e＝唇珠、h＝唇珠亮點
-      SP=mir([".........uuu....","......uuuUUUuuuu","...uuUUUUUUUUUUU","..LLLLLLLLLUUUUU","CCLTTTTTTTTLeeeh","...LTTTTTTTTTTLL","...LMMMMMMMMMMMM","...lPPPPPPHHHHHH","....DPPPPPPHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
-      DZ=[0,0,0,0,-.4,-1.6,-3.6,-1.8,-2.4,-3,-3.6]
+      SP=mir(["................"[:13]+"UUU",".........uuuUUUU","......uuuUUUUUUU","...uuUUUUUUUUUUU","..LLLLLLLLLUUUUU","CCLTTTTTTTTLbbbH","...LTTTTTTTTTTLL","...LMMMMMMMMMMMM","...lPPPPPPHHHHHH","....DPPPPPPHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
+      DZ=[0,0,0,0,0,-.4,-1.6,-3.6,-1.8,-2.4,-3,-3.6]
     else:
-      SP=mir(["..........uuu...","......uuuUUUUu.u","....uuUUUUUUUbbb","..uUUUUUUUUUbbHH","CCLLLLLLLLLLLLLL","...lPPPPPPPPPPPP","...lPPPHHHHHHHHH","....DPPPPHHHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
+      SP=mir(["................"[:13]+"UUU",".........uuuUUUU","......uuuUUUUUUU","...uuUUUUUUUUUUU","CCLLLLLLLLLLLLLL","...lPPPPPPPPPPPP","...lPPPHHHHHHHHH","....DPPPPHHHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
       DZ=[0,0,0,0,-.6,-1.6,-2.2,-2.8,-3.2,-3.6]
   LINE=[i for i,r in enumerate(SP) if 'C' in r][0]
-  # 唇色樣式（使用者 2026-11-19）：LIPS=全＝上下唇都上色（原本）；LIPS=下唇＝上唇不上色、只留嘴縫的線，下唇有顏色
+  # 唇色樣式：LIPS=全＝上下唇都上色；LIPS=下唇＝上唇（含唇珠）用很淡的肉粉色（q 淺、Q 深）表現，下唇照常（使用者 2026-11-19）
   if os.environ.get('LIPS','全')=='下唇':
-    SP=[''.join(ch if ch=='L' else '.' for ch in row) if r<LINE else row.replace('e','.').replace('h','.') for r,row in enumerate(SP)]   # 唇珠也不上色、只留框線
+    def soft(row,r):
+      if r<LINE:return row.replace('u','q').replace('U','Q').replace('b','q').replace('H','q')
+      if r<=LINE+1:return ''.join({'b':'q','e':'q','h':'q','H':'q'}.get(ch,ch) for ch in row)
+      return row
+    SP=[soft(row,r) for r,row in enumerate(SP)]
   # 嘴巴大小（MS=小／中／大）：小＝原本 19 格寬；中、大照比例放大（最近鄰，奇數寬才置中）
   sx,sy={'小':(1,1),'中':(1.32,1.15),'大':(1,1)}[os.environ.get('MS','小')]   # 大＝上面手點的，不再放大
   if sx!=1 or sy!=1:
