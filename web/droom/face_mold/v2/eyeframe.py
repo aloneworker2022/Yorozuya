@@ -30,6 +30,7 @@ IRCENTER=os.environ.get('IRCENTER','1')=='1';IRIN=float(os.environ.get('IRIN','.
 # 2026-11-19 第二本教學（普通／つり目／たれ目各 6 個）：上眼線外半段長出一根根細睫毛、下眼線外側幾根小短毛、
 # 雙眼皮線拉長貼著上眼線、黑眼珠改成直的橢圓（比較高、比較窄）
 LASH=os.environ.get('LASH','')   # 睫毛種類（使用者 2026-11-19）：短／長／翹（長又翹）；空的＝教學量的原樣
+LASHCNT={'短':11,'長':10,'翹':9}
 LASHN=4;LASHL=3.0;IRISW,IRISH=5.6,7.8
 TYPES={
  # ── 2026-11-19 第二本教學「普通」那 6 個，照圖量的（眼寬當 27，原點在開口中央）──
@@ -123,21 +124,22 @@ class Frame:
     # 上睫毛：上眼線 55%～95% 的地方，往上偏外長出去，越外越長
     s.lashsegs=[]
     nl=T.get('lash',LASHN);n=len(s.up)
-    if LASH:nl=max(nl,4)          # 選了睫毛種類就每種眼眶都長睫毛（原本沒睫毛的至少 4 根）
+    if LASH:nl=LASHCNT.get(LASH,8)   # 選了睫毛種類就用固定根數（使用者：太疏了 → 密一點）
     for j in range(nl):
       q=j/max(1,nl-1)
-      t=(.46+.5*q) if LASH else (.58+.36*q);i=min(n-2,int(t*(n-1)))
+      t=(.3+.68*q) if LASH else (.58+.36*q);i=min(n-2,int(t*(n-1)))
+      alt=(1 if j%2 else .78) if LASH else 1   # 長短交錯，看起來比較自然
       (x0,y0),(x1,y1)=s.up[i],s.up[i+1];tx,ty=x1-x0,y1-y0;L=math.hypot(tx,ty) or 1;tx/=L;ty/=L
       nx,ny=ty,-tx;dx,dy=nx*.75+tx*.65,ny*.75+ty*.65;D=math.hypot(dx,dy);dx/=D;dy/=D
       hw=(s.upw[i]/2 if LASH else .6);bx,by=x0+nx*hw*.8,y0+ny*hw*.8   # 從上眼線的上緣長出來（法線朝上）
       # 扇形：內側那根比較直立、越外越往外倒（從上眼線的法線往外眼角轉 12°～62°）
       th=math.radians(12+50*q);fx,fy=nx*math.cos(th)+tx*math.sin(th),ny*math.cos(th)+ty*math.sin(th)
       if LASH=='短':     # 短睫毛：一根根短短的小刺
-        ln=1.8+.6*q;s.lashsegs.append([(bx,by),(bx+fx*ln,by+fy*ln)])
+        ln=(1.8+.6*q)*alt;s.lashsegs.append([(bx,by),(bx+fx*ln,by+fy*ln)])
       elif LASH=='長':   # 長睫毛：直的、長、扇形散開
-        ln=3.4+1.6*q;s.lashsegs.append([(bx,by),(bx+fx*ln,by+fy*ln)])
+        ln=(3.0+1.8*q)*alt;s.lashsegs.append([(bx,by),(bx+fx*ln,by+fy*ln)])
       elif LASH=='翹':   # 長又翹：先照扇形往外、尾巴往上彎
-        ln=3.8+2.0*q;pts=[(bx,by)];px,py=bx,by;a=math.atan2(fy,fx)
+        ln=(3.4+2.2*q)*alt;pts=[(bx,by)];px,py=bx,by;a=math.atan2(fy,fx)
         for k in range(8):
           a+=(-math.pi/2-a)*.14
           px+=math.cos(a)*ln/8;py+=math.sin(a)*ln/8;pts.append((px,py))
