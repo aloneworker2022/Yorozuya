@@ -194,7 +194,7 @@ def project(S,Q,NN,ID,img,deg,cx):
       lft=-NN2[j,3]*np.sign(bxs) if abs(bxs)>.2 else 0.  # >0＝這束的左邊（受光）、<0＝右邊（背光）
       vis[(Xj,Yj)]=(ID2[j],S[ID2[j]].layer,Q2[j,0],Q2[j,1],Q2[j,2],inside,lft)
   return vis
-def paint(S,vis,img,stage):
+def paint(S,vis,img,stage,deg=0):
   out=img.copy();white=(img==255).all(2)
   if stage=='mass':
     for (X,Y),(i,*_) in vis.items():out[Y,X]=MCOL[S[i].mass]
@@ -204,16 +204,18 @@ def paint(S,vis,img,stage):
     for (X,Y),(i,*_) in vis.items():
       out[Y,X]=pal.setdefault(i,tuple(rp.randint(60,240) for _ in range(3)))
     return out
-  # 明暗（層次）：每一束左亮右暗（有體積）；疊在下面那層暗一階；後髮暗一階；看到內面更暗
+  # 明暗：只要一點點（使用者 2026-11-19：不要一條條亮暗，整體服貼、立體就好）
+  # 整頭當一顆球受光（光從畫面左上前方）：受光面原色，轉到背光面才暗一階；看到頭髮內面＝暗
+  a_=math.radians(deg);ca_,sa_=math.cos(a_),math.sin(a_)
   tone={}
   for (X,Y),(i,layer,x,y,z,ins,lft) in vis.items():
-    st=S[i];t=1.
-    if ins:t=3
-    else:
-      if st.mass=='back':t+=1
-      if st.kind in('curtain','lock','back') and layer==0:t+=.6
-      if lft<-.45:t+=1
-      elif lft>.5 and y<CY+24 and st.mass!='back':t-=1
+    if ins:tone[(X,Y)]=3;continue
+    zz=z/BACK if z<0 else z
+    n=np.array([x,min(0,y-CY),zz]);n/=np.linalg.norm(n)+1e-9          # 法線（垂下來的部分水平）
+    nxv=n[0]*ca_-n[2]*sa_;nzv=n[0]*sa_+n[2]*ca_
+    lam=-.5*nxv-.55*n[1]+.67*nzv
+    t=1 if lam>-.05 else 2
+    if S[i].mass=='back' and t<2 and Y>CY+30:t=2                    # 後髮下面（脖子後）稍暗
     tone[(X,Y)]=t
   T={k:int(min(4,max(0,round(v)))) for k,v in tone.items()}
   for (X,Y),t in T.items():out[Y,X]=C[TONE[t]]
@@ -250,7 +252,7 @@ def paint(S,vis,img,stage):
       out[Y,X]=C['dk'] if vis[(X,Y)][5] else C['sh']
       if E[(X,Y)]:                                       # 上面那塊投在下面那塊的影子：2～3 格寬、越遠越淡
         m=S[vis[(X,Y)][0]].mass
-        for dx,dy,tt in((1,1,3),(2,1,2),(1,2,2),(2,2,2),(3,1,2),(3,2,2)):
+        for dx,dy,tt in((1,1,3),(2,1,2)):
           q=(X+dx,Y+dy)
           if q in vis and S[vis[q][0]].mass!=m and T[q]<tt:T[q]=tt;out[q[1],q[0]]=C[TONE[tt]]
   # 前髮投在額頭的影子
@@ -296,7 +298,7 @@ def paint_strays(out,vis,img,deg,cx):
   return out
 def render(img,deg,cx,stage='final',S=None,QNI=None):
   S=S or build();Q,NN,ID=QNI or samples(S)
-  vis=project(S,Q,NN,ID,img,deg,cx);out=paint(S,vis,img,stage)
+  vis=project(S,Q,NN,ID,img,deg,cx);out=paint(S,vis,img,stage,deg)
   if stage=='final':out=paint_strays(out,vis,img,deg,cx)
   return out
 if __name__=='__main__':
