@@ -10,7 +10,7 @@ import math
 import os
 LINE=os.environ.get('LINE')=='1'
 LOWC='c';HOOKK=.7
-PT=os.environ.get('PT','0')   # 瞳孔類型：0 舊的、1 平塗＋弧形陰影＋直瞳孔、2 漸層＋光暈＋圓瞳孔
+PT=os.environ.get('PT','1')   # 瞳孔類型：1 平塗＋弧形陰影＋直瞳孔、2 漸層＋光暈＋圓瞳孔、3 色相漸層＋大亮點（0＝舊的，使用者說不要用了）
 IRSC=float(os.environ.get('IRSC','1'))   # 黑眼珠再放大倍率
 IRCENTER=os.environ.get('IRCENTER','1')=='1';IRIN=float(os.environ.get('IRIN','.6'))
 # 2026-11-19 第二本教學（普通／つり目／たれ目各 6 個）：上眼線外半段長出一根根細睫毛、下眼線外側幾根小短毛、
@@ -232,6 +232,17 @@ class Frame:
       if abs(r-.66)<.55/min(IRX,IRY):return 'I'
       if math.hypot((x-(ic[0]+.35*IRX))/(1.15*IRX),(y-(ic[1]-1.0*IRY))/(.95*IRY))<1:return 'I'
       return 'i'
+    if r<1 and PT=='3':
+      # 瞳孔類型 3（使用者給的第三張）：上紫紅→粉→橘→下面黃的色相漸層、沒有黑瞳孔（中間一圈深粉細環＋下面一道淺色笑弧）、
+      # 上面兩塊大白亮點（左大右小）；外框用黑眼珠的深色、細
+      dx,dy=x-ic[0],y-ic[1];hx=sgn*dx;m=min(IRX,IRY)
+      if math.hypot((hx+.34*IRX)/(.28*IRX+.4),(dy+.52*IRY)/(.2*IRY+.4))<1:return 'H'
+      if math.hypot((hx-.36*IRX)/(.15*IRX+.3),(dy+.5*IRY)/(.13*IRY+.3))<1:return 'H'
+      if r>1-.9/m:return 'O'
+      pr=math.hypot(dx,dy*IRX/IRY)/(.3*IRX)
+      if abs(pr-1)<.9/(.3*IRX):return 'g1'
+      if 1.25<pr<1.25+1.1/(.3*IRX) and dy>.15*IRY*.3:return 'g4'
+      v=(y-ic[1]+IRY)/(2*IRY);return 'g1' if v<.3 else 'g2' if v<.52 else 'g3' if v<.76 else 'g4'
     if r<1 and PT=='2':
       # 瞳孔類型 2（使用者給的第二張）：外框一圈深色、上面暗下面亮的漸層、瞳孔周圍一圈亮的光暈、圓的黑瞳孔、左上一個白亮點
       dx,dy=x-ic[0],y-ic[1];hx=sgn*dx
