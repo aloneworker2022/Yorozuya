@@ -2,22 +2,23 @@
  * 對話：一開始就在中央打字（旁白→男→她，按「下一句」換人）。
  * 圖好了先把對話框在約 0.4 秒滑到下方，再把已切好的門縫圖（1/2 或 3/5，同一邊）從該側螢幕邊緣移入（約 0.7 秒 ease-out，略淡入）。
  * 若有第二張：不要在按「下一句」時換圖；改成點圖片，第二張從同一側移入並蓋在第一張上面（底下那張略暗、微偏移）。
+ * 圖片區用 dvh／svh 限制高度（直向約 55%、橫向更矮），切圖 contain 在框內，對話框固定在下方完整可見。
  * prefers-reduced-motion 改短淡入。男子／她的對白可做「隔門聽不清」；旁白不變。 */
 import { hearLine, normalizeMuffleLevel, parseMuffleEnabled } from "./wifepay_heard.js?v=1";
 
-const CSS_ID = "wifepay-reveal-css-7";
+const CSS_ID = "wifepay-reveal-css-8";
 const DIALOG_DOWN_MS = 400;
 const SLIDE_MS = 700;
 const REDUCE_MS = 180;
 const CSS = `
-.wp-reveal{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;background:rgba(8,6,12,.92);overflow:hidden}
-.wp-reveal.page{position:relative;inset:auto;width:100%;height:min(86dvh,44rem);min-height:28rem;background:#120e18;border-radius:12px;overflow:hidden;pointer-events:auto}
-.wp-pics{display:none;flex:0 0 0;min-height:0;width:100%;max-height:0;opacity:1;background:#07050a;align-items:center;justify-content:center;padding:0;box-sizing:border-box;position:relative;overflow:hidden;transition:max-height .4s ease}
+.wp-reveal{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;background:rgba(8,6,12,.92);overflow:hidden;overscroll-behavior:none;box-sizing:border-box;width:100%;height:100%;max-width:100%;max-height:100%;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+.wp-reveal.page{position:relative;inset:auto;width:100%;height:min(86dvh,44rem);max-height:calc(100dvh - 6.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));max-height:calc(100svh - 6.5rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));min-height:0;background:#120e18;border-radius:12px;overflow:hidden;pointer-events:auto}
+.wp-pics{display:none;flex:0 0 auto;min-height:0;width:min(100%,96vw);max-width:100%;max-height:0;opacity:1;background:#07050a;align-items:center;justify-content:center;padding:0;box-sizing:border-box;position:relative;overflow:hidden;transition:max-height .4s ease,height .4s ease}
 .wp-pics.ready{display:flex;pointer-events:auto}
 .wp-pics.has-next{cursor:pointer}
-.wp-reveal.has-pics .wp-pics{flex:1 1 auto;max-height:100%}
+.wp-reveal.has-pics .wp-pics{flex:0 0 auto;width:min(100%,96vw);max-width:min(100%,96vw);max-height:min(55dvh,55svh)}
 .wp-stage{position:relative;height:100%;width:100%;overflow:hidden;background:linear-gradient(90deg,#050308 0%,#0c0910 18%,#07050a 50%,#0c0910 82%,#050308 100%)}
-.wp-slot{position:absolute;top:0;overflow:hidden;background:#000;border-left:6px solid rgba(40,28,24,.9);border-right:6px solid rgba(24,16,14,.9);box-sizing:content-box;box-shadow:0 0 18px rgba(0,0,0,.55);opacity:0;will-change:transform,opacity;z-index:1}
+.wp-slot{position:absolute;top:0;overflow:hidden;background:#000;border:none;box-sizing:border-box;box-shadow:inset 6px 0 0 rgba(40,28,24,.9),inset -6px 0 0 rgba(24,16,14,.9),0 0 18px rgba(0,0,0,.55);opacity:0;will-change:transform,opacity;z-index:1}
 .wp-slot img{position:absolute;top:0;height:100%;width:auto;max-width:none;display:block}
 .wp-slot.under{z-index:1;filter:brightness(.72)}
 .wp-slot.front{z-index:2}
@@ -26,15 +27,20 @@ const CSS = `
 .wp-pics.full .wp-slot{border:none;box-shadow:none}
 .wp-pics.full .wp-slot img{left:auto!important;width:auto;max-width:100%;height:100%;object-fit:contain;position:relative}
 .wp-full-btn{position:absolute;right:.45rem;top:.45rem;z-index:3;pointer-events:auto;padding:.22rem .65rem;border:1px solid rgba(232,138,180,.4);border-radius:999px;background:rgba(20,14,24,.82);color:#ffd0e4;font:600 12px/1.3 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;cursor:pointer}
-.wp-dialog{position:relative;z-index:2;flex:0 0 auto;width:90%;max-width:24rem;max-height:42%;margin:0 auto;padding:.85rem .95rem .95rem;border-radius:14px;background:rgba(22,16,30,.96);border:1px solid rgba(232,138,180,.35);color:#f2e9ff;font:600 15px/1.55 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.4);pointer-events:auto;cursor:pointer;overflow:auto;box-sizing:border-box;transition:margin .4s ease,max-height .4s ease}
+.wp-dialog{position:relative;z-index:2;flex:0 0 auto;width:min(90%,24rem);max-width:calc(100vw - 1.2rem);max-height:min(38dvh,38svh);margin:0 auto;padding:.85rem .95rem .95rem;border-radius:14px;background:rgba(22,16,30,.96);border:1px solid rgba(232,138,180,.35);color:#f2e9ff;font:600 15px/1.55 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.4);pointer-events:auto;cursor:pointer;overflow:auto;box-sizing:border-box;transition:margin .4s ease,max-height .4s ease}
+@media (orientation: landscape){
+  .wp-reveal.has-pics .wp-pics{max-height:min(42dvh,42svh)}
+  .wp-dialog{max-height:min(48dvh,48svh)}
+  .wp-reveal.has-pics .wp-dialog{max-height:min(48dvh,48svh)}
+}
 @media (prefers-reduced-motion: reduce){
   .wp-pics,.wp-dialog{transition-duration:.18s !important}
 }
-.wp-reveal.has-pics{justify-content:flex-end;align-items:stretch}
-.wp-reveal.has-pics .wp-dialog{margin:.4rem auto .55rem;max-height:36%}
+.wp-reveal.has-pics{justify-content:flex-end;align-items:center;gap:.15rem}
+.wp-reveal.has-pics .wp-dialog{margin:.35rem auto .2rem;max-height:min(38dvh,38svh)}
 .wp-wait{margin:0 0 .4rem;text-align:center;color:#e6be8c}
 .wp-log{width:100%;max-height:14.5rem;overflow:auto;display:flex;flex-direction:column;justify-content:flex-end;gap:.55rem}
-.wp-reveal.has-pics .wp-log{max-height:min(11rem,28dvh)}
+.wp-reveal.has-pics .wp-log{max-height:min(8.5rem,22dvh)}
 .wp-line{margin:0;opacity:1}
 .wp-line.hist{opacity:.7}
 .wp-line.wp-nar{color:#d8d0c0;font-weight:500}
@@ -52,7 +58,7 @@ const CSS = `
 
 function ensureCss() {
   if (document.getElementById(CSS_ID)) return;
-  for (const id of ["wifepay-reveal-css-6", "wifepay-reveal-css-5"]) {
+  for (const id of ["wifepay-reveal-css-7", "wifepay-reveal-css-6", "wifepay-reveal-css-5"]) {
     const old = document.getElementById(id);
     if (old) old.remove();
   }
@@ -214,23 +220,51 @@ export function prefersReducedMotion() {
 }
 
 /** 門縫切圖的靜止位置，以及從該側螢幕邊緣移入的位移。
- * slide=1 在原位（置中的切圖），slide=0 整塊在畫面該側外側。切圖寬度固定為 1/2 或 3/5。 */
+ * 切圖（1/2 或 3/5）以 contain 放進 doorW×doorH：先比高度，寬度超出就改比寬度，不會裁掉門縫或撐出畫面。
+ * slide=1 在原位（置中的切圖），slide=0 整塊在畫面該側外側。 */
 export function peekSlotLayout({ doorW, doorH, imgW, imgH, side, frac, slide } = {}) {
-  const h = Math.max(1, Number(doorH) || 1);
+  const boxW = Math.max(1, Number(doorW) || 1);
+  const boxH = Math.max(1, Number(doorH) || 1);
   const nw = Math.max(1, Number(imgW) || 1);
   const nh = Math.max(1, Number(imgH) || 1);
-  const fullW = h * (nw / nh);
   const fracN = typeof frac === "number" && Number.isFinite(frac) ? frac : fracValue(frac);
-  const vis = Math.max(8, fullW * fracN);
-  const boxW = Math.max(1, Number(doorW) || vis);
+  const visAspect = (nw / nh) * fracN;
+  let slotH = boxH;
+  let vis = slotH * visAspect;
+  if (vis > boxW) {
+    vis = boxW;
+    slotH = vis / Math.max(visAspect, 1e-6);
+  }
+  vis = Math.max(8, vis);
+  slotH = Math.max(8, slotH);
+  const fullW = vis / Math.max(fracN, 1e-6);
   const slotLeft = Math.max(0, (boxW - vis) / 2);
+  const slotTop = Math.max(0, (boxH - slotH) / 2);
   const rawSlide = Number(slide);
   const t = Math.max(0, Math.min(1, Number.isFinite(rawSlide) ? rawSlide : 1));
   const startLeft = side === "right" ? boxW : -vis;
   const left = startLeft + (slotLeft - startLeft) * t;
   const imgLeft = side === "right" ? vis - fullW : 0;
   const shift = startLeft - slotLeft;
-  return { fullW, vis, cur: vis, slotLeft, left, imgLeft, startLeft, shift };
+  return { fullW, vis, cur: vis, slotLeft, slotTop, slotH, left, imgLeft, startLeft, shift };
+}
+
+/** 遊戲揭示用的顯示網址：大圖走 /api/wifepay/display（長邊最多 1216、JPEG 約 85）。data／blob 不變。 */
+export function displayUrl(url) {
+  const raw = String(url || "");
+  if (!raw || raw.startsWith("data:") || raw.startsWith("blob:")) return raw;
+  if (raw.includes("/api/wifepay/display")) return raw;
+  let path = raw;
+  try {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(raw)) {
+      const abs = new URL(raw, "http://local.invalid");
+      path = abs.pathname;
+    }
+  } catch { /* keep path */ }
+  const q = path.indexOf("?");
+  if (q >= 0) path = path.slice(0, q);
+  if (!path.startsWith("/assets/wifepay/gallery/") && !path.startsWith("/assets/wifepay/out/")) return raw;
+  return "/api/wifepay/display?u=" + encodeURIComponent(path);
 }
 
 /** 輪詢既有 /api/imggen；成功回圖 URL，失敗丟錯。 */
@@ -385,10 +419,40 @@ export function mountWifepayReveal(host, opts = {}) {
     log.querySelectorAll(".wp-line:not(.hist)").forEach((n) => n.classList.add("hist"));
   }
 
+  function viewportBox() {
+    const vv = window.visualViewport;
+    const vw = Math.max(1, (vv && vv.width) || window.innerWidth || document.documentElement.clientWidth || 1);
+    const vh = Math.max(1, (vv && vv.height) || window.innerHeight || document.documentElement.clientHeight || 1);
+    return { vw, vh };
+  }
+
+  function picsBudget() {
+    const { vw, vh } = viewportBox();
+    const portrait = vh >= vw;
+    const cap = portrait ? 0.55 : 0.42;
+    const host = el.getBoundingClientRect();
+    const dialogH = Math.max(box.getBoundingClientRect().height || 0, Math.min(vh * 0.22, 160));
+    const pad = 20;
+    const hostH = host.height || el.clientHeight || vh;
+    const remain = Math.max(80, hostH - dialogH - pad);
+    const maxH = Math.max(80, Math.min(vh * cap, remain));
+    const maxW = Math.max(80, Math.min(vw * 0.96, host.width || el.clientWidth || vw));
+    return { maxW, maxH, vw, vh };
+  }
+
+  function applyPicsBudget() {
+    const { maxW, maxH } = picsBudget();
+    pics.style.maxWidth = Math.round(maxW) + "px";
+    pics.style.width = "100%";
+    pics.style.maxHeight = Math.round(maxH) + "px";
+    pics.style.height = Math.round(maxH) + "px";
+  }
+
   function stageSize() {
+    const { maxW, maxH } = picsBudget();
     return {
-      w: stage.clientWidth || pics.clientWidth || 0,
-      h: stage.clientHeight || pics.clientHeight || 0,
+      w: stage.clientWidth || pics.clientWidth || maxW,
+      h: stage.clientHeight || pics.clientHeight || maxH,
     };
   }
 
@@ -421,19 +485,21 @@ export function mountWifepayReveal(host, opts = {}) {
         img.style.width = "";
         img.style.height = "100%";
         img.style.left = "";
+        img.style.objectFit = "contain";
       }
       return;
     }
     const layout = layoutOf(img, i);
     if (!layout) return;
-    slot.style.top = "0px";
+    slot.style.top = (layout.slotTop || 0) + "px";
     slot.style.left = layout.slotLeft + "px";
-    slot.style.height = h + "px";
+    slot.style.height = layout.slotH + "px";
     slot.style.width = layout.vis + "px";
     if (img && img.naturalWidth) {
-      img.style.height = h + "px";
+      img.style.height = layout.slotH + "px";
       img.style.width = layout.fullW + "px";
       img.style.left = layout.imgLeft + "px";
+      img.style.objectFit = "";
     }
     if (slot.classList.contains("sliding")) return;
     const side = state.peek.side;
@@ -452,6 +518,7 @@ export function mountWifepayReveal(host, opts = {}) {
 
   function layoutAll() {
     if (closed.yes) return;
+    if (pics.classList.contains("ready")) applyPicsBudget();
     stage.querySelectorAll(".wp-slot").forEach((slot) => {
       const i = Number(slot.dataset.i) || 0;
       const mode = slot.classList.contains("under") ? "under"
@@ -477,7 +544,18 @@ export function mountWifepayReveal(host, opts = {}) {
       stage.append(slot);
     }
     const img = slot.querySelector("img");
-    if (url && img.getAttribute("src") !== url) img.src = url;
+    if (url) {
+      const shown = displayUrl(url);
+      img.dataset.raw = url;
+      if (img.getAttribute("src") !== shown) img.src = shown;
+      if (!img.dataset.fb) {
+        img.dataset.fb = "1";
+        img.addEventListener("error", () => {
+          const raw = img.dataset.raw;
+          if (raw && img.getAttribute("src") !== raw) img.src = raw;
+        });
+      }
+    }
     return slot;
   }
 
@@ -512,14 +590,14 @@ export function mountWifepayReveal(host, opts = {}) {
     if (el.classList.contains("has-pics") && pics.classList.contains("ready")) return;
     pics.hidden = false;
     pics.classList.add("ready");
-    const h = Math.max(120, el.clientHeight - 80);
     pics.style.maxHeight = "0px";
+    pics.style.height = "0px";
     el.classList.add("has-pics");
     void pics.offsetHeight;
-    pics.style.maxHeight = h + "px";
+    applyPicsBudget();
     await sleep(ms);
     if (closed.yes) return;
-    pics.style.maxHeight = "100%";
+    applyPicsBudget();
     layoutAll();
   }
 

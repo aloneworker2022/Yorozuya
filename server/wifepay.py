@@ -12,6 +12,7 @@ import re
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 import escort_lines as EL
 
@@ -193,6 +194,15 @@ def out_dir(assets: Path) -> Path:
     return Path(assets) / "wifepay" / "out"
 
 
+DISPLAY_MAX_EDGE = 1216
+DISPLAY_QUALITY = 85
+DISPLAY_PREFIX = "/assets/wifepay/display/"
+
+
+def display_dir(assets: Path) -> Path:
+    return Path(assets) / "wifepay" / "display"
+
+
 def index_path(assets: Path) -> Path:
     return Path(assets) / "wifepay" / "index.json"
 
@@ -212,8 +222,67 @@ def config_path(assets: Path) -> Path:
 def ensure_dirs(assets: Path) -> None:
     gallery_dir(assets).mkdir(parents=True, exist_ok=True)
     out_dir(assets).mkdir(parents=True, exist_ok=True)
+    display_dir(assets).mkdir(parents=True, exist_ok=True)
     (Path(assets) / "wifepay").mkdir(parents=True, exist_ok=True)
 
+
+
+
+def resolve_display_src(assets: Path, raw_url: str) -> Path | None:
+    """只允許 wifepay 圖庫或產出目錄裡的檔，擋路徑穿越。"""
+    u = unquote(str(raw_url or "").strip())
+    if not u:
+        return None
+    if "://" in u:
+        try:
+            u = urlparse(u).path or ""
+        except Exception:
+            return None
+    u = u.split("?", 1)[0].split("#", 1)[0]
+    if u.startswith("/assets/wifepay/gallery/"):
+        root, rel = gallery_dir(assets), u[len("/assets/wifepay/gallery/"):]
+    elif u.startswith("/assets/wifepay/out/"):
+        root, rel = out_dir(assets), u[len("/assets/wifepay/out/"):]
+    else:
+        return None
+    if not rel or Path(rel).is_absolute() or ".." in Path(rel).parts:
+        return None
+    try:
+        root_r = root.resolve()
+        p = (root / rel).resolve()
+        p.relative_to(root_r)
+    except (OSError, ValueError):
+        return None
+    if not p.is_file():
+        return None
+    return p
+
+
+def display_file(assets: Path, src: Path) -> Path:
+    """長邊最多 1216 的 JPEG（quality≈85），快取在 assets/wifepay/display/。"""
+    from PIL import Image
+
+    src = Path(src)
+    ensure_dirs(assets)
+    dest_dir = display_dir(assets)
+    st = src.stat()
+    name = f"{src.stem}-{st.st_mtime_ns}-{st.st_size}-e{DISPLAY_MAX_EDGE}q{DISPLAY_QUALITY}.jpg"
+    dest = dest_dir / name
+    if dest.is_file() and dest.stat().st_size > 0:
+        return dest
+    with Image.open(src) as im:
+        im.load()
+        if im.mode != "RGB":
+            im = im.convert("RGB")
+        w, h = im.size
+        long = max(w, h)
+        if long > DISPLAY_MAX_EDGE:
+            scale = DISPLAY_MAX_EDGE / long
+            im = im.resize((max(1, int(round(w * scale))), max(1, int(round(h * scale)))), Image.Resampling.LANCZOS)
+        tmp = dest.with_suffix(".tmp.jpg")
+        im.save(tmp, format="JPEG", quality=DISPLAY_QUALITY, optimize=True, progressive=True)
+        tmp.replace(dest)
+    return dest
 
 def _atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)

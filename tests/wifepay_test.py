@@ -649,6 +649,34 @@ def test_pose_unlimited_pick():
 
 
 
+def test_display_image():
+    from PIL import Image
+    assets = _assets()
+    src = W.out_dir(assets)
+    src.mkdir(parents=True, exist_ok=True)
+    big = src / "big.png"
+    Image.new("RGB", (2000, 3000), (200, 40, 80)).save(big, format="PNG")
+    raw = big.read_bytes()
+    dest = W.display_file(assets, big)
+    assert dest.is_file()
+    assert dest.suffix.lower() == ".jpg"
+    with Image.open(dest) as im:
+        assert max(im.size) == W.DISPLAY_MAX_EDGE
+        w, h = im.size
+        assert abs(w / h - 2000 / 3000) < 0.02
+        assert w <= 1216 and h <= 1216
+    assert dest.stat().st_size < len(raw)
+    assert dest.stat().st_size < 400_000
+    # 只允許 gallery／out
+    assert W.resolve_display_src(assets, "/assets/wifepay/out/big.png") == big.resolve()
+    assert W.resolve_display_src(assets, "/assets/wifepay/out/../gallery/x.png") is None
+    assert W.resolve_display_src(assets, "/assets/portraits/x.png") is None
+    assert W.resolve_display_src(assets, "") is None
+    # 快取命中
+    again = W.display_file(assets, big)
+    assert again == dest
+
+
 if __name__ == "__main__":
     test_gallery_crud()
     test_dialog_prompt_save()
@@ -668,4 +696,5 @@ if __name__ == "__main__":
     test_hear_through_door()
     test_door_muffle_config()
     test_pose_unlimited_pick()
+    test_display_image()
     print("wifepay_test: ok")

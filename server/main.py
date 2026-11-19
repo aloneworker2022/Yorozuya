@@ -5095,6 +5095,21 @@ async def escort_peek_lines(body: dict):
 # ──── 老婆還債偷看（wifepay：圖庫＋三段對話＋圖生圖） ────
 
 
+@app.get("/api/wifepay/display")
+def wifepay_display(u: str = ""):
+    """把圖庫／產出圖縮成顯示用 JPEG（長邊最多 1216、quality≈85），減少手機平板載入。"""
+    src = wifepay.resolve_display_src(ASSETS_DIR, u)
+    if not src:
+        raise HTTPException(status_code=404, detail="沒有這張圖")
+    dest = wifepay.display_file(ASSETS_DIR, src)
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        dest,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @app.get("/api/wifepay/gallery")
 def wifepay_gallery_list():
     """回圖庫。同一姿勢可有任意張已選底圖。"""

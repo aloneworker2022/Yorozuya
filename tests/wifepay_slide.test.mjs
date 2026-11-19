@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { peekSlotLayout, fracValue } from "../web/content/wifepay_reveal.js";
+import { peekSlotLayout, fracValue, displayUrl } from "../web/content/wifepay_reveal.js";
 
 let n = 0;
 function t(name, fn) {
@@ -65,6 +65,24 @@ t("預設 slide=1（靜止）", () => {
   const b = peekSlotLayout({ ...base, side: "left", slide: 1 });
   assert.equal(a.left, b.left);
   assert.equal(a.vis, b.vis);
+});
+
+t("窄框時改比寬度，切圖不會超出 doorW", () => {
+  const tight = peekSlotLayout({ doorW: 120, doorH: 800, imgW: 832, imgH: 1216, frac: "1/2", side: "left", slide: 1 });
+  assert.ok(tight.vis <= 120 + 1e-6);
+  assert.ok(tight.slotH < 800);
+  assert.ok(Math.abs(tight.vis / tight.slotH - (832 / 1216) * 0.5) < 1e-6);
+});
+
+t("displayUrl 只改 wifepay 圖庫／產出", () => {
+  assert.equal(displayUrl("data:image/png;base64,xx"), "data:image/png;base64,xx");
+  assert.equal(displayUrl("/assets/portraits/a.png"), "/assets/portraits/a.png");
+  assert.equal(
+    displayUrl("/assets/wifepay/out/x.png"),
+    "/api/wifepay/display?u=" + encodeURIComponent("/assets/wifepay/out/x.png"),
+  );
+  const already = "/api/wifepay/display?u=%2Fassets%2Fwifepay%2Fout%2Fx.png";
+  assert.equal(displayUrl(already), already);
 });
 
 console.log(`wifepay_slide.test: ${n} ok`);
