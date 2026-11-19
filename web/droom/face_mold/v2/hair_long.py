@@ -61,9 +61,9 @@ def curtain(s,z0,hw0,layer,tip,rnd):
   pt=rnd.random()<.35
   hw=lambda l:hw0*(np.clip((L-l)/18,.12,1) if pt else np.clip((L-l)/6,.6,1))   # 髮尾：大多剪齊，少數收尖
   return Strand('curtain',('c',s,round(z0)),layer,f,L,hw)
-def bang(xt,yt,hw0,layer,i):
+def bang(xt,yt,hw0,layer,i,ph=PHF-.04):
   # 前髮：從分線前端散開往下，尖尖的髮尾
-  P=part_pt(PHF-.04,RO+.8*layer);y0=P[1];L=(yt-y0)*1.08
+  P=part_pt(ph,RO+.8*layer);y0=P[1];L=(yt-y0)*1.08
   def f(l):
     u=np.clip(np.asarray(l,float)/L,0,1)
     x=XP+(xt-XP)*(1-(1-u)**2.2);y=y0+(yt-y0)*u
@@ -71,7 +71,7 @@ def bang(xt,yt,hw0,layer,i):
     return x,y,z
   def hw(l):
     u=np.asarray(l,float)/L
-    return hw0*(.3+.7*sm(u/.45))*np.clip((1-u)/.3,.06,1)
+    return hw0*(.55+.45*sm(u/.45))*np.clip((1-u)/.3,.06,1)
   st=Strand('bang',('b',i),layer,f,L,hw);st.mass='bangL' if xt<XP else 'bangR';return st
 def lock(s,xs,hw0,layer,tip,rnd,i,dx=12):
   # 鬢髮：從分線前段斜斜下來，到眉尾高度在眉尾外面（蓋住太陽穴）→ 沿著臉的輪廓往外、往後滑到眼睛後面 → 垂下（耳朵前面），髮尾往外一點
@@ -120,12 +120,12 @@ def build(seed=7):
   while x<BROW+2:
     w=rnd.uniform(11,14) if big else rnd.uniform(6,8)
     xt=x+w/2;yt=rnd.uniform(134,142) if big else rnd.uniform(128,138)
-    S.append(bang(xt,yt,w/2+1,0 if big else 1,i));x+=w;big=not big if rnd.random()<.8 else big;i+=1
+    S.append(bang(xt,yt,w/2+1,0 if big else 1,i,PHF-.04-.22*min(1,abs(xt-XP)/40)));x+=w;big=not big if rnd.random()<.8 else big;i+=1   # 根部沿分線散開（離分線越遠的根越後面）
   # 兩側：z0 從前額旁（55）到頭頂後面（-34），一束束
   for s in(-1,1):
     z=55;k=0
     while z>-36:
-      w=rnd.uniform(10,15);tip=rnd.uniform(236,248)
+      w=rnd.uniform(15,21);tip=rnd.uniform(236,248)
       S.append(curtain(s,z,w/2+1,k%2,tip,rnd));z-=w*.8;k+=1
   # 鬢髮：每邊兩束
   for s in(-1,1):
@@ -135,10 +135,12 @@ def build(seed=7):
   th=math.radians(108);i=0
   while th<math.radians(252):
     w=rnd.uniform(12,17);S.append(back(th,w/2+1,i%2,rnd.uniform(232,252),rnd,i));th+=w*.8/RO;i+=1
+  ro=random.Random(21)
+  for st in S:st.r=ro.random()                          # 每束固定的上下順序（同一層裡）
   return S
 def base_cap(S):
   # 底層：一束束底下的頭髮（殼小一點），髮際線形狀；束和束之間的縫看到的是頭髮不是頭皮
-  st=Strand('base',('base',),-1,None,0,None);S.append(st);k=len(S)-1
+  st=Strand('base',('base',),-1,None,0,None);st.r=0;S.append(st);k=len(S)-1
   P=[];r=RO-1.4
   for y in np.arange(CY-r+.2,CY+44,.4):
     rr=math.sqrt(max(0,r*r-(y-CY)**2)) if y<CY else r
@@ -179,7 +181,8 @@ def project(S,Q,NN,ID,img,deg,cx):
   HD=head_depth(deg,cx);white=(img==255).all(2)
   X=np.floor(cx+Q[:,0]*ca-Q[:,2]*sa).astype(int);Yp=np.floor(Q[:,1]).astype(int);d=Q[:,0]*sa+Q[:,2]*ca
   lay=np.array([S[i].layer for i in ID]);kb=np.array([BIAS[S[i].kind] for i in range(len(S))])[ID]
-  db=d+kb+lay*.5
+  rr=np.array([getattr(st,'r',0) for st in S])[ID]
+  db=d+kb+lay*1.5+rr*1.5                                 # 重疊時照固定順序蓋（不逐格比深度，不然邊會鋸齒）
   ok=(X>=0)&(X<N)&(Yp>=0)&(Yp<N)
   X,Yp,d,db,ID2,NN2,Q2=X[ok],Yp[ok],d[ok],db[ok],ID[ok],NN[ok],Q[ok]
   idx=Yp*N+X;o=np.lexsort((-db,idx));u,first=np.unique(idx[o],return_index=True);sel=o[first]
@@ -193,6 +196,18 @@ def project(S,Q,NN,ID,img,deg,cx):
       bxs=NN2[j,4]*ca-NN2[j,6]*sa                          # 這束的橫向在畫面上往右還是往左
       lft=-NN2[j,3]*np.sign(bxs) if abs(bxs)>.2 else 0.  # >0＝這束的左邊（受光）、<0＝右邊（背光）
       vis[(Xj,Yj)]=(ID2[j],S[ID2[j]].layer,Q2[j,0],Q2[j,1],Q2[j,2],inside,lft)
+  # 交界抹平：一格一格跳來跳去的鋸齒 → 歸給周圍多數那片（做兩次）
+  for _ in range(3):
+    nv={}
+    for (Xj,Yj),v in vis.items():
+      cnt={}
+      for dx in(-2,-1,0,1,2):
+        for dy in(-2,-1,0,1,2):
+          q=vis.get((Xj+dx,Yj+dy))
+          if q is not None:cnt.setdefault(q[0],[0,q]);cnt[q[0]][0]+=1
+      own=cnt[v[0]][0];bi,(bc,bq)=max(cnt.items(),key=lambda kv:kv[1][0])
+      nv[(Xj,Yj)]=(bi,)+tuple(bq[1:]) if (bi!=v[0] and bc>=12 and own<=9) else v
+    vis=nv
   return vis
 def paint(S,vis,img,stage,deg=0):
   out=img.copy();white=(img==255).all(2)
@@ -219,42 +234,45 @@ def paint(S,vis,img,stage,deg=0):
     tone[(X,Y)]=t
   T={k:int(min(4,max(0,round(v)))) for k,v in tone.items()}
   for (X,Y),t in T.items():out[Y,X]=C[TONE[t]]
-  # 片的邊：右邊或下面換片 → 這格暗；疊在別片上 → 右下投影子；分線兩邊一定畫；約 45% 一路到分線，其他只畫中下段
-  rf=random.Random(13);full={};E={}
-  for (X,Y),(i,layer,x,y,z,ins,*_) in vis.items():
-    for nb in((X+1,Y),(X,Y+1)):
-      r=vis.get(nb)
-      if r is None or r[0]==i:continue
-      a,b=S[i],S[r[0]]
-      if 'base' in(a.kind,b.kind):continue                # 底層和束之間不畫線
-      if a.mass!=b.mass:                                  # 大塊和大塊之間：一定畫；上面那塊在下面那塊投影子
-        E[(X,Y)]=RANK[a.mass]>RANK[b.mass];continue
-      key=tuple(sorted([i,r[0]]))                         # 同一大塊裡面：只挑一些當髮絲（約 35%），有的到分線、有的只在中下段
-      g=full.setdefault(key,(rf.random()<.35,rf.random()<.4))
-      if not g[0]:continue
-      if not g[1] and y<CY-30:continue
-      E[(X,Y)]=False
-  # 連起來不到 5 格的不畫（取樣跳動的雜點）
-  seen={};comp=[]
-  for p in E:
+  # 片的上下（使用者 2026-11-19 參考圖：看得出每一片蓋在另一片上面或下面，不是只用線分開）
+  # 每片有固定上下順序：前髮 > 鬢髮 > 兩邊長髮 > 後髮 > 底層；同一塊裡上層 > 下層
+  # 下面那片緊貼上面那片的地方：貼著那格最暗，往右下（光從左上）再淡淡 1～2 格；上面那片不動
+  ORD={i:BIAS[st.kind]*10+st.layer*3+getattr(st,'r',0) for i,st in enumerate(S)}
+  D1={};D2=set();RIM=set()
+  for (X,Y),v in vis.items():
+    i=v[0];oi=ORD[i];best=9
+    for dx,dy in((1,0),(0,1),(1,1),(-1,0),(0,-1)):          # 上面那片的邊（旁邊就是下面那片）→ 亮一格
+      q=vis.get((X+dx,Y+dy))
+      if q is not None and q[0]!=i and ORD[q[0]]<oi and S[q[0]].kind!='base' and not v[5]:RIM.add((X,Y));break
+    for dy in(-3,-2,-1,0,1):
+      for dx in(-3,-2,-1,0,1):
+        dd=max(abs(dx),abs(dy))
+        if dd==0 or (dd>1 and (dx>0 or dy>0)):continue
+        if dd>=best:continue
+        q=vis.get((X+dx,Y+dy))
+        if q is not None and q[0]!=i and ORD[q[0]]>oi:best=dd
+    if best==1:D1[(X,Y)]=v[5]
+    elif best<=3:D2.add((X,Y))
+  for p in RIM:
+    if p not in D1 and p not in D2 and T[p]<=1:T[p]=0;out[p[1],p[0]]=C['li']
+  for p in D2:
+    if T[p]<2:T[p]=2;out[p[1],p[0]]=C['ms']
+  # 貼著那格的暗線：連起來不到 4 格的不畫（取樣跳動的雜點）
+  seen=set()
+  for p in D1:
     if p in seen:continue
-    st=[p];seen[p]=1;cc=[]
+    st=[p];seen.add(p);cc=[]
     while st:
       q=st.pop();cc.append(q)
       for dx in(-1,0,1):
         for dy in(-1,0,1):
           nq=(q[0]+dx,q[1]+dy)
-          if nq in E and nq not in seen:seen[nq]=1;st.append(nq)
-    comp.append(cc)
-  for cc in comp:
-    if len(cc)<5:continue
-    for (X,Y) in cc:
-      out[Y,X]=C['dk'] if vis[(X,Y)][5] else C['sh']
-      if E[(X,Y)]:                                       # 上面那塊投在下面那塊的影子：2～3 格寬、越遠越淡
-        m=S[vis[(X,Y)][0]].mass
-        for dx,dy,tt in((1,1,3),(2,1,2)):
-          q=(X+dx,Y+dy)
-          if q in vis and S[vis[q][0]].mass!=m and T[q]<tt:T[q]=tt;out[q[1],q[0]]=C[TONE[tt]]
+          if nq in D1 and nq not in seen:seen.add(nq);st.append(nq)
+    if len(cc)<4:
+      for q in cc:
+        if T[q]<2:T[q]=2;out[q[1],q[0]]=C['ms']
+      continue
+    for q in cc:out[q[1],q[0]]=C['dk'] if D1[q] else C['sh'];T[q]=3
   # 前髮投在額頭的影子
   for (X,Y),(i,*_) in vis.items():
     if S[i].kind=='bang' and (X,Y+1) not in vis and Y+1<N and not white[Y+1,X]:out[Y+1,X]=SKSH
