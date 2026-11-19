@@ -30,6 +30,7 @@ IRCENTER=os.environ.get('IRCENTER','1')=='1';IRIN=float(os.environ.get('IRIN','.
 # 2026-11-19 第二本教學（普通／つり目／たれ目各 6 個）：上眼線外半段長出一根根細睫毛、下眼線外側幾根小短毛、
 # 雙眼皮線拉長貼著上眼線、黑眼珠改成直的橢圓（比較高、比較窄）
 LASH=os.environ.get('LASH','')   # 睫毛種類（使用者 2026-11-19）：短／長／翹（長又翹）；空的＝教學量的原樣
+EL=os.environ.get('EL','')   # 眼線：自然／上揚／下垂／粗框（空的＝沒畫）
 LASHCNT={'短':15,'長':13,'翹':12}
 LASHN=4;LASHL=3.0;IRISW,IRISH=5.6,7.8
 TYPES={
@@ -151,6 +152,23 @@ class Frame:
         i=min(n-2,int(t*(n-1)));(x0,y0),(x1,y1)=s.up[i],s.up[i+1];tx,ty=x1-x0,y1-y0;L=math.hypot(tx,ty) or 1;tx/=L;ty/=L
         nx,ny=ty,-tx;th=math.radians(55+20*(t-.9)*10);fx,fy=nx*math.cos(th)+tx*math.sin(th),ny*math.cos(th)+ty*math.sin(th)
         ln=1.6 if LASH=='短' else 2.4;s.lashsegs.append([(x0,y0),(x0+fx*ln,y0+fy*ln)])
+    # 眼線（使用者 2026-11-19）：EL=自然／上揚／下垂／粗框；空的＝沒畫
+    #   自然：沿上眼線、往眼尾慢慢加粗；上揚：再從眼尾往外上拉一條尖尾巴（貓眼）；下垂：尾巴往外下（狗狗眼）；
+    #   粗框：整條上眼線加粗＋眼尾尾巴＋下眼線外側 4 成也描
+    s.elsegs=[]
+    if EL:
+      n=len(s.up);up=s.up
+      ext=(lambda q:1.4*q*q) if EL!='粗框' else (lambda q:1.0+.8*q)
+      s.elsegs.append((up,[s.upw[i]+ext(i/(n-1)) for i in range(n)]))
+      (ax,ay),(bx,by)=up[-4],up[-1];tx,ty=bx-ax,by-ay;L=math.hypot(tx,ty) or 1;tx/=L;ty/=L
+      ang={'上揚':-24,'下垂':20,'粗框':-10,'自然':0}[EL];ln={'上揚':5.0,'下垂':4.2,'粗框':3.6,'自然':0}[EL]
+      if ln:
+        a=math.radians(ang);pts=[(bx-tx*.8,by-ty*.8)]   # 尾巴方向用水平量（往外眼角＝＋x），不跟著眼眶尾端的彎度
+        for k in range(1,7):pts.append((bx+math.cos(a)*ln*k/6,by+math.sin(a)*ln*k/6))
+        s.elsegs.append((pts,[2.2*(1-k/7)+.5 for k in range(7)]))
+      if EL=='粗框':
+        lo=s.lo;m=len(lo);seg=lo[int(m*.55):]
+        s.elsegs.append((seg,[.8+.9*(k/max(1,len(seg)-1)) for k in range(len(seg))]))
     # 下睫毛：下眼線外側 2～3 根小短毛（淡色）
     s.lolash=[]
     if T['lod'][1]>T['lod'][0]:
@@ -189,6 +207,8 @@ class Frame:
         ux,uy=s.up[i]
         if abs(x-ux)<.5 and abs(y-(uy-T.get('cro',3.6)))<.5:return 'c'
     if s._near(x,y,s.up,s.upw):return 'K'
+    for seg,w in s.elsegs:
+      if s._near(x,y,seg,w):return 'K'
     for seg in s.lashsegs:
       if s._near(x,y,seg,.8):return 'K'
     for seg,w in T.get('hooks',[]):
