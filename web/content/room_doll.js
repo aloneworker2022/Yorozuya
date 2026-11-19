@@ -281,14 +281,16 @@
       // lean 可以是函式（偷看體位，2026-11-12）：t＝0 胯下～1 肩，回傳前後位移 → 背脊可以彎（腰凹、拱背），不再是一根直筒
       const yl = typeof lean === 'function' ? (z) => dy + lean((z - C) / T) : (z) => dy + (z - C) * lean;
       const soft = b.soft;
-      if (!noHead) headPart(sh, P, yl, zc);
+      // 呼吸（聊天正面，2026-11-19）：P.br＝吸氣 0～1 → 胸廓撐開、肩膀和頭抬起、胸部跟著上去；P.headXf＝頭（含頭髮）繞脖子歪／點
+      const br = P.br || 0, lift = br * 1.5, hl = lift * .85;
+      if (!noHead) { const xf0 = sh.xf; if (P.headXf) sh.xf = P.headXf; headPart(sh, P, yl, zc + hl); sh.xf = xf0; }
       const neck_r = 2.7 * b.frame * (1 + .12 * soft + .06 * b.muscle);
-      sh.cone(BODY, [0, yl(S) - .4, S - 1], [0, yl(zc) - .6, P.chin + dz + 2], neck_r, neck_r * .85);
-      const wS = F(b, 'sh');
-      sh.cone(BODY, [-8.0 * wS, yl(S) - .6, S - 1.8], [8.0 * wS, yl(S) - .6, S - 1.8], 2.9 * b.frame, 2.9 * b.frame);
-      if (b.muscle) for (const s of [-1, 1]) sh.ell(BODY, [s * 9.2 * wS, yl(S) - .6, S - 4.0], [2.9 * b.muscle ** .5 + .4, 2.8, 3.6]);
+      sh.cone(BODY, [0, yl(S) - .4, S - 1 + lift], [0, yl(zc) - .6, P.chin + dz + 2 + hl], neck_r, neck_r * .85);
+      const wS = F(b, 'sh') * (1 + .02 * br);
+      sh.cone(BODY, [-8.0 * wS, yl(S) - .6, S - 1.8 + lift], [8.0 * wS, yl(S) - .6, S - 1.8 + lift], 2.9 * b.frame, 2.9 * b.frame);
+      if (b.muscle) for (const s of [-1, 1]) sh.ell(BODY, [s * 9.2 * wS, yl(S) - .6, S - 4.0 + lift], [2.9 * b.muscle ** .5 + .4, 2.8, 3.6]);
       const zCh = S - .24 * T;
-      sh.ell(BODY, [0, yl(zCh) - .2, zCh], [7.7 * F(b, 'chest'), 4.9 * F(b, 'chest') ** .5, .27 * T]);
+      sh.ell(BODY, [0, yl(zCh) - .2 + .5 * br, zCh + lift * .6], [7.7 * F(b, 'chest') * (1 + .045 * br), 4.9 * F(b, 'chest') ** .5 * (1 + .06 * br), .27 * T * (1 + .03 * br)]);
       const zW = S - .6 * T;
       sh.ell(BODY, [0, yl(zW), zW], [5.9 * F(b, 'waist'), 4.3 * F(b, 'waist') ** .7, .2 * T]);
       const zP = C + .2 * T;
@@ -312,7 +314,7 @@
         sh.ell(BODY, [s * 4.6 * F(b, 'hip') + tx, yl(C - 2) - 1.2 + ty, C - 2.5 + tz], [3.9 * F(b, 'thigh'), 3.9 * F(b, 'thigh') * (1 - .6 * q), 3.6]);
       }
       const r = cupRadius(P, doll), [bx, by, bz, sq, sy = 0, hang = 0, sw = null] = bounce, cs = F(b, 'chest') ** .5;
-      const zA = S - .16 * T, zB = S - .35 * T - (r - 3.1) * .3 + bz;
+      const zA = S - .16 * T + lift * .7, zB = S - .35 * T - (r - 3.1) * .3 + bz + lift * .75;
       sh.bust = true;   // 2026-10-13：乳房零件另外標記，render 才描得出跟身體重疊時的弧線
       for (const s of [-1, 1]) {
         const root = [s * (2.6 + r * .22) * cs + bx * .3, yl(zA) + 2.6 * cs + r * .12 + by * .3, zA + bz * .3];
@@ -339,7 +341,7 @@
         }
       }
       sh.bust = false;
-      return { zc, S, C, T, zW, zB, cupr: r, yl };
+      return { zc: zc + hl, S: S + lift, C, T, zW, zB, cupr: r, yl };
     }
     function definition(sh, P, tor, xoff = 0) {
       const b = P.b, S = tor.S, zW = tor.zW;
@@ -487,7 +489,10 @@
     };
     /** frames：小循環格數；fps：循環速度（每秒幾格）；canvas：見上。 */
     const POSES = {
-      idle: { frames: 1, fps: 0 }, walk: { frames: WALK_FRAMES, fps: WALK_FPS }, sit: { frames: 2, fps: .7 },
+      idle: { frames: 1, fps: 0 },
+      // 聊天正面（2026-11-19，chat_shadow.js）：真的逐格算——吸氣吐氣（胸廓、肩、胸部、頭）、頭微歪；說話時頭點、空著的手比劃
+      breathe: { frames: 16, fps: 4 }, talk: { frames: 16, fps: 7 },
+      walk: { frames: WALK_FRAMES, fps: WALK_FPS }, sit: { frames: 2, fps: .7 },
       hug_knees: { frames: 2, fps: .7 }, crouch: { frames: 2, fps: .6 }, stretch: { frames: 3, fps: 1.6, canvas: 'tall', pingpong: true },
       wall_lean: { frames: 2, fps: .6 }, sway: { frames: 4, fps: 3.2 }, restless: { frames: 4, fps: 2.2 },
       stare: { frames: 2, fps: .9 }, twirl: { frames: 3, fps: 2.4 },
@@ -589,8 +594,23 @@
       const shj = (s, tor, dy = -.4) => [s * 8.3 * F(b, 'sh'), tor.yl(tor.S) + dy, tor.S - 2.6];
       const phone = (c) => sh.ell(BODY, c, [3.0, .85, 4.6]);
       const NF = (POSES[pose] && POSES[pose].frames) || 1, f = ((frame % NF) + NF) % NF;
-      if (pose === 'idle') {
+      if (pose === 'idle' || pose === 'breathe' || pose === 'talk') {
         const cp = 1, w = 1, o = [w * .9 * cp, 0, -.3 * cp];
+        const ph = 2 * Math.PI * f / NF, talk = pose === 'talk';
+        // 吸氣比吐氣快一點（前 40% 吸、後 60% 吐）；說話時一個循環換兩口短氣
+        const breath = (q) => { q = ((q % 1) + 1) % 1; return q < .4 ? .5 - .5 * Math.cos(Math.PI * q / .4) : .5 + .5 * Math.cos(Math.PI * (q - .4) / .6); };
+        let tilt = 0, nod = 0, gest = 0;
+        if (pose === 'breathe') { P.br = breath(f / NF); tilt = 1.6 * Math.sin(ph + .6); }
+        else if (talk) {
+          P.br = .65 * breath(2 * f / NF);
+          tilt = 3.2 * Math.sin(ph) + 1.2 * Math.sin(3 * ph + .5);
+          nod = 4.5 * Math.max(0, Math.sin(2 * ph)) ** 1.5 - 1.2 * Math.sin(3 * ph + 1);   // 說到重點點一下頭
+          gest = .5 - .5 * Math.cos(ph);   // 手抬起來比劃、再放下
+        }
+        if (tilt || nod) {
+          const piv = [o[0], o[1] - .4, P.S - 1 + o[2] + (P.br || 0) * 1.5];
+          P.headXf = about(mulR(rotY(tilt), rotX(-nod)), piv);
+        }
         sh.off = o;
         const tor = torso(sh, P, doll);
         skirt(sh, P, doll, tor);
@@ -602,8 +622,14 @@
             arm(sh, P, sh_j, elbow, wrist, false);
             sh.ell(BODY, [wrist[0] - s * .6, wrist[1], wrist[2] - .6], [1.8, 1.6, 2.1]);
           } else {
-            const elbow = [s * Math.max(waist_out + 2.8 * F(b, 'arm') + 1.6, arm_clear()), -1.0, tor.zW - 1];
-            const wrist = [s * (hip_out + 1.5 * F(b, 'arm') + 1.1), .8, tor.C - 1];
+            let elbow = [s * Math.max(waist_out + 2.8 * F(b, 'arm') + 1.6, arm_clear()), -1.0, tor.zW - 1];
+            let wrist = [s * (hip_out + 1.5 * F(b, 'arm') + 1.1), .8, tor.C - 1];
+            if (gest > 0) {   // 說話比劃：手肘往外、前臂抬到胸口高度往外攤，手腕跟著話小小地晃
+              const e2 = [s * (Math.max(waist_out + 2.8 * F(b, 'arm') + 2.6, arm_clear() + 1)), 2.2, tor.zW + .5];
+              const w2 = [s * (hip_out + 4.2 * F(b, 'arm')), 6.5, tor.zB + 1.5 + 1.4 * Math.sin(4 * ph)];
+              const L = (a, c) => a.map((v, i) => v + (c[i] - v) * gest);
+              elbow = L(elbow, e2); wrist = L(wrist, w2);
+            }
             arm(sh, P, sh_j, elbow, wrist);
           }
         }
@@ -616,7 +642,10 @@
         }
         if (front) { sh.off = o; definition(sh, P, tor); }
         sh.off = o;
-        hair(sh, P, doll, tor, ({ pony_hi: 3.5, pony_lo: 2.5 }[doll.hair] || 0) * w);
+        { const xf0 = sh.xf; if (P.headXf) sh.xf = P.headXf;
+          // 髮尾慢半拍：頭歪過去，髮尾往反方向留一點
+          hair(sh, P, doll, tor, ({ pony_hi: 3.5, pony_lo: 2.5 }[doll.hair] || 0) * w, null, false, tilt || nod ? [-.35 * tilt, 0, .15 * nod] : null);
+          sh.xf = xf0; }
         sh.off = [0, 0, 0];
         return { sh, P };
       }
@@ -1351,8 +1380,9 @@
     }
     /** 乳房邊緣：這格是乳房，旁邊是身體（比它遠 ≥ thr）或外面 → 描線。 */
     /** 正面平視（2026-11-19，聊天時放大的她）：正交投影、視線沿 −y（她面向鏡頭），螢幕 x＝世界 x、螢幕 y＝−z。
-     *  顏色跟房間的半透明黑影一樣（BODY_RGB／HAIR_RGB…）；畫布依身形自動定大小，腳底＝anchor。k＝每模型單位幾像素。 */
-    function renderFront(doll, pose = 'idle', frame = 0, k = 1.2) {
+     *  顏色跟房間的半透明黑影一樣（BODY_RGB／HAIR_RGB…）；畫布依身形自動定大小，腳底＝anchor。k＝每模型單位幾像素。
+     *  box：{half, ay}（上一格回傳的 box）→ 一組動畫每格同一個畫布，腳不會跳。 */
+    function renderFront(doll, pose = 'idle', frame = 0, k = 1.2, box = null) {
       const { sh } = build(doll, pose, frame, 0);
       const prims = sh.prims, np = prims.length;
       const wb = prims.map(p => { let q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]]; if (p.xf) { const w = mulV(p.xf.R, q); q = [w[0] + p.xf.t[0], w[1] + p.xf.t[1], w[2] + p.xf.t[2]]; } return q; });
@@ -1362,8 +1392,9 @@
         x0 = Math.min(x0, wb[i][0] - r); x1 = Math.max(x1, wb[i][0] + r);
         y0 = Math.min(y0, wb[i][1] - r); y1 = Math.max(y1, wb[i][1] + r); z1 = Math.max(z1, wb[i][2] + r);
       }
-      const half = Math.ceil(Math.max(-x0, x1) * k) + 2;
-      const width = half * 2, ax = half, ay = Math.ceil(Math.min(z1, 140) * k) + 2, height = ay + 3;
+      const half = box ? box.half : Math.ceil((Math.max(-x0, x1) + 6) * k) + 2;
+      const ay = box ? box.ay : Math.ceil((Math.min(z1, 140) + 3) * k) + 2;
+      const width = half * 2, ax = half, height = ay + 3;
       const n = width * height, hit = new Uint8Array(n), mat = new Uint8Array(n), tt = new Float64Array(n).fill(-1e9), bust = new Uint8Array(n);
       const dist = [0, 0, 0];
       for (let py = 0; py < height; py++) {
@@ -1396,7 +1427,7 @@
         for (const j of [i - width, i + width, i - 1, i + 1]) if (j >= 0 && j < n && hit[j] && tt[j] > tt[i] + 3.5) { near = true; break; }
         set(i, near ? LINE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
       }
-      return { width, height, anchor: { x: ax, y: ay }, pixels, scale: k };
+      return { width, height, anchor: { x: ax, y: ay }, pixels, scale: k, box: { half, ay } };
     }
     function bustEdge(bust, hit, tt, i, x, y, w, h, thr) {
       if (!bust[i]) return false;
