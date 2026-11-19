@@ -30,6 +30,17 @@ IRCENTER=os.environ.get('IRCENTER','1')=='1';IRIN=float(os.environ.get('IRIN','.
 # 2026-11-19 第二本教學（普通／つり目／たれ目各 6 個）：上眼線外半段長出一根根細睫毛、下眼線外側幾根小短毛、
 # 雙眼皮線拉長貼著上眼線、黑眼珠改成直的橢圓（比較高、比較窄）
 LASH=os.environ.get('LASH','')   # 睫毛種類（使用者 2026-11-19）：短／長／翹（長又翹）；空的＝教學量的原樣
+# 眼影顏色（SHC=粉紅／大地／紫／藍／金橘；空的＝沒畫）、高度 SHH（眼睛單位）；眼線顏色 ELC=黑／配合
+SHADOW_COLORS={'粉紅':(232,120,150),'大地':(170,104,74),'紫':(150,96,180),'藍':(90,130,200),'金橘':(230,150,60)}
+SHC=os.environ.get('SHC','');SHH=float(os.environ.get('SHH','4.5'));ELC=os.environ.get('ELC','黑')
+def extra_pal(skin=(242,204,177)):
+  # 給出圖的程式：眼影兩階（貼眼線濃、上面淡）、眼線色
+  o={'E':(30,24,28)}
+  if SHC:
+    c=SHADOW_COLORS[SHC];mix=lambda a:tuple(round(skin[k]*(1-a)+c[k]*a) for k in range(3))
+    o['S1']=mix(.55);o['S2']=mix(.28)
+    if ELC=='配合':o['E']=tuple(round(v*.55) for v in c)
+  return o
 EL=os.environ.get('EL','')   # 眼線：自然／上揚／下垂／粗框（空的＝沒畫）
 LASHCNT={'短':15,'長':13,'翹':12}
 LASHN=4;LASHL=3.0;IRISW,IRISH=5.6,7.8
@@ -208,7 +219,7 @@ class Frame:
         if abs(x-ux)<.5 and abs(y-(uy-T.get('cro',3.6)))<.5:return 'c'
     if s._near(x,y,s.up,s.upw):return 'K'
     for seg,w in s.elsegs:
-      if s._near(x,y,seg,w):return 'K'
+      if s._near(x,y,seg,w):return 'K' if LINE else 'E'   # 眼線色：黑或配合眼影（ELC）
     for seg in s.lashsegs:
       if s._near(x,y,seg,.8):return 'K'
     for seg,w in T.get('hooks',[]):
@@ -225,6 +236,13 @@ class Frame:
       if key in T and s._near(x,y,T[key][0],T[key][1]*HOOKK):return LOWC
     for seg in s.lolash:
       if s._near(x,y,seg,.7):return 'K' if LINE else LOWC
+    # 眼影（使用者 2026-11-19）：上眼線上面那片眼皮，貼著眼線最濃、往上變淡；越往眼尾越高（範圍大一點）
+    if SHC and not LINE and not _inpoly(x,y,s.poly):
+      xs=[p[0] for p in s.up]
+      if xs[0]-.5<=x<=xs[-1]+1.5:
+        i=min(range(len(s.up)),key=lambda k:abs(s.up[k][0]-x));q=i/(len(s.up)-1)
+        top=s.up[i][1]-s.upw[i]/2;d=top-y;H=SHH*(.55+.65*q)
+        if 0<=d<H:return 'S1' if d<H*.5 else 'S2'
     if not _inpoly(x,y,s.poly):return None
     # 眼睛裡面（同舊眼睛的配色）
     if 'ir' in T:   # 照教學量的黑眼珠：中心、橫半徑、直半徑（大、上緣藏在上眼線下面）
