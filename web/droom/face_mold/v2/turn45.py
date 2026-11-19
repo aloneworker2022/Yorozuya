@@ -61,7 +61,7 @@ EDZ=float(os.environ.get("EDZ",str(20*max(0,min(1,(DEG-30)/15)))))   # 45° 才�
 EW=float(os.environ.get('EW',str(.35+.65*math.sqrt(SA))))
 # 2026-11-19 再改（使用者：耳朵要後面一點、高一點；接臉那條線不要那麼明顯）
 # 位置：前緣放在頭寬（眼線那列最左 → 頭蓋最右）的 EFR 處（山田式量 0.76），整個耳朵往上 EUP（參考圖像素）
-EFR=float(os.environ.get('EFR','.74'));EUP=float(os.environ.get('EUP','8'))
+EFR=float(os.environ.get('EFR','.74'));EUP=float(os.environ.get('EUP','14'))
 _l=min(X for X in range(N) if head[round(Y(545)),X]);_r=max(X for X in range(N) if head[round(CY),X])
 EX0=_l+EFR*(_r-_l)
 def earpt(xs,y):
