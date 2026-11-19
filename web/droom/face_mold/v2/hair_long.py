@@ -69,10 +69,10 @@ def bang(xt,yt,hw0,layer,i):
     u=np.asarray(l,float)/L
     return hw0*(.3+.7*sm(u/.45))*np.clip((1-u)/.3,.06,1)
   return Strand('bang',('b',i),layer,f,L,hw)
-def lock(s,xs,hw0,layer,tip,rnd,i):
+def lock(s,xs,hw0,layer,tip,rnd,i,dx=12):
   # 鬢髮：從分線前段斜斜下來，到眉尾高度在眉尾外面（蓋住太陽穴）→ 沿著臉的輪廓往外、往後滑到眼睛後面 → 垂下（耳朵前面），髮尾往外一點
   P=part_pt(PHF-.12-.1*i,RO+.8*layer);y0=P[1]
-  y1=CY+4;y2=CY+34;x2=xs+s*12
+  y1=CY+4;y2=CY+34;x2=xs+s*dx
   L1=math.hypot(xs-XP,y1-y0)*1.15;L2=math.hypot(x2-xs,y2-y1)*1.1;L=L1+L2+(tip-y2);fl=rnd.uniform(3,6)
   rr=R+4+.8*layer
   def f(l):
@@ -82,8 +82,8 @@ def lock(s,xs,hw0,layer,tip,rnd,i):
     r=shell_r(y,layer);z=np.sqrt(np.maximum(0,np.where(l<=L1,r*r,rr*rr)-x*x-(y-CY)**2))
     yh=y2+np.maximum(0,l-L1-L2);hang=l>L1+L2;g=sm((yh-y2)/50)
     zh2=math.sqrt(max(0,rr*rr-x2*x2-(y2-CY)**2))
-    xh=x2+s*(3*g+fl*np.clip((yh-150)/(tip-150),0,1)**2)
-    zh=zh2+(18-zh2)*g                                    # 往下慢慢退到耳朵前面
+    xh=x2+s*(-4*g+fl*np.clip((yh-150)/(tip-150),0,1)**2)
+    zh=zh2+(26-zh2)*g                                    # 往下慢慢退到耳朵前面
     x=np.where(hang,xh,x);y=np.where(hang,yh,y);z=np.where(hang,zh,z)
     return x,y,push_out(x,y,z,layer)
   def hw(l):
@@ -124,7 +124,8 @@ def build(seed=7):
       S.append(curtain(s,z,w/2+1,k%2,tip,rnd));z-=w*.8;k+=1
   # 鬢髮：每邊兩束
   for s in(-1,1):
-    for i,xs in enumerate((42,49)):S.append(lock(s,s*xs,rnd.uniform(6,7.5),1-i%2,rnd.uniform(220,244),rnd,i))
+    # 使用者 2026-11-19：鬢髮太細、蓋不住臉 → 加寬（半寬 10），垂下來對準臉的輪廓，往下蓋住臉頰邊
+    for i,(xs,dx,hw) in enumerate(((42,14,10.5),(49,13,9.5))):S.append(lock(s,s*xs,hw,1-i%2,rnd.uniform(220,244),rnd,i,dx))
   # 後腦
   th=math.radians(108);i=0
   while th<math.radians(252):
