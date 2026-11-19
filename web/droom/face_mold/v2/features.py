@@ -148,6 +148,7 @@ def eyes_turn(img,ca,sa,cx):
   for s in(1,-1):
     xr=s*30/S;yr=545;z=surf(xr,yr)
     Xc=cx+(xr*ca-z*sa)*S;Yc=Y(yr)
+    if s<0:Xc+=float(os.environ.get('FARIN','0'))   # 遠側眼睛往鼻子那邊移幾格（外側留空）
     zx=(surf(xr+.5,yr)-surf(xr-.5,yr))
     kx=max(.35,min(1,ca-zx*sa))
     ic=(-1.3,.3) if s==1 else (1.3*kx,.3)     # 往畫面左邊（她看的方向）
