@@ -43,12 +43,15 @@ def eyeAt(x,y,s,IC=IC):   # IC 可以另外給（45° 近側黑眼珠往內移�
     v=(y-u)/(l-u);return 'I' if v<.4 else 'i' if v<.72 else 'j'
   return 'w' if y<u+2.4 else 'W'
 # ── 眉毛：參考圖眉頭在中線外 14.5、眉尾 46.5（參考圖像素），眉線上微微拱 ──
+# 眼睛、眉毛的高度（參考圖像素 y）：EYEY 眼睛中心、BRY 眉毛；EH 眼睛縱向再放大
+# 山田式量：頭頂→下巴當 1，眉 0.41、眼中心 0.61、眼睛高 0.16（我們原本眉 0.50、眼 0.64、眼高 0.10）
+EYEY=float(os.environ.get('EYEY','545'));BRY=float(os.environ.get('BRY','523'));EH=float(os.environ.get('EH','1'))
 BROW=(118,80,62);BROWL=(160,114,90)
 def brow_px():
   o={}
   for s in(1,-1):
     for k in range(401):
-      u=k/400;x=(14.5+32*u)*S;y=Y(523)-5*math.sin(math.pi*u*.9)+1.5*u;w=2.4+(1.0-2.4)*u;r=w/2
+      u=k/400;x=(14.5+32*u)*S;y=Y(BRY)-5*math.sin(math.pi*u*.9)+1.5*u;w=2.4+(1.0-2.4)*u;r=w/2
       for yy in range(math.floor(y-r),math.ceil(y+r)+1):
         for xx in range(math.floor(CXF+s*x-r),math.ceil(CXF+s*x+r)+1):
           if math.hypot(xx+.5-(CXF+s*x),yy+.5-y)<=r+.05 and (xx,yy) not in o:o[(xx,yy)]=(BROWL if u>.72 else BROW,0)
@@ -82,10 +85,10 @@ ES=float(os.environ.get('ES','1.35'))   # 眼睛放大倍率（使用者：眼�
 def eye_px():
   o={}
   for s in(1,-1):
-    ex=CXF+s*30;ey=Y(545)
-    for yy in range(math.floor(ey-16*ES),math.ceil(ey+10*ES)):
+    ex=CXF+s*30;ey=Y(EYEY)
+    for yy in range(math.floor(ey-16*ES*EH),math.ceil(ey+10*ES*EH)):
       for xx in range(math.floor(ex-20*ES),math.ceil(ex+20*ES)):
-        ch=eyeAt(s*(xx+.5-ex)/ES,(yy+.5-ey)/ES,s)
+        ch=eyeAt(s*(xx+.5-ex)/ES,(yy+.5-ey)/(ES*EH),s)
         if ch:o[(xx,yy)]=(EPAL[ch],0)
   return o
 NOSE=nose_px()
@@ -121,7 +124,7 @@ def paint_turn(img,deg,cx):
   if 0<deg<90:eyes_turn(img,ca,sa,cx);nose_turn(img,sa,cx)
   if deg>=90:side_eye(img,cx)
 SHG=float(os.environ.get('SHG','0'))   # 山根往外（往前凸）幾格（使用者 2026-11-19：遠側眼睛往內 3 格後，山根要往外一點）
-NX=float(os.environ.get('NX','4'))   # 斜臉整個鼻子（形狀不變）往前（畫面左）平移幾格（使用者 2026-11-19）
+NX=float(os.environ.get('NX','6'))   # 斜臉整個鼻子（形狀不變）往前（畫面左）平移幾格（使用者 2026-11-19）
 def bridge_pts(sa,cx):
   # 鼻樑線每一列的 X：側臉中線投影；山根那段再往外推 SHG 格，到鼻頭前收回 0
   from shape3d import zc,znose
@@ -161,16 +164,16 @@ def eyes_turn(img,ca,sa,cx):
   # 兩隻都用正面那隻眼睛，橫向壓的倍率＝臉表面在那裡的縮短量（ca－斜率×sa），黑眼珠往臉朝的那邊（左）靠一點
   BR=bridge_pts(sa,cx)
   for s in(1,-1):
-    xr=s*30/S;yr=545;z=surf(xr,yr)
+    xr=s*30/S;yr=EYEY;z=surf(xr,yr)
     Xc=cx+(xr*ca-z*sa)*S;Yc=Y(yr)
     if s<0:Xc+=float(os.environ.get('FARIN','3'))   # 遠側眼睛往鼻子那邊移幾格（外側留空）
     zx=(surf(xr+.5,yr)-surf(xr-.5,yr))
     kx=max(.35,min(1,ca-zx*sa))
     ic=(-1.3,.3) if s==1 else (1.3*kx,.3)     # 往畫面左邊（她看的方向）
-    for Yp in range(math.floor(Yc-16*ES),math.ceil(Yc+10*ES)):
+    for Yp in range(math.floor(Yc-16*ES*EH),math.ceil(Yc+10*ES*EH)):
       for X in range(math.floor(Xc-20*ES),math.ceil(Xc+20*ES)):
         if s<0 and Yp in BR and X>=min(BR[Yp]):continue   # 遠側內眼角藏在鼻樑後面
-        ch=eyeAt(s*(X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/ES,s,IC=ic)
+        ch=eyeAt(s*(X+.5-Xc)/(ES*kx),(Yp+.5-Yc)/(ES*EH),s,IC=ic)
         if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
 # ── 側臉的眼睛（使用者給的教學：臉是圓的，側面看眼睛是三角形）──
 # 上眼線厚、橫的、眼尾往後收成一個尖角（下面一小撇）；前緣斜斜往後下到底下的尖；黑眼珠是窄窄的直橢圓、貼在前緣；
@@ -210,10 +213,10 @@ def side_eye_at(u,v,flip=False):   # flip：左右鏡射時亮點仍放在左上
   return 'w' if v<lb(u)+1.8 else 'W'
 def side_eye(img,cx):
   from shape3d import zp
-  X0=cx-zp(545)*S+7;Y0=Y(541)               # 眼睛前端：鼻樑往後 7 格、眼線上面一點
-  for Yp in range(math.floor(Y0-8*ES),math.ceil(Y0+13*ES)):
+  X0=cx-zp(545)*S+7;Y0=Y(EYEY-4)               # 眼睛前端：鼻樑往後 7 格、眼線上面一點
+  for Yp in range(math.floor(Y0-8*ES*EH),math.ceil(Y0+13*ES*EH)):
     for X in range(math.floor(X0-6*ES),math.ceil(X0+25*ES)):
-      ch=side_eye_at((X+.5-X0)/ES,(Yp+.5-Y0)/ES)
+      ch=side_eye_at((X+.5-X0)/ES,(Yp+.5-Y0)/(ES*EH))
       if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
 
 out=os.environ.get('OUT',D)
