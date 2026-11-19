@@ -1,7 +1,7 @@
 """老婆還債偷看：圖生圖圖庫與三段式對話（旁白→男→她）。
 
 圖庫在 assets/wifepay/gallery/＋index.json；產出在 assets/wifepay/out/。
-對話模板在 assets/wifepay/dialog.json；劇本存在 assets/wifepay/scripts.json（可存多種、開門隨機抽）。
+對話模板在 assets/wifepay/dialog.json；劇本存在 assets/wifepay/scripts.json（可存多種、開門隨機抽）。設定（打字速度、自訂姿勢）在 assets/wifepay/config.json，缺檔時用程式預設。
 assets/wifepay/ 整個目錄被 gitignore，內建劇本以 STOCK_SCRIPTS 寫在程式裡，缺檔或舊檔缺少新 id 時由程式補上，不依賴倉庫裡的 json。內容規則沿用 escort_lines：成年人、自願、不寫強迫／未成年。
 """
 from __future__ import annotations
@@ -19,6 +19,18 @@ GALLERY_PREFIX = "/assets/wifepay/gallery/"
 OUT_PREFIX = "/assets/wifepay/out/"
 DEFAULT_DENOISE = 0.55
 DENOISE_LO, DENOISE_HI = 0.35, 0.85
+CHAR_SEC_DEFAULT = 1.2
+CHAR_SEC_LO, CHAR_SEC_HI = 0.05, 2.0
+# 舊版打字間隔（毫秒）當比例：一般 26、逗號 50、句號 90
+_TYPE_BASE_MS, _TYPE_COMMA_MS, _TYPE_PERIOD_MS = 26, 50, 90
+STOCK_POSES = (
+    {"id": "missionary", "name": "傳教士"},
+    {"id": "cowgirl", "name": "騎乘"},
+    {"id": "doggy", "name": "老漢推車"},
+    {"id": "kiss", "name": "擁吻"},
+    {"id": "reverse", "name": "背向"},
+)
+PEEK_FRACS = ("1/2", "1/3")
 GEN_WIDTH, GEN_HEIGHT = 832, 1216
 PROMPT_MAX = 4000
 TAGS_MAX = 8
@@ -150,6 +162,10 @@ def scripts_path(assets: Path) -> Path:
     return Path(assets) / "wifepay" / "scripts.json"
 
 
+def config_path(assets: Path) -> Path:
+    return Path(assets) / "wifepay" / "config.json"
+
+
 def ensure_dirs(assets: Path) -> None:
     gallery_dir(assets).mkdir(parents=True, exist_ok=True)
     out_dir(assets).mkdir(parents=True, exist_ok=True)
@@ -196,6 +212,112 @@ def clamp_denoise(v, default: float = DEFAULT_DENOISE) -> float:
     if d <= 0:
         d = default
     return max(DENOISE_LO, min(DENOISE_HI, d))
+
+
+def clamp_char_sec(v, default: float = CHAR_SEC_DEFAULT) -> float:
+    try:
+        d = float(v)
+    except (TypeError, ValueError):
+        d = default
+    if d <= 0:
+        d = default
+    return max(CHAR_SEC_LO, min(CHAR_SEC_HI, d))
+
+
+def type_delay_ms(ch, char_sec: float = CHAR_SEC_DEFAULT) -> int:
+    """單字等待毫秒。標點按舊版 26／50／90 的比例放大。"""
+    base = int(round(clamp_char_sec(char_sec) * 1000))
+    mark = str(ch or "")[:1]
+    if re.search(r"[。！？!?…]", mark):
+        return int(round(base * (_TYPE_PERIOD_MS / _TYPE_BASE_MS)))
+    if re.search(r"[、，,．.]", mark):
+        return int(round(base * (_TYPE_COMMA_MS / _TYPE_BASE_MS)))
+    return base
+
+
+def _normalize_frac(v) -> str:
+    s = str(v or "").strip().lower()
+    if v in (2, 0.5) or s in ("2", "1/2", "0.5", "half"):
+        return "1/2"
+    if v in (3,) or s in ("3", "1/3", "third"):
+        return "1/3"
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return ""
+    if abs(f - 0.5) < 0.05:
+        return "1/2"
+    if abs(f - (1 / 3)) < 0.05:
+        return "1/3"
+    return ""
+
+
+def pick_peek(count: int = 1, rnd=None, side: str | None = None, fracs=None) -> dict:
+    """一扇門同一邊（左或右）；每張圖獨立抽只顯示 1/2 或 1/3 寬。"""
+    try:
+        n = int(count)
+    except (TypeError, ValueError):
+        n = 1
+    n = max(1, min(2, n))
+    rng = rnd if hasattr(rnd, "random") else random.Random()
+    side_v = side if side in ("left", "right") else ("left" if rng.random() < 0.5 else "right")
+    out = []
+    given = list(fracs) if isinstance(fracs, (list, tuple)) else []
+    for i in range(n):
+        hit = _normalize_frac(given[i]) if i < len(given) else ""
+        out.append(hit or (PEEK_FRACS[0] if rng.random() < 0.5 else PEEK_FRACS[1]))
+    return {"side": side_v, "fracs": out}
+
+
+def load_config(assets: Path) -> dict:
+    """打字速度與自訂姿勢。缺檔或壞檔用程式預設，不依賴被 gitignore 的資產檔。"""
+    ensure_dirs(assets)
+    raw = {}
+    p = config_path(assets)
+    if p.is_file():
+        try:
+            data = json.loads(p.read_text("utf-8"))
+            if isinstance(data, dict):
+                raw = data
+        except (OSError, json.JSONDecodeError):
+            raw = {}
+    return {
+        "char_sec": clamp_char_sec(raw.get("char_sec"), CHAR_SEC_DEFAULT),
+        "poses": clean_tags(raw.get("poses")),
+    }
+
+
+def save_config(assets: Path, data: dict | None = None) -> dict:
+    cur = load_config(assets)
+    if isinstance(data, dict):
+        if "char_sec" in data:
+            cur["char_sec"] = clamp_char_sec(data.get("char_sec"))
+        if "poses" in data:
+            cur["poses"] = clean_tags(data.get("poses"))
+    _atomic_write(config_path(assets), json.dumps(cur, ensure_ascii=False, indent=2))
+    return cur
+
+
+def list_poses(assets: Path, extra_tags=None) -> list[dict]:
+    """內建姿勢＋設定裡新增的＋圖庫／劇本 tags 出現過的，依 id 去重。"""
+    cfg = load_config(assets)
+    seen = set()
+    out = []
+    for row in STOCK_POSES:
+        sid = str(row["id"])
+        if sid in seen:
+            continue
+        seen.add(sid)
+        out.append({"id": sid, "name": row["name"], "builtin": True})
+    extras = list(cfg.get("poses") or [])
+    if extra_tags:
+        extras.extend(clean_tags(extra_tags))
+    for sid in extras:
+        if sid in seen:
+            continue
+        seen.add(sid)
+        out.append({"id": sid, "name": sid, "builtin": False})
+    return out
 
 
 def _clip(s, n: int) -> str:

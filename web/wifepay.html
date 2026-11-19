@@ -8,9 +8,9 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #12101c; color: #d8d0ec; font-family: system-ui, "PingFang TC", "Noto Sans CJK TC", sans-serif;
-         font-size: 15px; padding: 1em; max-width: 920px; margin: 0 auto; line-height: 1.5; }
-  h1 { color: #ff4fd8; font-size: 1.2em; letter-spacing: .08em; margin-bottom: .2em; }
-  .warn { color: #ff9d4d; font-size: .8em; margin-bottom: 1em; }
+         font-size: 15px; padding: 1em; max-width: 920px; margin: 0 auto; line-height: 1.5; padding-bottom: 5.5em; }
+  h1 { color: #ff4fd8; font-size: 1.15em; letter-spacing: .08em; margin-bottom: .2em; }
+  .warn { color: #ff9d4d; font-size: .8em; margin-bottom: .8em; }
   section { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
             border-radius: 10px; padding: 1em 1.1em; margin-bottom: 1em; }
   h2 { color: #6fe3e1; font-size: .9em; letter-spacing: .1em; margin-bottom: .35em; }
@@ -37,7 +37,7 @@
   .fix0 { flex: 0 1 9em; }
   .girl-card { display: flex; gap: .8em; align-items: flex-start; margin-top: .5em;
                 background: rgba(0,0,0,.22); border-radius: 8px; padding: .7em .8em; }
-  .girl-card .port { width: 72px; height: 108px; object-fit: cover; border-radius: 6px;
+  .girl-card .port { width: 56px; height: 84px; object-fit: cover; border-radius: 6px;
                      background: rgba(0,0,0,.35); flex: 0 0 auto; }
   .girl-card .meta { flex: 1; min-width: 0; font-size: .88em; }
   .girl-card .meta b { color: #ff8fe6; }
@@ -48,28 +48,54 @@
   .thumbs { display: flex; flex-wrap: wrap; gap: .5em; margin-top: .5em; }
   .thumbs button { padding: .25em; background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.1); position: relative; }
   .thumbs button.sel { border-color: #ff4fd8; }
+  .thumbs button .tag { position: absolute; left: 4px; bottom: 4px; font-size: 9px; color: #ffd0e4;
+                        background: rgba(0,0,0,.65); padding: 0 3px; border-radius: 3px; }
   .thumbs img { width: 72px; height: 108px; object-fit: cover; border-radius: 4px; display: block; }
   .sheet { background: rgba(0,0,0,.28); border-radius: 8px; padding: .7em .8em; white-space: pre-wrap;
            font-size: .85em; color: #c8c0dc; min-height: 3em; max-height: 14em; overflow: auto; }
   #reveal-host { margin-top: .6em; }
-  .params { margin-top: .7em; display: none; }
-  .params.on { display: block; }
+  .params { margin-top: .5em; display: none; }
+  details[open] .params { display: block; }
   .params .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5em, 1fr)); gap: .4em .55em; }
   .params .grid .wide { grid-column: 1 / -1; }
+  .head { background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+          border-radius: 10px; padding: .8em 1em; margin-bottom: .85em; }
+  .steps { display: flex; gap: .3em; overflow-x: auto; padding-bottom: .35em; margin-bottom: .85em; }
+  .steps button { flex: 1 0 auto; min-width: 4.6em; padding: .45em .35em; font-size: .78em; letter-spacing: .02em;
+                  background: rgba(255,255,255,.04); color: #9a92b5; border: 1px solid rgba(255,255,255,.08); }
+  .steps button .n { display: block; font-weight: 700; color: #d8d0ec; }
+  .steps button.on { background: rgba(111,227,225,.16); color: #6fe3e1; border-color: rgba(111,227,225,.4); }
+  .steps button.done { color: #6bcb77; }
+  .steps button.done .n { color: #6bcb77; }
+  .step { display: none; }
+  .step.on { display: block; }
+  .pose-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(8.2em, 1fr)); gap: .5em; margin-top: .5em; }
+  .pose-grid button { text-align: center; padding: .7em .4em; background: rgba(0,0,0,.3);
+                      border: 1px solid rgba(255,255,255,.1); color: #d8d0ec; }
+  .pose-grid button.sel { border-color: #ff4fd8; background: rgba(255,79,216,.16); color: #ff8fe6; }
+  .pose-grid button .id { display: block; font-size: .72em; color: #8a82a5; margin-top: .15em; }
+  .step-bar { position: sticky; bottom: 0; left: 0; right: 0; z-index: 8; margin: 0 -1em -1em;
+              padding: .7em 1em calc(.7em + env(safe-area-inset-bottom));
+              background: linear-gradient(180deg, transparent, #12101c 28%);
+              display: flex; gap: .5em; align-items: center; }
+  .step-bar .hint { flex: 1; font-size: .78em; color: #8a82a5; }
+  input[type="range"] { width: 100%; accent-color: #ff4fd8; }
+  .chk { display: inline-flex; align-items: center; gap: .35em; margin: 0 0 .35em; font-size: .85em; color: #d8d0ec; cursor: pointer; }
+  .chk input { width: auto; }
 </style>
 </head>
 <body>
 <h1>✦ Wife Pay — 老婆還債編輯</h1>
 <p class="warn">
-  圖庫底圖由你上傳，生圖是圖生圖（832×1216），沒有底圖不會改走文生圖。
-  遊戲裡點門會先出旁白標籤，停約 0.8 秒後逐字打出旁白；按「下一句」才換成男子、再換成妻子。圖一好就慢慢顯現並把對話框拉到圖片下方，不裁切、不擋圖，也不打斷打字。劇本可存多種，開門隨機抽。
+  依序：選姿勢 → 編輯圖庫 → 編劇本 → 編 prompt → 調 denoise → 測試。
+  點門後圖只從門縫露出左或右的 1/2 或 1/3；兩張圖同一邊，交疊切換。對話每個字預設 1.2 秒，可在最後一步調整。
   變數：<code>{name}</code> <code>{hair}</code> <code>{breasts}</code> <code>{body}</code> <code>{pose}</code> <code>{pose_zh}</code> <code>{man_build}</code> <code>{man_build_zh}</code> <code>{family}</code> <code>{voice}</code> <code>{stage}</code> <code>{scenario}</code> <code>{script_name}</code>。
   <a href="/edit_pic">Edit Pic</a> | <a href="/test_room">房間沙盒</a> | <a href="/">回遊戲</a>
 </p>
 
-<section>
-  <h2>1. 妹子</h2>
-  <p class="mini">存檔名冊從 <code>/api/save</code> 讀。抽一隻<b>只擲人設參數</b>（外觀、個性、名字），立刻出現在下面，可直接改、可再抽；不產立繪、不叫模型、不寫進存檔。年齡最低 18。</p>
+<div class="head" id="girl-head">
+  <h2>測試用魅子</h2>
+  <p class="mini">整份流程都會用這裡的人設。抽一隻只擲參數，不產立繪、不寫存檔。年齡最低 18。</p>
   <div class="mode-row">
     <label><input type="radio" name="girl-mode" value="saved" checked> 存檔魅子</label>
     <label><input type="radio" name="girl-mode" value="draw"> 抽參數</label>
@@ -87,36 +113,54 @@
     <img class="port" id="girl-port" alt="" style="display:none">
     <div class="meta" id="girl-meta"><span class="mini">尚未選擇魅子</span></div>
   </div>
-  <div class="params" id="girl-params">
-    <p class="mini">這些參數會進 prompt／對話。改了立刻套用（只在本頁）。</p>
-    <div class="grid">
-      <span><label>名字</label><input id="p-name" type="text"></span>
-      <span><label>個性</label><select id="p-arch"></select></span>
-      <span><label>關係階（對話用）</label>
-        <select id="p-stage">
-          <option value="wife">妻子</option>
-          <option value="devoted_wife">貼心妻子</option>
-          <option value="obedient_wife">順從妻子</option>
-          <option value="pathological_wife">病態妻子</option>
-        </select></span>
-      <span><label>年齡（18+）</label><input id="p-age" type="number" min="18" max="45" step="1"></span>
-      <span><label>髮型</label><input id="p-hair" type="text"></span>
-      <span><label>髮色</label><input id="p-hair-color" type="text"></span>
-      <span><label>身材</label><input id="p-build" type="text"></span>
-      <span><label>罩杯</label><input id="p-cup" type="text"></span>
-      <span><label>胸型</label><input id="p-breast-shape" type="text"></span>
-      <span><label>臉</label><input id="p-face" type="text"></span>
-      <span><label>眼睛</label><input id="p-eyes" type="text"></span>
-      <span><label>瞳色</label><input id="p-eye-color" type="text"></span>
-      <span><label>嘴</label><input id="p-mouth" type="text"></span>
-      <span class="wide"><label>特徵</label><input id="p-feature" type="text"></span>
+  <details>
+    <summary class="mini" style="cursor:pointer;color:#6fe3e1;margin-top:.4em">展開人設參數（會進 prompt／對話）</summary>
+    <div class="params" id="girl-params">
+      <div class="grid">
+        <span><label>名字</label><input id="p-name" type="text"></span>
+        <span><label>個性</label><select id="p-arch"></select></span>
+        <span><label>關係階（對話用）</label>
+          <select id="p-stage">
+            <option value="wife">妻子</option>
+            <option value="devoted_wife">貼心妻子</option>
+            <option value="obedient_wife">順從妻子</option>
+            <option value="pathological_wife">病態妻子</option>
+          </select></span>
+        <span><label>年齡（18+）</label><input id="p-age" type="number" min="18" max="45" step="1"></span>
+        <span><label>髮型</label><input id="p-hair" type="text"></span>
+        <span><label>髮色</label><input id="p-hair-color" type="text"></span>
+        <span><label>身材</label><input id="p-build" type="text"></span>
+        <span><label>罩杯</label><input id="p-cup" type="text"></span>
+        <span><label>胸型</label><input id="p-breast-shape" type="text"></span>
+        <span><label>臉</label><input id="p-face" type="text"></span>
+        <span><label>眼睛</label><input id="p-eyes" type="text"></span>
+        <span><label>瞳色</label><input id="p-eye-color" type="text"></span>
+        <span><label>嘴</label><input id="p-mouth" type="text"></span>
+        <span class="wide"><label>特徵</label><input id="p-feature" type="text"></span>
+      </div>
     </div>
+  </details>
+</div>
+
+<nav class="steps" id="step-nav" aria-label="步驟"></nav>
+
+<section class="step" id="step-1" data-step="1">
+  <h2>1. 選擇姿勢</h2>
+  <p class="mini">先選這次要用的體位。圖庫和劇本會依姿勢篩選；也可以自己加一個姿勢名稱。</p>
+  <div class="pose-grid" id="pose-grid"></div>
+  <div class="row" style="margin-top:.7em">
+    <span class="grow"><label>新增姿勢（英文 id，例如 standing）</label>
+      <input id="pose-new" type="text" placeholder="standing"></span>
+    <button class="cy" type="button" id="btn-pose-add">加入姿勢</button>
   </div>
+  <p class="status" id="pose-status"></p>
+  <input type="hidden" id="ig-pose" value="">
 </section>
 
-<section>
-  <h2>2. 圖庫</h2>
-  <p class="mini">上傳／刪除底圖，點一張編該張的 prompt、negative、denoise、tags（可填體位如 missionary、cowgirl，抽圖時優先對上）。</p>
+<section class="step" id="step-2" data-step="2">
+  <h2>2. 編輯圖形</h2>
+  <p class="mini">上傳、刪除、點選這次姿勢要用的底圖。新上傳的會自動帶上目前姿勢的 tag。直式 832×1216。</p>
+  <label class="chk"><input id="gal-all" type="checkbox"> 顯示全部圖（不只這個姿勢）</label>
   <div class="row">
     <input id="gal-file" type="file" accept="image/*" style="flex:1 1 14em">
     <button class="cy" type="button" id="btn-gal-up">上傳</button>
@@ -124,69 +168,23 @@
   </div>
   <div class="thumbs" id="gal-thumbs"><span class="mini">（尚無圖）</span></div>
   <div class="row">
-    <span class="grow"><label>這張 prompt（可含變數）</label>
-      <textarea id="item-prompt" placeholder="1girl, 1boy, {hair}, {breasts}, {pose} pose…"></textarea></span>
-  </div>
-  <label>這張 negative</label>
-  <textarea id="item-neg"></textarea>
-  <div class="row">
-    <span class="fix0"><label>denoise</label>
-      <input id="item-denoise" type="number" min="0.35" max="0.85" step="0.05" value="0.55"></span>
-    <span class="grow"><label>tags（逗號分隔，例如 cowgirl, bedroom）</label>
+    <span class="grow"><label>這張 tags（逗號分隔；抽圖時優先對上姿勢）</label>
       <input id="item-tags" type="text" placeholder="cowgirl, bed"></span>
     <button type="button" id="btn-item-save">儲存這張</button>
   </div>
+  <p class="status" id="gal-status"></p>
 </section>
 
-<section>
-  <h2>3. 測試參數</h2>
-  <div class="row">
-    <span class="fix0"><label>體位 pose</label>
-      <select id="ig-pose">
-        <option value="missionary">missionary 傳教士</option>
-        <option value="cowgirl" selected>cowgirl 騎乘</option>
-        <option value="doggy">doggy 老漢推車</option>
-        <option value="kiss">kiss 擁吻</option>
-        <option value="reverse">reverse 背向</option>
-      </select></span>
-    <span class="fix0"><label>客人體型</label>
-      <select id="ig-build">
-        <option value="average" selected>average</option>
-        <option value="slim">slim</option>
-        <option value="muscular">muscular</option>
-        <option value="fat">fat</option>
-        <option value="tall">tall</option>
-        <option value="short">short</option>
-        <option value="old">old</option>
-      </select></span>
-    <span class="grow"><label>Comfy checkpoint</label>
-      <select id="ig-ckpt"><option value="">（測引擎後載入／用魅子綁定）</option></select></span>
-  </div>
-  <div class="row">
-    <span class="grow"><label>Comfy URL</label>
-      <input id="ig-comfy" type="text" placeholder="http://192.168.x.x:8188"></span>
-    <span class="fix0"><label>denoise 覆蓋（空＝用該張）</label>
-      <input id="ig-denoise" type="number" min="0.35" max="0.85" step="0.05" placeholder=""></span>
-    <span class="fix0"><label>seed（0＝隨機）</label>
-      <input id="ig-seed" type="number" min="0" step="1" value="0"></span>
-  </div>
-  <div class="row" style="margin-top:.55em">
-    <button class="cy" type="button" id="btn-ig-ping">測試引擎</button>
-    <button type="button" id="btn-preview-prompt">預覽展開後的 prompt</button>
-  </div>
-  <div class="status" id="ig-eng-status"></div>
-  <div class="sheet" id="prompt-sheet">選妹子與圖庫後可預覽。</div>
-</section>
-
-<section>
-  <h2>4. 劇本</h2>
-  <p class="mini">可存多種劇本，開門時從啟用的裡面隨機抽（有對上圖庫 tags 會優先）。每本可寫情境、男子／妻子語氣、後備旁白／對白；進階欄位可覆寫提示詞（空白＝用內建修正後的旁白模板）。測試可指定某一本或隨機。內建劇本由伺服器從程式碼補上，不依賴本機是否已有 scripts.json。</p>
+<section class="step" id="step-3" data-step="3">
+  <h2>3. 劇本編輯</h2>
+  <p class="mini">可新增、刪除、編輯。開門時從啟用的裡面隨機抽（有對上姿勢 tags 會優先）。內建劇本由伺服器從程式碼補上。</p>
   <div class="status" id="script-status"></div>
+  <label class="chk"><input id="script-all" type="checkbox"> 顯示全部劇本</label>
   <div class="row">
     <span class="grow"><label>編輯這本</label>
       <select id="script-sel"></select></span>
-    <label style="display:inline-flex;align-items:center;gap:.35em;margin:0 0 .35em;font-size:.85em;color:#d8d0ec">
-      <input id="script-enabled" type="checkbox" checked style="width:auto"> 啟用（會被隨機抽到）
+    <label class="chk">
+      <input id="script-enabled" type="checkbox" checked> 啟用（會被隨機抽到）
     </label>
   </div>
   <div class="row" style="margin-top:.4em">
@@ -196,7 +194,7 @@
   </div>
   <label>名稱</label>
   <input id="script-name" type="text" placeholder="例如：被壓在床上">
-  <label>tags（逗號分隔，抽圖時優先對上，例如 missionary, bed）</label>
+  <label>tags（逗號分隔，例如 missionary, bed）</label>
   <input id="script-tags" type="text" placeholder="missionary, bed">
   <label>情境（會進旁白提示詞）</label>
   <textarea id="script-scenario" style="min-height:5em"></textarea>
@@ -217,17 +215,77 @@
     <label>user（可含 {scenario} {script_name} {name} {pose_zh} 等變數）</label>
     <textarea id="dlg-user" style="min-height:5em"></textarea>
   </details>
-  <div class="row" style="margin-top:.45em">
-    <button type="button" id="btn-dlg-test">測試這本對話框</button>
-  </div>
 </section>
 
-<section>
-  <h2>5. 測試</h2>
-  <p class="mini">「測試這張圖」只用目前選中的底圖生一張。「全部一起測試」隨機 1 或 2 張＋對話，播完整動畫（旁白→男子→妻子逐字打出，按下一句換人；圖一好就淡入並把對話框拉到下方，不裁切、不擋圖、不重設打字進度）。</p>
+<section class="step" id="step-4" data-step="4">
+  <h2>4. Prompt 編輯</h2>
+  <p class="mini">編輯目前選中底圖的 prompt 與 negative，可預覽套上人設之後的結果。</p>
+  <div class="row">
+    <span class="grow"><label>這張 prompt（可含變數）</label>
+      <textarea id="item-prompt" placeholder="1girl, 1boy, {hair}, {breasts}, {pose} pose…"></textarea></span>
+  </div>
+  <label>這張 negative</label>
+  <textarea id="item-neg"></textarea>
+  <div class="row" style="margin-top:.55em">
+    <button type="button" id="btn-preview-prompt">預覽展開後的 prompt</button>
+    <button type="button" id="btn-item-save-2">儲存這張</button>
+  </div>
+  <div class="sheet" id="prompt-sheet">選妹子與圖庫後可預覽。</div>
+</section>
+
+<section class="step" id="step-5" data-step="5">
+  <h2>5. Denoise 調整</h2>
+  <p class="mini">圖生圖的 denoise：愈低愈接近底圖構圖，愈高變化愈大。範圍 0.35～0.85。可直接測單張。</p>
+  <label>這張 denoise：<b id="denoise-val">0.55</b></label>
+  <input id="item-denoise" type="range" min="0.35" max="0.85" step="0.05" value="0.55">
+  <div class="row" style="margin-top:.5em">
+    <span class="fix0"><label>測試時覆蓋（空＝用這張）</label>
+      <input id="ig-denoise" type="number" min="0.35" max="0.85" step="0.05" placeholder=""></span>
+    <span class="fix0"><label>seed（0＝隨機）</label>
+      <input id="ig-seed" type="number" min="0" step="1" value="0"></span>
+    <button type="button" id="btn-denoise-save">儲存 denoise</button>
+    <button class="cy" type="button" id="btn-test-img-5">測試這張圖</button>
+  </div>
+  <p class="status" id="denoise-status"></p>
+</section>
+
+<section class="step" id="step-6" data-step="6">
+  <h2>6. 測試</h2>
+  <p class="mini">先測對話、再測單張，或全部一起測試（與遊戲同一套：逐字打出、門縫切圖、圖好了對話在下方）。</p>
+  <div class="row">
+    <span class="fix0"><label>客人體型</label>
+      <select id="ig-build">
+        <option value="average" selected>average</option>
+        <option value="slim">slim</option>
+        <option value="muscular">muscular</option>
+        <option value="fat">fat</option>
+        <option value="tall">tall</option>
+        <option value="short">short</option>
+        <option value="old">old</option>
+      </select></span>
+    <span class="grow"><label>Comfy checkpoint</label>
+      <select id="ig-ckpt"><option value="">（測引擎後載入／用魅子綁定）</option></select></span>
+  </div>
+  <div class="row">
+    <span class="grow"><label>Comfy URL</label>
+      <input id="ig-comfy" type="text" placeholder="http://192.168.x.x:8188"></span>
+    <button class="cy" type="button" id="btn-ig-ping">測試引擎</button>
+  </div>
+  <div class="status" id="ig-eng-status"></div>
+  <label>打字速度（每字秒數，預設 1.2，範圍 0.05～2.0；標點會按比例多停。點一下可一次跑完這句）</label>
+  <div class="row">
+    <span class="grow"><input id="ig-char-sec" type="range" min="0.05" max="2" step="0.05" value="1.2"></span>
+    <span class="fix0"><input id="ig-char-sec-num" type="number" min="0.05" max="2" step="0.05" value="1.2"></span>
+    <button type="button" id="btn-char-save">儲存速度</button>
+  </div>
+  <p class="mini" id="char-sec-label">目前每個字 1.2 秒（遊戲裡也用這個設定）</p>
   <div class="row">
     <span class="grow"><label>測試用劇本</label>
       <select id="ig-script"><option value="random">隨機</option></select></span>
+    <label class="chk"><input id="ig-full" type="checkbox"> 看全圖（略過門縫）</label>
+  </div>
+  <div class="row" style="margin-top:.5em">
+    <button type="button" id="btn-dlg-test">測試這本對話框</button>
     <button type="button" id="btn-test-img">測試這張圖</button>
     <button class="big" type="button" id="btn-test-all">全部一起測試</button>
   </div>
@@ -235,6 +293,12 @@
   <div id="reveal-host"></div>
 </section>
 
-<script type="module" src="/content/wifepay.js?v=5"></script>
+<div class="step-bar">
+  <button type="button" id="btn-prev">上一步</button>
+  <span class="hint" id="step-hint"></span>
+  <button class="cy" type="button" id="btn-next">下一步</button>
+</div>
+
+<script type="module" src="/content/wifepay.js?v=6"></script>
 </body>
 </html>

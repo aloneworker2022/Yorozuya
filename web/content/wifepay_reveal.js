@@ -1,16 +1,21 @@
-/* 老婆還債偷看：共用「中央對話框 → 圖淡入、對話框下移」元件（遊戲與 /wifepay 編輯頁同一套）。
- * 對話：先出說話人標籤，停約 0.8 秒後打字機逐字出現；一段跑完按「下一句」才換人（旁白→男子→妻子），舊句往上留著。
- * 打字途中再點會一次跑完。圖庫空或生圖失敗只留對話，不退回人偶、不改文生圖。圖淡入不重設打字進度。 */
-const CSS_ID = "wifepay-reveal-css-3";
+/* 老婆還債偷看：共用「中央對話框 → 門縫切圖、對話框在圖下方」元件（遊戲與 /wifepay 編輯頁同一套）。
+ * 對話：先出說話人標籤，停約 0.8 秒後打字機逐字出現（預設每字 1.2 秒，可在編輯頁改，標點按比例加長）；一段跑完按「下一句」才換人。
+ * 打字途中再點會一次跑完。圖好了只顯示左或右的 1/2 或 1/3 寬（同一扇門同一邊），兩張時在同一位置交疊淡入。 */
+const CSS_ID = "wifepay-reveal-css-4";
 const CSS = `
 .wp-reveal{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;background:rgba(8,6,12,.28);overflow:hidden}
 .wp-reveal.page{position:relative;inset:auto;width:100%;height:min(86dvh,44rem);min-height:28rem;background:#120e18;border-radius:12px;overflow:hidden;pointer-events:auto}
-.wp-pics{display:none;flex:1 1 auto;min-height:0;width:100%;opacity:0;transition:opacity 1.8s ease;background:#0c0912;align-items:flex-end;justify-content:center;gap:.4rem;padding:.3rem .3rem 0;box-sizing:border-box}
+.wp-pics{display:none;flex:1 1 auto;min-height:0;width:100%;opacity:0;transition:opacity 1.8s ease;background:#07050a;align-items:center;justify-content:center;padding:0;box-sizing:border-box;position:relative}
 .wp-pics.ready{display:flex}
 .wp-pics.show{opacity:1}
-.wp-pics.one{flex-direction:column}
-.wp-pics.two{flex-direction:row;flex-wrap:nowrap}
-.wp-pics img{flex:1 1 0;min-width:0;min-height:0;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;object-position:center center;display:block}
+.wp-door{position:relative;height:100%;width:100%;display:flex;align-items:center;justify-content:center;overflow:hidden;background:linear-gradient(90deg,#050308 0%,#140c0a 10%,#07050a 22%,#07050a 78%,#140c0a 90%,#050308 100%)}
+.wp-gap{position:relative;height:100%;max-height:100%;overflow:hidden;background:#000;border-left:7px solid #3d261c;border-right:7px solid #2a1814;box-sizing:content-box;box-shadow:-16px 0 0 #160e0c,16px 0 0 #120b0a,-22px 0 22px rgba(0,0,0,.9),22px 0 22px rgba(0,0,0,.9),inset 0 0 18px rgba(0,0,0,.6);transition:width .7s ease}
+.wp-gap img{position:absolute;top:0;height:100%;width:auto;max-width:none;display:block;opacity:0;transition:opacity 1s ease}
+.wp-gap img.on{opacity:1}
+.wp-pics.full .wp-door{background:#0c0912}
+.wp-pics.full .wp-gap{width:auto!important;max-width:100%;height:100%;border:none;box-shadow:none}
+.wp-pics.full .wp-gap img{position:relative;left:auto!important;width:auto;max-width:100%;height:100%;object-fit:contain}
+.wp-full-btn{position:absolute;right:.45rem;top:.45rem;z-index:3;pointer-events:auto;padding:.22rem .65rem;border:1px solid rgba(232,138,180,.4);border-radius:999px;background:rgba(20,14,24,.82);color:#ffd0e4;font:600 12px/1.3 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;cursor:pointer}
 .wp-dialog{position:relative;z-index:2;flex:0 0 auto;width:90%;max-width:24rem;max-height:42%;margin:0 auto;padding:.85rem .95rem .95rem;border-radius:14px;background:rgba(22,16,30,.96);border:1px solid rgba(232,138,180,.35);color:#f2e9ff;font:600 15px/1.55 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.4);pointer-events:auto;cursor:pointer;overflow:auto;box-sizing:border-box}
 .wp-reveal.has-pics{justify-content:flex-end;align-items:stretch}
 .wp-reveal.has-pics .wp-dialog{margin:.4rem auto .55rem;max-height:36%}
@@ -70,6 +75,7 @@ export async function fetchDialog(info) {
     ai: !!j.ai,
     script_id: String(j.script_id || ""),
     script_name: String(j.script_name || ""),
+    char_sec: j.char_sec,
   };
 }
 
@@ -79,6 +85,66 @@ export async function fetchScripts() {
     throw new Error("劇本接口回傳格式不對（沒有 scripts 陣列）。若剛更新程式，請先重啟 uvicorn。");
   }
   return j.scripts;
+}
+
+let _cfgP = null;
+export function invalidateConfig() { _cfgP = null; }
+
+export async function fetchConfig() {
+  if (!_cfgP) {
+    _cfgP = apiJson("/api/wifepay/config").catch(() => ({ char_sec: 1.2, poses: [], pose_catalog: [] }));
+  }
+  const j = await _cfgP;
+  const char = Number(j.char_sec);
+  return {
+    char_sec: Number.isFinite(char) ? Math.max(0.05, Math.min(2, char)) : 1.2,
+    poses: Array.isArray(j.poses) ? j.poses : [],
+    pose_catalog: Array.isArray(j.pose_catalog) ? j.pose_catalog : [],
+  };
+}
+
+export async function saveConfig(fields) {
+  invalidateConfig();
+  const j = await apiJson("/api/wifepay/config", "PUT", fields || {});
+  invalidateConfig();
+  return j;
+}
+
+export function pickPeek(count, opt = {}) {
+  const n = Math.max(1, Math.min(2, Number(count) || 1));
+  const side = opt.side === "left" || opt.side === "right"
+    ? opt.side
+    : (Math.random() < 0.5 ? "left" : "right");
+  const given = Array.isArray(opt.fracs) ? opt.fracs : [];
+  const fracs = [];
+  for (let i = 0; i < n; i++) {
+    const hit = normalizeFrac(given[i]);
+    fracs.push(hit || (Math.random() < 0.5 ? "1/2" : "1/3"));
+  }
+  return { side, fracs };
+}
+
+export function normalizePeek(raw, count) {
+  const n = Math.max(1, Math.min(2, Number(count) || (raw && raw.fracs && raw.fracs.length) || 1));
+  const side = raw && (raw.side === "left" || raw.side === "right") ? raw.side : "left";
+  const fracs = [];
+  const given = raw && Array.isArray(raw.fracs) ? raw.fracs : [];
+  for (let i = 0; i < n; i++) fracs.push(normalizeFrac(given[i]) || "1/2");
+  return { side, fracs };
+}
+
+function normalizeFrac(v) {
+  const s = String(v ?? "").trim();
+  if (v === 2 || v === 0.5 || s === "2" || s === "1/2" || s === "0.5") return "1/2";
+  if (v === 3 || s === "3" || s === "1/3") return "1/3";
+  const f = Number(v);
+  if (Number.isFinite(f) && Math.abs(f - 0.5) < 0.05) return "1/2";
+  if (Number.isFinite(f) && Math.abs(f - 1 / 3) < 0.05) return "1/3";
+  return "";
+}
+
+export function fracValue(f) {
+  return normalizeFrac(f) === "1/3" ? 1 / 3 : 0.5;
 }
 
 /** 輪詢既有 /api/imggen；成功回圖 URL，失敗丟錯。 */
@@ -130,10 +196,11 @@ export async function generateFromItem(item, opts = {}, onTick) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
-function typeDelay(mark) {
-  if (/[。！？!?…]/.test(mark)) return 90;
-  if (/[、，,．.]/.test(mark)) return 50;
-  return 26;
+export function typeDelay(mark, charSec = 1.2) {
+  const base = Math.max(50, Math.min(2000, Math.round((Number(charSec) || 1.2) * 1000)));
+  if (/[。！？!?…]/.test(mark)) return Math.round(base * (90 / 26));
+  if (/[、，,．.]/.test(mark)) return Math.round(base * (50 / 26));
+  return base;
 }
 
 function speakerLabels(opts, row) {
@@ -150,8 +217,10 @@ function speakerLabels(opts, row) {
  * 在 host 裡掛上揭示畫面。
  * opts.dialog = 已有 {narration,man,wife} 或 ()=>Promise
  * opts.images = 已有 url[] 或 ()=>Promise<url[]>（空陣列＝只留對話）
- * opts.emptyMessage 圖庫空時的說明
- * 回 { el, close, setDialog, setImages, setNote }
+ * opts.charSec 每字秒數（預設 1.2；也可等 fetchConfig）
+ * opts.peek = {side, fracs}
+ * opts.fullImage 編輯頁看全圖
+ * opts.showFullToggle 顯示「看全圖」按鈕
  */
 export function mountWifepayReveal(host, opts = {}) {
   ensureCss();
@@ -160,7 +229,10 @@ export function mountWifepayReveal(host, opts = {}) {
   if (prev) prev.remove();
   const el = document.createElement("div");
   el.className = "wp-reveal" + (opts.page ? " page" : "");
-  el.innerHTML = `<div class="wp-pics" hidden></div>
+  el.innerHTML = `<div class="wp-pics" hidden>
+      <div class="wp-door"><div class="wp-gap"></div></div>
+      ${opts.showFullToggle !== false && opts.page ? `<button type="button" class="wp-full-btn">看全圖</button>` : ""}
+    </div>
     <div class="wp-dialog">
       <p class="wp-wait">${opts.waitText || "門後傳來聲音……"}</p>
       <div class="wp-log"></div>
@@ -169,6 +241,9 @@ export function mountWifepayReveal(host, opts = {}) {
     </div>`;
   host.append(el);
   const pics = el.querySelector(".wp-pics");
+  const door = el.querySelector(".wp-door");
+  const gap = el.querySelector(".wp-gap");
+  const fullBtn = el.querySelector(".wp-full-btn");
   const box = el.querySelector(".wp-dialog");
   const wait = el.querySelector(".wp-wait");
   const log = el.querySelector(".wp-log");
@@ -176,11 +251,21 @@ export function mountWifepayReveal(host, opts = {}) {
   const note = el.querySelector(".wp-note");
   const closed = { yes: false };
   const ctl = {
-    phase: "idle", // pause | typing | await-next | done
+    phase: "idle",
     skipPause: null,
     skipType: null,
     goNext: null,
   };
+  const state = {
+    urls: [],
+    peek: normalizePeek(opts.peek || {}, 1),
+    idx: 0,
+    advanced: 0,
+    full: !!opts.fullImage,
+    charSec: opts.charSec != null ? Number(opts.charSec) : null,
+  };
+  pics.classList.toggle("full", state.full);
+  if (fullBtn) fullBtn.textContent = state.full ? "門縫切圖" : "看全圖";
 
   const hideWait = () => { wait.style.display = "none"; };
   const showNext = (on) => { nextBtn.hidden = !on; };
@@ -201,6 +286,87 @@ export function mountWifepayReveal(host, opts = {}) {
   function markHist() {
     log.querySelectorAll(".wp-line:not(.hist)").forEach((n) => n.classList.add("hist"));
   }
+
+  function layoutGap() {
+    if (closed.yes || state.full) return;
+    const img = gap.querySelector("img.on") || gap.querySelector("img");
+    if (!img || !img.naturalWidth || !img.naturalHeight) return;
+    const h = door.clientHeight || pics.clientHeight;
+    if (!h) return;
+    const fullW = h * (img.naturalWidth / img.naturalHeight);
+    const frac = fracValue((state.peek.fracs || [])[state.idx] || "1/2");
+    const vis = Math.max(8, fullW * frac);
+    gap.style.height = h + "px";
+    gap.style.width = vis + "px";
+    gap.querySelectorAll("img").forEach((im) => {
+      if (!im.naturalWidth || !im.naturalHeight) return;
+      const w = h * (im.naturalWidth / im.naturalHeight);
+      im.style.height = h + "px";
+      im.style.width = w + "px";
+      im.style.left = state.peek.side === "right" ? `${vis - w}px` : "0px";
+    });
+  }
+
+  function showIndex(i, { fade } = {}) {
+    if (!state.urls.length) return;
+    state.idx = Math.max(0, Math.min(state.urls.length - 1, i));
+    const url = state.urls[state.idx];
+    let img = [...gap.querySelectorAll("img")].find((n) => n.getAttribute("src") === url);
+    if (!img) {
+      img = document.createElement("img");
+      img.alt = "";
+      img.addEventListener("load", () => layoutGap());
+      gap.append(img);
+      img.src = url;
+    }
+    const others = [...gap.querySelectorAll("img")].filter((n) => n !== img);
+    if (!fade) {
+      others.forEach((n) => n.classList.remove("on"));
+      img.classList.add("on");
+    } else {
+      others.forEach((n) => n.classList.remove("on"));
+      requestAnimationFrame(() => img.classList.add("on"));
+    }
+    layoutGap();
+  }
+
+  function maybeAdvanceImage() {
+    state.advanced += 1;
+    if (state.urls.length > 1 && state.idx === 0) showIndex(1, { fade: true });
+  }
+
+  function applyImages(urls) {
+    const list = (urls || []).map((u) => String(u || "")).filter(Boolean);
+    if (!list.length || closed.yes) return;
+    if (list.length > state.peek.fracs.length) {
+      state.peek = pickPeek(list.length, { side: state.peek.side, fracs: state.peek.fracs });
+    }
+    state.urls = list;
+    pics.hidden = false;
+    pics.classList.add("ready");
+    el.classList.add("has-pics");
+    const want = (list.length > 1 && state.advanced >= 1) ? 1 : 0;
+    showIndex(want, { fade: want !== 0 && pics.classList.contains("show") });
+    requestAnimationFrame(() => { pics.classList.add("show"); layoutGap(); });
+  }
+
+  function setFull(on) {
+    state.full = !!on;
+    pics.classList.toggle("full", state.full);
+    if (fullBtn) fullBtn.textContent = state.full ? "門縫切圖" : "看全圖";
+    if (!state.full) layoutGap();
+  }
+
+  fullBtn?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setFull(!state.full);
+  });
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => layoutGap());
+    ro.observe(pics);
+  }
+  window.addEventListener("resize", layoutGap);
 
   function advanceFromClick() {
     if (closed.yes) return;
@@ -265,7 +431,8 @@ export function mountWifepayReveal(host, opts = {}) {
         body.textContent = chars.slice(0, i).join("");
         scrollLog();
         if (i >= chars.length) return finish();
-        timer = setTimeout(tick, typeDelay(chars[i - 1]));
+        const sec = state.charSec != null ? state.charSec : 1.2;
+        timer = setTimeout(tick, typeDelay(chars[i - 1], sec));
       };
       tick();
     });
@@ -280,6 +447,7 @@ export function mountWifepayReveal(host, opts = {}) {
         ctl.goNext = null;
         showNext(false);
         if (ctl.phase === "await-next") ctl.phase = "idle";
+        maybeAdvanceImage();
         resolve();
       };
     });
@@ -290,6 +458,7 @@ export function mountWifepayReveal(host, opts = {}) {
     close() {
       if (closed.yes) return;
       closed.yes = true;
+      window.removeEventListener("resize", layoutGap);
       try { ctl.skipPause?.(); } catch { /* */ }
       try { ctl.skipType?.(); } catch { /* */ }
       try { ctl.goNext?.(); } catch { /* */ }
@@ -297,29 +466,22 @@ export function mountWifepayReveal(host, opts = {}) {
       try { opts.onClose?.(); } catch { /* */ }
     },
     setNote(text) { note.textContent = text || ""; },
+    setCharSec(sec) {
+      const n = Number(sec);
+      if (Number.isFinite(n)) state.charSec = Math.max(0.05, Math.min(2, n));
+    },
+    setPeek(peek) {
+      state.peek = normalizePeek(peek || state.peek, Math.max(state.urls.length, (peek && peek.fracs && peek.fracs.length) || 1));
+      layoutGap();
+    },
+    setFull,
     async setDialog(row) {
       if (closed.yes) return;
       return playFrom(Promise.resolve(row));
     },
-    setImages(urls) {
-      const list = (urls || []).map((u) => String(u || "")).filter(Boolean);
-      if (!list.length || closed.yes) return;
-      pics.hidden = false;
-      pics.classList.add("ready");
-      pics.classList.toggle("two", list.length > 1);
-      pics.classList.toggle("one", list.length <= 1);
-      list.forEach((u, i) => {
-        let img = pics.children[i];
-        if (!img || img.tagName !== "IMG") {
-          img = document.createElement("img");
-          img.alt = "";
-          pics.append(img);
-        }
-        if (img.getAttribute("src") !== u) img.src = u;
-      });
-      while (pics.children.length > list.length) pics.removeChild(pics.lastChild);
-      el.classList.add("has-pics");
-      requestAnimationFrame(() => { pics.classList.add("show"); });
+    setImages(urls, peek) {
+      if (peek) api.setPeek(peek);
+      applyImages(urls);
     },
   };
 
@@ -335,6 +497,7 @@ export function mountWifepayReveal(host, opts = {}) {
       row = null;
     }
     if (closed.yes || job !== playJob) return;
+    if (row && row.char_sec != null && state.charSec == null) api.setCharSec(row.char_sec);
     const labels = speakerLabels(opts, row);
     first.node.querySelector(".wp-k").textContent = labels.nar;
     if (!row || !(row.narration || row.man || row.wife)) {
@@ -381,6 +544,12 @@ export function mountWifepayReveal(host, opts = {}) {
 
   const run = async () => {
     try {
+      if (state.charSec == null) {
+        try {
+          const cfg = await fetchConfig();
+          if (state.charSec == null) api.setCharSec(cfg.char_sec);
+        } catch { /* 用預設 1.2 */ }
+      }
       if (opts.emptyMessage) api.setNote(opts.emptyMessage);
       const dlgP = typeof opts.dialog === "function" ? opts.dialog() : Promise.resolve(opts.dialog);
       const imgP = typeof opts.images === "function" ? opts.images() : Promise.resolve(opts.images);
@@ -388,7 +557,7 @@ export function mountWifepayReveal(host, opts = {}) {
         if (closed.yes) return;
         if (Array.isArray(urls) && urls.length) {
           api.setNote("");
-          api.setImages(urls);
+          api.setImages(urls, opts.peek);
         }
       }).catch((err) => {
         if (!closed.yes) api.setNote(String(err?.message || err || "圖片沒有產出，只留對話"));
@@ -417,24 +586,41 @@ export function startWifepayPeek(host, opts = {}) {
     script_id: opts.script_id || opts.script || "random",
   };
   const genOpts = {
-    ...info,
-    ckpt: opts.ckpt || opts.character?.comfyCkpt || "",
-    comfy_url: opts.comfy_url || "",
-    seed: opts.seed || 0,
+    character: info.character,
+    name: info.name,
+    pose: info.pose,
+    build: info.build,
+    family: info.family,
+    voice: info.voice,
+    stage: info.stage,
+    regular: info.regular,
+    guestName: info.guestName,
     denoise: opts.denoise,
-    timeout: opts.timeout,
+    seed: opts.seed,
+    ckpt: opts.ckpt,
+    comfy_url: opts.comfy_url,
+    prompt: opts.prompt,
+    negative: opts.negative,
   };
   let emptyMessage = "";
+  let peek = opts.peek || null;
   const pickP = (async () => {
-    if (typeof opts.onStatus === "function") opts.onStatus("抽圖庫…");
-    return pickGallery(info.pose, opts.count);
+    try {
+      return await pickGallery(info.pose, opts.count);
+    } catch (err) {
+      return { items: [], empty: true, peek: null, error: err };
+    }
   })();
   const images = async () => {
     const picked = await pickP;
-    if (picked.empty || !picked.items?.length) {
-      emptyMessage = "圖庫是空的。請先到 /wifepay 上傳底圖（不會改走文生圖）。";
-      return [];
+    if (picked.char_sec != null) ui?.setCharSec(picked.char_sec);
+    if (picked.peek) peek = picked.peek;
+    if (picked.empty || !(picked.items || []).length) {
+      emptyMessage = "圖庫是空的，只留對話。請先到 /wifepay 上傳底圖。";
+      throw new Error(emptyMessage);
     }
+    if (!peek) peek = pickPeek(picked.items.length);
+    ui?.setPeek(peek);
     if (typeof opts.onStatus === "function") opts.onStatus(`正在生成 ${picked.items.length} 張圖…`);
     const urls = [];
     await Promise.all(picked.items.map(async (item, i) => {
@@ -444,8 +630,7 @@ export function startWifepayPeek(host, opts = {}) {
         });
         if (url) {
           urls.push(url);
-          // 任一張先好就立刻顯現、把對話往下推，不等全部生完、也不等對話打完
-          try { ui.setImages(urls.slice()); } catch { /* */ }
+          try { ui.setImages(urls.slice(), peek); } catch { /* */ }
         }
       } catch (err) {
         console.warn("[wifepay]", err);
@@ -464,12 +649,17 @@ export function startWifepayPeek(host, opts = {}) {
     } catch { /* 圖庫空也還是能生對話 */ }
     try { return await fetchDialog({ ...info, tags }); } catch { return null; }
   };
-  const ui = mountWifepayReveal(host, {
+  let ui;
+  ui = mountWifepayReveal(host, {
     page: !!opts.page,
     instant: !!opts.instant,
     waitText: opts.waitText || "門後傳來聲音……",
     wifeName: info.name,
     guestName: info.guestName,
+    charSec: opts.charSec,
+    peek,
+    fullImage: !!opts.fullImage,
+    showFullToggle: opts.showFullToggle !== false && !!opts.page,
     dialog,
     images: async () => {
       const urls = await images();

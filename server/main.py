@@ -5133,6 +5133,22 @@ def wifepay_gallery_delete(item_id: str):
     return {"ok": True}
 
 
+@app.get("/api/wifepay/config")
+def wifepay_config_get():
+    cfg = wifepay.load_config(ASSETS_DIR)
+    extras = []
+    for it in wifepay.load_index(ASSETS_DIR):
+        extras.extend(it.get("tags") or [])
+    for s in wifepay.load_scripts(ASSETS_DIR):
+        extras.extend(s.get("tags") or [])
+    return {**cfg, "pose_catalog": wifepay.list_poses(ASSETS_DIR, extras)}
+
+
+@app.put("/api/wifepay/config")
+def wifepay_config_put(body: dict | None = None):
+    return {**wifepay.save_config(ASSETS_DIR, body or {}), "ok": True}
+
+
 @app.get("/api/wifepay/dialog-prompt")
 def wifepay_dialog_prompt_get():
     return wifepay.load_dialog_prompt(ASSETS_DIR)
@@ -5190,11 +5206,13 @@ async def wifepay_dialog(body: dict):
     if script:
         info["script"] = script
     row, ai = wifepay.resolve_dialog(reply, info)
+    cfg = wifepay.load_config(ASSETS_DIR)
     return {
         **row,
         "ai": ai,
         "script_id": (script or {}).get("id") or "",
         "script_name": (script or {}).get("name") or "",
+        "char_sec": cfg.get("char_sec"),
     }
 
 
@@ -5207,7 +5225,15 @@ def wifepay_pick(body: dict | None = None):
     count = body.get("count")
     n = int(count) if count in (1, 2) else None
     picked = wifepay.pick_items(items, pose=pose, count=n)
-    return {"items": picked, "empty": not items, "total": len(items)}
+    peek = wifepay.pick_peek(count=len(picked) or 1)
+    cfg = wifepay.load_config(ASSETS_DIR)
+    return {
+        "items": picked,
+        "empty": not items,
+        "total": len(items),
+        "peek": peek,
+        "char_sec": cfg.get("char_sec"),
+    }
 
 
 @app.post("/api/wifepay/gen")

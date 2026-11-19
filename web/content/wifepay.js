@@ -1,12 +1,21 @@
-/* Wife Pay 編輯頁 v5：劇本可存多種隨機抽；抽妹子只擲參數。 */
+/* Wife Pay 編輯頁 v6：一步一步精靈；打字速度可調；門縫切圖。 */
 import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES } from "./girl_gen.js";
 import { familyOf } from "./girl_voice.js?v=1";
 import {
   apiJson, fetchGallery, fetchDialog, fetchScripts, generateFromItem, mountWifepayReveal, startWifepayPeek,
-} from "./wifepay_reveal.js?v=4";
+  fetchConfig, saveConfig, pickPeek,
+} from "./wifepay_reveal.js?v=5";
 
 const $ = (id) => document.getElementById(id);
 const ENG_KEY = "yorozuya_eng";
+const STEPS = [
+  { n: 1, label: "姿勢" },
+  { n: 2, label: "圖形" },
+  { n: 3, label: "劇本" },
+  { n: 4, label: "Prompt" },
+  { n: 5, label: "Denoise" },
+  { n: 6, label: "測試" },
+];
 
 let girls = [];
 let currentGirl = null;
@@ -14,6 +23,11 @@ let items = [];
 let selectedId = "";
 let scripts = [];
 let selectedScriptId = "";
+let poseCatalog = [];
+let selectedPose = "";
+let extraPoses = [];
+let currentStep = 1;
+let charSec = 1.2;
 
 function esc(s) {
   return String(s ?? "")
@@ -183,8 +197,8 @@ function renderGirlSelect() {
 
 function updateModeUi() {
   const draw = girlMode() === "draw";
-  $("saved-row").style.display = draw ? "none" : "";
-  $("draw-row").style.display = draw ? "" : "none";
+  if ($("saved-row")) $("saved-row").style.display = draw ? "none" : "";
+  if ($("draw-row")) $("draw-row").style.display = draw ? "" : "none";
 }
 
 async function loadGirls() {
@@ -204,34 +218,235 @@ async function loadGirls() {
   }
 }
 
+function itemHasPose(it, pose) {
+  if (!pose) return true;
+  const tags = (it?.tags || []).map((t) => String(t).toLowerCase());
+  return tags.includes(String(pose).toLowerCase());
+}
+
+function scriptHasPose(s, pose) {
+  if (!pose) return true;
+  const tags = (s?.tags || []).map((t) => String(t).toLowerCase());
+  if (!tags.length) return true;
+  return tags.includes(String(pose).toLowerCase());
+}
+
+function visibleItems() {
+  if ($("gal-all")?.checked || !selectedPose) return items;
+  const hit = items.filter((it) => itemHasPose(it, selectedPose));
+  return hit;
+}
+
+function visibleScripts() {
+  if ($("script-all")?.checked || !selectedPose) return scripts;
+  const hit = scripts.filter((s) => scriptHasPose(s, selectedPose));
+  return hit.length ? hit : scripts;
+}
+
+function stepDone(n) {
+  if (n === 1) return !!selectedPose;
+  if (n === 2) return !!selectedItem();
+  if (n === 3) return !!currentScript();
+  if (n === 4) return !!(selectedItem() && String($("item-prompt")?.value || selectedItem()?.prompt || "").trim());
+  if (n === 5) return !!selectedItem();
+  if (n === 6) return true;
+  return false;
+}
+
+function canGoTo(n) {
+  if (n < 1 || n > 6) return false;
+  if (n <= currentStep) return true;
+  for (let i = 1; i < n; i++) if (!stepDone(i)) return false;
+  return true;
+}
+
+function stepHint() {
+  if (currentStep === 1 && !selectedPose) return "先選一個姿勢，才能下一步。";
+  if (currentStep === 2 && !selectedItem()) return "請上傳或選一張底圖。";
+  if (currentStep === 3 && !currentScript()) return "請選一本劇本，或新增一本。";
+  if (currentStep === 4 && !stepDone(4)) return "請為這張圖填 prompt 並儲存。";
+  if (currentStep === 5 && !selectedItem()) return "先回到第 2 步選一張圖。";
+  return `第 ${currentStep}／6 步`;
+}
+
+function renderSteps() {
+  const nav = $("step-nav");
+  if (nav) {
+    nav.innerHTML = STEPS.map((s) => {
+      const on = s.n === currentStep ? " on" : "";
+      const done = stepDone(s.n) ? " done" : "";
+      return `<button type="button" data-step="${s.n}" class="${on}${done}"><span class="n">${s.n}</span>${esc(s.label)}</button>`;
+    }).join("");
+    nav.querySelectorAll("button").forEach((btn) => {
+      btn.addEventListener("click", () => goStep(Number(btn.dataset.step)));
+    });
+  }
+  document.querySelectorAll(".step").forEach((sec) => {
+    sec.classList.toggle("on", Number(sec.dataset.step) === currentStep);
+  });
+  if ($("btn-prev")) $("btn-prev").disabled = currentStep <= 1;
+  if ($("btn-next")) {
+    $("btn-next").disabled = currentStep >= 6 || !stepDone(currentStep);
+    $("btn-next").textContent = currentStep >= 6 ? "完成" : "下一步";
+  }
+  if ($("step-hint")) $("step-hint").textContent = stepHint();
+}
+
+function goStep(n) {
+  const t = Number(n);
+  if (!canGoTo(t)) {
+    setStatus("step-hint", stepHint());
+    renderSteps();
+    return;
+  }
+  currentStep = t;
+  renderSteps();
+  if (t === 2) renderThumbs();
+  if (t === 3) { renderScriptSelects(); fillScriptForm(currentScript()); }
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function poseLabel(id) {
+  const hit = poseCatalog.find((p) => p.id === id);
+  return hit?.name || id;
+}
+
+function renderPoseGrid() {
+  const box = $("pose-grid");
+  if (!box) return;
+  if (!poseCatalog.length) {
+    box.innerHTML = `<span class="mini">（沒有姿勢）</span>`;
+    return;
+  }
+  box.innerHTML = poseCatalog.map((p) => {
+    const sel = p.id === selectedPose ? " sel" : "";
+    return `<button type="button" class="${sel}" data-pose="${esc(p.id)}">${esc(p.name || p.id)}<span class="id">${esc(p.id)}</span></button>`;
+  }).join("");
+  box.querySelectorAll("button").forEach((btn) => {
+    btn.addEventListener("click", () => selectPose(btn.dataset.pose));
+  });
+}
+
+function selectPose(id) {
+  selectedPose = String(id || "");
+  if ($("ig-pose")) $("ig-pose").value = selectedPose;
+  renderPoseGrid();
+  setStatus("pose-status", selectedPose ? `已選「${poseLabel(selectedPose)}」` : "");
+  renderThumbs();
+  renderScriptSelects();
+  renderSteps();
+}
+
+async function addPose() {
+  const raw = ($("pose-new")?.value || "").trim().toLowerCase().replace(/\s+/g, "_");
+  const id = raw.replace(/[^a-z0-9_-]/g, "");
+  if (!id) { setStatus("pose-status", "請輸入姿勢 id（英文）", true); return; }
+  if (poseCatalog.some((p) => p.id === id)) {
+    selectPose(id);
+    setStatus("pose-status", "這個姿勢已經有了");
+    return;
+  }
+  extraPoses = Array.from(new Set([...extraPoses, id]));
+  try {
+    const j = await saveConfig({ poses: extraPoses, char_sec: charSec });
+    extraPoses = Array.isArray(j.poses) ? j.poses : extraPoses;
+    if (Array.isArray(j.pose_catalog) && j.pose_catalog.length) poseCatalog = j.pose_catalog;
+    else if (!poseCatalog.some((p) => p.id === id)) poseCatalog.push({ id, name: id, builtin: false });
+    if ($("pose-new")) $("pose-new").value = "";
+    selectPose(id);
+    setStatus("pose-status", `✓ 已加入姿勢「${id}」`);
+  } catch (e) {
+    setStatus("pose-status", e.message, true);
+  }
+}
+
+async function loadWpConfig() {
+  try {
+    const cfg = await fetchConfig();
+    charSec = cfg.char_sec;
+    extraPoses = cfg.poses || [];
+    poseCatalog = cfg.pose_catalog || [];
+    syncCharSecUi(charSec);
+    if (!selectedPose && poseCatalog[0]) selectPose(poseCatalog[0].id);
+    else renderPoseGrid();
+  } catch (e) {
+    setStatus("pose-status", e.message, true);
+    if (!poseCatalog.length) {
+      poseCatalog = [
+        { id: "missionary", name: "傳教士", builtin: true },
+        { id: "cowgirl", name: "騎乘", builtin: true },
+        { id: "doggy", name: "老漢推車", builtin: true },
+        { id: "kiss", name: "擁吻", builtin: true },
+        { id: "reverse", name: "背向", builtin: true },
+      ];
+    }
+    if (!selectedPose) selectPose("cowgirl");
+  }
+}
+
+function syncCharSecUi(sec) {
+  const n = Math.max(0.05, Math.min(2, Number(sec) || 1.2));
+  charSec = Math.round(n * 100) / 100;
+  if ($("ig-char-sec")) $("ig-char-sec").value = String(charSec);
+  if ($("ig-char-sec-num")) $("ig-char-sec-num").value = String(charSec);
+  if ($("char-sec-label")) $("char-sec-label").textContent = `目前每個字 ${charSec} 秒（遊戲裡也用這個設定）`;
+}
+
+async function persistCharSec() {
+  const n = Number($("ig-char-sec-num")?.value || $("ig-char-sec")?.value || charSec);
+  syncCharSecUi(n);
+  try {
+    const j = await saveConfig({ char_sec: charSec, poses: extraPoses });
+    syncCharSecUi(j.char_sec ?? charSec);
+    setStatus("gen-status", `✓ 已儲存打字速度：每字 ${charSec} 秒`);
+  } catch (e) {
+    setStatus("gen-status", e.message, true);
+  }
+}
+
+function revealOpts() {
+  return {
+    page: true,
+    charSec,
+    fullImage: !!$("ig-full")?.checked,
+    showFullToggle: true,
+  };
+}
+
 function selectedItem() {
   return items.find((x) => x.id === selectedId) || null;
 }
 
 function fillItemForm(it) {
-  $("item-prompt").value = it?.prompt || "";
-  $("item-neg").value = it?.negative || "";
-  $("item-denoise").value = it?.denoise ?? 0.55;
-  $("item-tags").value = (it?.tags || []).join(", ");
+  if ($("item-prompt")) $("item-prompt").value = it?.prompt || "";
+  if ($("item-neg")) $("item-neg").value = it?.negative || "";
+  if ($("item-denoise")) $("item-denoise").value = it?.denoise ?? 0.55;
+  if ($("denoise-val")) $("denoise-val").textContent = String(it?.denoise ?? 0.55);
+  if ($("item-tags")) $("item-tags").value = (it?.tags || []).join(", ");
 }
 
 function renderThumbs() {
   const box = $("gal-thumbs");
-  if (!items.length) {
-    box.innerHTML = `<span class="mini">（尚無圖，請先上傳底圖）</span>`;
+  if (!box) return;
+  const vis = visibleItems();
+  if (!vis.length) {
+    const more = items.length && selectedPose && !$("gal-all")?.checked;
+    box.innerHTML = `<span class="mini">${more ? "這個姿勢還沒有底圖，可上傳或勾「顯示全部圖」。" : "（尚無圖，請先上傳底圖）"}</span>`;
     return;
   }
   box.innerHTML = "";
-  for (const it of items) {
+  for (const it of vis) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = it.id === selectedId ? "sel" : "";
     btn.title = it.id;
-    btn.innerHTML = `<img src="${esc(it.url)}" alt="">`;
+    const tag = (it.tags || [])[0] || "";
+    btn.innerHTML = `<img src="${esc(it.url)}" alt="">${tag ? `<span class="tag">${esc(tag)}</span>` : ""}`;
     btn.onclick = () => {
       selectedId = it.id;
       fillItemForm(it);
       renderThumbs();
+      renderSteps();
     };
     box.appendChild(btn);
   }
@@ -239,15 +454,18 @@ function renderThumbs() {
 
 async function reloadGallery(preferId) {
   items = await fetchGallery();
+  const vis = visibleItems();
   if (preferId && items.some((x) => x.id === preferId)) selectedId = preferId;
-  else if (!items.some((x) => x.id === selectedId)) selectedId = items[0]?.id || "";
+  else if (!items.some((x) => x.id === selectedId)) selectedId = (vis[0] || items[0])?.id || "";
   fillItemForm(selectedItem());
   renderThumbs();
+  renderSteps();
 }
 
 async function uploadGallery() {
   const file = $("gal-file")?.files?.[0];
-  if (!file) { setStatus("gen-status", "先選一張圖", true); return; }
+  if (!file) { setStatus("gal-status", "先選一張圖", true); setStatus("gen-status", "先選一張圖", true); return; }
+  setStatus("gal-status", "上傳中…");
   setStatus("gen-status", "上傳中…");
   const fd = new FormData();
   fd.append("file", file);
@@ -255,7 +473,15 @@ async function uploadGallery() {
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.detail || j.error || "上傳失敗");
   $("gal-file").value = "";
-  await reloadGallery(j.item?.id);
+  const item = j.item;
+  if (item?.id && selectedPose) {
+    const tags = Array.from(new Set([...(item.tags || []), selectedPose]));
+    try {
+      await apiJson(`/api/wifepay/gallery/${encodeURIComponent(item.id)}`, "PATCH", { tags });
+    } catch { /* 圖已上傳，tag 失敗也不擋 */ }
+  }
+  await reloadGallery(item?.id);
+  setStatus("gal-status", "✓ 已上傳");
   setStatus("gen-status", "✓ 已上傳");
 }
 
@@ -270,6 +496,8 @@ async function saveItem() {
     tags,
   });
   await reloadGallery(j.item?.id || it.id);
+  setStatus("gal-status", "✓ 已儲存這張");
+  setStatus("denoise-status", "✓ 已儲存這張");
   setStatus("gen-status", "✓ 已儲存這張");
 }
 
@@ -280,6 +508,7 @@ async function deleteItem() {
   await apiJson(`/api/wifepay/gallery/${encodeURIComponent(it.id)}`, "DELETE");
   selectedId = "";
   await reloadGallery();
+  setStatus("gal-status", "✓ 已刪除");
   setStatus("gen-status", "✓ 已刪除");
 }
 
@@ -322,13 +551,13 @@ function genInfo() {
   return {
     character: currentGirl,
     name: currentGirl?.name || "",
-    pose: $("ig-pose").value,
-    build: $("ig-build").value,
+    pose: selectedPose || $("ig-pose")?.value || "",
+    build: $("ig-build")?.value || "average",
     stage: currentGirl?.roomStage || currentGirl?.stage || "wife",
     family: currentGirl?.family || (currentGirl ? familyOf(currentGirl) : ""),
-    ckpt: $("ig-ckpt").value || currentGirl?.comfyCkpt || "",
-    comfy_url: $("ig-comfy").value.trim(),
-    seed: Number($("ig-seed").value || 0),
+    ckpt: $("ig-ckpt")?.value || currentGirl?.comfyCkpt || "",
+    comfy_url: $("ig-comfy")?.value.trim() || "",
+    seed: Number($("ig-seed")?.value || 0),
     denoise: over === "" ? undefined : Number(over),
     script_id: $("ig-script")?.value || "random",
   };
@@ -381,27 +610,30 @@ function overDenoise(it) {
 }
 
 function currentScript() {
-  return scripts.find((s) => s.id === selectedScriptId) || scripts[0] || null;
+  const vis = visibleScripts();
+  return vis.find((s) => s.id === selectedScriptId) || vis[0] || scripts[0] || null;
 }
 
 function renderScriptSelects() {
   const edit = $("script-sel");
   const test = $("ig-script");
+  const vis = visibleScripts();
   const editVal = selectedScriptId || currentScript()?.id || "";
   const testVal = test?.value || "random";
   if (edit) {
-    edit.innerHTML = scripts.map((s) => {
+    edit.innerHTML = vis.map((s) => {
       const off = s.enabled === false ? "（停用）" : "";
       return `<option value="${esc(s.id)}"${s.id === editVal ? " selected" : ""}>${esc(s.name || s.id)}${off}</option>`;
     }).join("") || '<option value="">（尚無劇本）</option>';
   }
   if (test) {
-    const opts = ['<option value="random">隨機</option>'].concat(scripts.map((s) => {
+    const src = vis.length ? vis : scripts;
+    const opts = ['<option value="random">隨機</option>'].concat(src.map((s) => {
       const off = s.enabled === false ? "（停用）" : "";
       return `<option value="${esc(s.id)}">${esc(s.name || s.id)}${off}</option>`;
     }));
     test.innerHTML = opts.join("");
-    test.value = scripts.some((s) => s.id === testVal) ? testVal : "random";
+    test.value = src.some((s) => s.id === testVal) ? testVal : "random";
   }
 }
 
@@ -427,10 +659,11 @@ function gatherScriptFields() {
   const fbNar = $("script-fb-nar")?.value.trim() || "";
   const fbMan = $("script-fb-man")?.value.trim() || "";
   const fbWife = $("script-fb-wife")?.value.trim() || "";
+  const tags = $("script-tags")?.value || "";
   return {
     name: $("script-name")?.value.trim() || "未命名劇本",
     enabled: !!$("script-enabled")?.checked,
-    tags: $("script-tags")?.value || "",
+    tags,
     scenario: $("script-scenario")?.value || "",
     man_tone: $("script-man-tone")?.value || "",
     wife_tone: $("script-wife-tone")?.value || "",
@@ -447,10 +680,11 @@ async function loadScriptsList() {
       throw new Error("伺服器沒有回傳劇本。若剛更新程式，請先重啟 uvicorn，再重新整理這個頁面。");
     }
     scripts = rows;
-    if (!scripts.some((s) => s.id === selectedScriptId)) selectedScriptId = scripts[0]?.id || "";
+    if (!scripts.some((s) => s.id === selectedScriptId)) selectedScriptId = (visibleScripts()[0] || scripts[0])?.id || "";
     renderScriptSelects();
     fillScriptForm(currentScript());
     setStatus("script-status", `已載入 ${scripts.length} 本劇本`);
+    renderSteps();
   } catch (e) {
     scripts = [];
     selectedScriptId = "";
@@ -471,16 +705,21 @@ async function saveCurrentScript() {
   selectedScriptId = (j.script || cur).id;
   renderScriptSelects();
   fillScriptForm(j.script || currentScript());
+  setStatus("script-status", "✓ 已儲存劇本");
   setStatus("gen-status", "✓ 已儲存劇本");
 }
 
 async function addNewScript() {
-  const j = await apiJson("/api/wifepay/scripts", "POST", { name: "新劇本", scenario: "", enabled: true });
+  const body = { name: "新劇本", scenario: "", enabled: true };
+  if (selectedPose) body.tags = [selectedPose];
+  const j = await apiJson("/api/wifepay/scripts", "POST", body);
   scripts = j.scripts || scripts;
   selectedScriptId = (j.script || scripts[scripts.length - 1]).id;
   renderScriptSelects();
   fillScriptForm(j.script || currentScript());
+  setStatus("script-status", "✓ 已新增劇本，編輯後請再按儲存");
   setStatus("gen-status", "✓ 已新增劇本，編輯後請再按儲存");
+  renderSteps();
 }
 
 async function deleteCurrentScript() {
@@ -489,10 +728,12 @@ async function deleteCurrentScript() {
   if (!confirm(`刪除劇本「${cur.name}」？`)) return;
   const j = await apiJson(`/api/wifepay/scripts/${encodeURIComponent(cur.id)}`, "DELETE");
   scripts = j.scripts || [];
-  selectedScriptId = scripts[0]?.id || "";
+  selectedScriptId = (visibleScripts()[0] || scripts[0])?.id || "";
   renderScriptSelects();
   fillScriptForm(currentScript());
+  setStatus("script-status", "✓ 已刪除劇本");
   setStatus("gen-status", "✓ 已刪除劇本");
+  renderSteps();
 }
 
 function revealHost() {
@@ -506,8 +747,9 @@ async function testDialog() {
   const info = genInfo();
   info.script_id = selectedScriptId || info.script_id || "random";
   setStatus("gen-status", "產生對話…");
+  goStep(6);
   mountWifepayReveal(revealHost(), {
-    page: true,
+    ...revealOpts(),
     wifeName: info.name,
     guestName: info.guestName,
     dialog: async () => {
@@ -525,6 +767,7 @@ async function testOneImage() {
   const it = selectedItem();
   if (!it) { setStatus("gen-status", "先選一張底圖。圖庫是空的就請先上傳，不會改走文生圖。", true); return; }
   setStatus("gen-status", "生圖中…");
+  goStep(6);
   const host = revealHost();
   try {
     const url = await generateFromItem(it, { ...genInfo(), prompt: $("item-prompt").value, negative: $("item-neg").value }, (sec) => {
@@ -532,10 +775,11 @@ async function testOneImage() {
     });
     const info = genInfo();
     mountWifepayReveal(host, {
-      page: true,
+      ...revealOpts(),
       waitText: "圖好了",
       wifeName: info.name,
       guestName: info.guestName,
+      peek: pickPeek(1),
       dialog: { narration: "（單張測試，沒有對話）", man: "—", wife: "—" },
       images: [url],
     });
@@ -547,15 +791,16 @@ async function testOneImage() {
 
 async function testAll() {
   if (!currentGirl) { setStatus("gen-status", "先選或抽一隻魅子", true); return; }
+  goStep(6);
   if (!items.length) {
     setStatus("gen-status", "圖庫是空的。請先上傳底圖（不會改走文生圖）。", true);
-    startWifepayPeek(revealHost(), { ...genInfo(), page: true, onStatus: (m) => setStatus("gen-status", m) });
+    startWifepayPeek(revealHost(), { ...genInfo(), ...revealOpts(), onStatus: (m) => setStatus("gen-status", m) });
     return;
   }
   setStatus("gen-status", "全部一起測試…");
   startWifepayPeek(revealHost(), {
     ...genInfo(),
-    page: true,
+    ...revealOpts(),
     onStatus: (m) => setStatus("gen-status", m),
   });
 }
@@ -568,7 +813,6 @@ async function drawGirl() {
     if (currentGirl?.name) used.push(currentGirl.name);
     const g = generateGirl({ luck: 50, rating: "nsfw", usedNames: used });
     if (!g) throw new Error("擲參數失敗（人物池未載入？）");
-    // 只留測試用的人設參數：不產立繪、不寫存檔、不叫 Comfy／模型
     g.id = `wifepay-${Date.now().toString(36)}`;
     g.rolled = true;
     g.roomStage = "wife";
@@ -594,7 +838,7 @@ async function loadEngDefaults() {
     const j = await r.json();
     if (j?.data?.settings?.comfyUrl) e.comfyUrl = j.data.settings.comfyUrl;
   } catch { /* */ }
-  if (e.comfyUrl) $("ig-comfy").value = e.comfyUrl;
+  if (e.comfyUrl && $("ig-comfy")) $("ig-comfy").value = e.comfyUrl;
 }
 
 function bind() {
@@ -618,7 +862,6 @@ function bind() {
   $("girl-params")?.querySelectorAll("input,select").forEach((el) => {
     el.addEventListener("change", () => {
       applyParams();
-      // 只更新摘要，不要 fillParams 以免把游標打回去
       const g = currentGirl;
       if (!g) return;
       const meta = $("girl-meta");
@@ -631,25 +874,52 @@ function bind() {
       }
     });
   });
-  $("btn-gal-up")?.addEventListener("click", () => uploadGallery().catch((e) => setStatus("gen-status", e.message, true)));
-  $("btn-gal-del")?.addEventListener("click", () => deleteItem().catch((e) => setStatus("gen-status", e.message, true)));
-  $("btn-item-save")?.addEventListener("click", () => saveItem().catch((e) => setStatus("gen-status", e.message, true)));
+  $("btn-pose-add")?.addEventListener("click", () => addPose());
+  $("pose-new")?.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); addPose(); } });
+  $("gal-all")?.addEventListener("change", () => renderThumbs());
+  $("script-all")?.addEventListener("change", () => { renderScriptSelects(); fillScriptForm(currentScript()); });
+  $("btn-gal-up")?.addEventListener("click", () => uploadGallery().catch((e) => { setStatus("gal-status", e.message, true); setStatus("gen-status", e.message, true); }));
+  $("btn-gal-del")?.addEventListener("click", () => deleteItem().catch((e) => { setStatus("gal-status", e.message, true); setStatus("gen-status", e.message, true); }));
+  $("btn-item-save")?.addEventListener("click", () => saveItem().catch((e) => setStatus("gal-status", e.message, true)));
+  $("btn-item-save-2")?.addEventListener("click", () => saveItem().catch((e) => setStatus("gen-status", e.message, true)));
+  $("btn-denoise-save")?.addEventListener("click", () => saveItem().catch((e) => setStatus("denoise-status", e.message, true)));
+  $("item-denoise")?.addEventListener("input", () => {
+    if ($("denoise-val")) $("denoise-val").textContent = $("item-denoise").value;
+  });
   $("btn-ig-ping")?.addEventListener("click", () => pingEngine());
   $("btn-preview-prompt")?.addEventListener("click", () => previewPrompt());
-  $("btn-script-save")?.addEventListener("click", () => saveCurrentScript().catch((e) => setStatus("gen-status", e.message, true)));
-  $("btn-script-add")?.addEventListener("click", () => addNewScript().catch((e) => setStatus("gen-status", e.message, true)));
-  $("btn-script-del")?.addEventListener("click", () => deleteCurrentScript().catch((e) => setStatus("gen-status", e.message, true)));
+  $("btn-script-save")?.addEventListener("click", () => saveCurrentScript().catch((e) => setStatus("script-status", e.message, true)));
+  $("btn-script-add")?.addEventListener("click", () => addNewScript().catch((e) => setStatus("script-status", e.message, true)));
+  $("btn-script-del")?.addEventListener("click", () => deleteCurrentScript().catch((e) => setStatus("script-status", e.message, true)));
   $("script-sel")?.addEventListener("change", () => {
     selectedScriptId = $("script-sel").value;
     fillScriptForm(currentScript());
   });
   $("btn-dlg-test")?.addEventListener("click", () => testDialog());
   $("btn-test-img")?.addEventListener("click", () => testOneImage());
+  $("btn-test-img-5")?.addEventListener("click", () => testOneImage());
   $("btn-test-all")?.addEventListener("click", () => testAll());
+  $("btn-prev")?.addEventListener("click", () => goStep(currentStep - 1));
+  $("btn-next")?.addEventListener("click", () => { if (currentStep < 6) goStep(currentStep + 1); });
+  const syncChar = (from) => {
+    const v = from === "num" ? $("ig-char-sec-num").value : $("ig-char-sec").value;
+    syncCharSecUi(v);
+  };
+  $("ig-char-sec")?.addEventListener("input", () => syncChar("range"));
+  $("ig-char-sec-num")?.addEventListener("input", () => syncChar("num"));
+  $("btn-char-save")?.addEventListener("click", () => persistCharSec());
 }
 
 bind();
 updateModeUi();
-Promise.all([loadGirls(), reloadGallery().catch((e) => setStatus("gen-status", e.message, true)), loadScriptsList().catch((e) => setStatus("gen-status", e.message, true)), loadEngDefaults()]).then(() => {
+renderSteps();
+Promise.all([
+  loadWpConfig(),
+  loadGirls(),
+  reloadGallery().catch((e) => setStatus("gen-status", e.message, true)),
+  loadScriptsList().catch((e) => setStatus("gen-status", e.message, true)),
+  loadEngDefaults(),
+]).then(() => {
+  renderSteps();
   setStatus("gen-status", items.length ? `圖庫 ${items.length} 張` : "圖庫是空的，請先上傳底圖");
 });

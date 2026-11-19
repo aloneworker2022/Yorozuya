@@ -336,6 +336,63 @@ def test_scripts_seed_and_merge():
 
 
 
+def test_config_char_sec_persist():
+    assets = _assets()
+    cfg = W.load_config(assets)
+    assert cfg["char_sec"] == W.CHAR_SEC_DEFAULT == 1.2
+    assert cfg["poses"] == []
+    # 缺檔時從程式預設，不依賴被 gitignore 的 config.json
+    assert not W.config_path(assets).is_file()
+    saved = W.save_config(assets, {"char_sec": 1.2, "poses": ["standing", "standing", "missionary"]})
+    assert saved["char_sec"] == 1.2
+    assert saved["poses"] == ["standing", "missionary"]
+    again = W.load_config(assets)
+    assert again["char_sec"] == 1.2 and again["poses"] == ["standing", "missionary"]
+    # clamp
+    assert W.save_config(assets, {"char_sec": 0})["char_sec"] == W.CHAR_SEC_DEFAULT
+    assert W.save_config(assets, {"char_sec": 9})["char_sec"] == W.CHAR_SEC_HI
+    assert W.save_config(assets, {"char_sec": 0.01})["char_sec"] == W.CHAR_SEC_LO
+    assert W.save_config(assets, {"char_sec": "1.2"})["char_sec"] == 1.2
+    # 標點等待按比例放大
+    assert W.type_delay_ms("字", 1.2) == 1200
+    assert W.type_delay_ms("，", 1.2) == int(round(1200 * (50 / 26)))
+    assert W.type_delay_ms("。", 1.2) == int(round(1200 * (90 / 26)))
+    assert W.type_delay_ms("字", 0.05) == 50
+    poses = W.list_poses(assets, ["bed", "cowgirl"])
+    ids = [p["id"] for p in poses]
+    assert ids[0] == "missionary" and "cowgirl" in ids and "standing" in ids and "bed" in ids
+    assert next(p for p in poses if p["id"] == "missionary")["builtin"] is True
+    assert next(p for p in poses if p["id"] == "standing")["builtin"] is False
+
+
+def test_pick_peek_side_consistency():
+    rnd = random.Random(7)
+    one = W.pick_peek(1, rnd=rnd)
+    assert one["side"] in ("left", "right")
+    assert one["fracs"] == [W._normalize_frac(one["fracs"][0])]
+    assert one["fracs"][0] in W.PEEK_FRACS
+    # 兩張：同一邊，比例可不同
+    sides, frac_pairs = set(), []
+    for seed in range(80):
+        row = W.pick_peek(2, rnd=random.Random(seed))
+        assert row["side"] in ("left", "right")
+        assert len(row["fracs"]) == 2
+        assert all(f in W.PEEK_FRACS for f in row["fracs"])
+        sides.add(row["side"])
+        frac_pairs.append(tuple(row["fracs"]))
+    assert sides == {"left", "right"}
+    assert any(a != b for a, b in frac_pairs)
+    # 指定邊與比例時沿用
+    fixed = W.pick_peek(2, side="right", fracs=["1/3", "1/2"], rnd=random.Random(0))
+    assert fixed == {"side": "right", "fracs": ["1/3", "1/2"]}
+    # 第二張沒指定時跟第一張同一邊
+    mixed = W.pick_peek(2, side="left", fracs=["1/3"], rnd=random.Random(1))
+    assert mixed["side"] == "left"
+    assert mixed["fracs"][0] == "1/3"
+    assert mixed["fracs"][1] in W.PEEK_FRACS
+
+
+
 
 if __name__ == "__main__":
     test_gallery_crud()
@@ -348,4 +405,6 @@ if __name__ == "__main__":
     test_migrate_old_dialog_default()
     test_scripts_crud_and_pick()
     test_scripts_seed_and_merge()
+    test_config_char_sec_persist()
+    test_pick_peek_side_consistency()
     print("wifepay_test: ok")
