@@ -9,7 +9,7 @@
    有立繪的話立繪縮小、靠左下。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=2', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=3', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, FPS = { breathe: 4, talk: 7 };
   const SCALE = 2, CV = { w: 84, h: 134, ax: 42, ay: 131, tMax: 40, tMin: -45 };   // 手抬起來也在框內；腳底固定在 ay
 
@@ -88,7 +88,10 @@
     for (const p of sh.prims) {
       let a;
       const q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
-      if (p.cloth) {   // 衣服：最近的身體零件是手／頭 → 跟著它；其他（軀幹上的）照位移場
+      if (p.sleeve) {   // 襯衫袖子：上臂那段跟上臂、前臂那段跟前臂
+        const L = p.bc[0] + p.off[0] < 0 ? 'armL' : 'armR';
+        a = L === 'armR' ? [0, 0, lift * .5, null] : [0, 0, lift * .9, upX ? (p.sleeve === 1 ? upX : foreX) : null];
+      } else if (p.cloth) {   // 衣服：最近的身體零件是手／頭 → 跟著它；其他（軀幹上的）照位移場
         let best = null, bd = 1e9;
         for (const b of body) { const lb = Math.hypot(q[0] - b.bc[0] - b.off[0], q[1] - b.bc[1] - b.off[1], q[2] - b.bc[2] - b.off[2]) - b.br; if (lb >= bd) continue; const d = H.primDist(b, q[0], q[1], q[2]); if (d < bd) { bd = d; best = b; } }
         // 袖子只套到上臂 → 最近的是上臂才跟手走；靠近垂在腰邊的手的下襬、褲頭照軀幹走（不然抬手會被帶走）
@@ -118,6 +121,7 @@
       else if (r === 0 && g === 255 && b === 255) o = [240, 240, 246];
       else if (r === 0 && g === 170 && b === 170) o = [198, 198, 210];
       else if (r === 255 && g === 128 && b === 0) o = [232, 232, 240];
+      else if (r === 0 && g === 255 && b === 0) o = [128, 130, 146];   // 襯衫扣子
       if (o) { px[i] = o[0]; px[i + 1] = o[1]; px[i + 2] = o[2]; }
     }
   }
