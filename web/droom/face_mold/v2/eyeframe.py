@@ -23,6 +23,7 @@ IRIS_COLORS={
  '棕':dict(I=(84,52,44),i=(140,88,62),j=(190,132,88),O=(70,42,34),g1=(92,40,42),g2=(140,80,56),g3=(186,120,70),g4=(226,176,110)),
 }
 ICOL=os.environ.get('ICOL','橘')
+SBULGE=float(os.environ.get('SBULGE','1.6'))   # 側臉眼睛前緣圓弧往後收多少（越大越圓）
 IRUP=float(os.environ.get('IRUP','0'))   # 黑眼珠往上提多少（直半徑的比例）
 IRSC=float(os.environ.get('IRSC','1'))   # 黑眼珠再放大倍率
 IRCENTER=os.environ.get('IRCENTER','1')=='1';IRIN=float(os.environ.get('IRIN','.6'))
@@ -238,12 +239,14 @@ class Frame:
     if 'ir' in T:xf=(s.irx if (s.irx is not None and IRCENTER) else T['ir'][0])-T['ir'][2]*IRSC*.55
     else:xf=.5+T['iris'][0]-IRISW*k*.55
     x=xf+u/KS
+    # 2026-11-19 使用者：側臉眼睛的前緣不是斜線，是微微往前凸的圓弧（眼球），而且前緣不描粗邊
     uy=min((p[1] for p in s.up if abs(p[0]-xf)<.7),default=v)
-    cut=(v-uy)*.45
-    if u<cut-.9/KS*.5:
-      # 前緣前面：只留上眼線往前刺出去的那一小段
-      if u>cut-1.6 and v<uy+.3 and v>uy-1.6 and u>-1.6:return 'K'
+    ly=max((p[1] for p in s.lo if abs(p[0]-xf)<1.2),default=uy+8)
+    vm=(uy+ly)/2;hh=max(1,(ly-uy)/2)
+    t=(v-vm)/hh
+    cut=SBULGE*min(1,t*t)          # 中間最前、上下往後收（拋物線圓弧）
+    if u<cut:
+      # 前緣前面：只留上眼線往前刺出去的那一小段（睫毛）
+      if u>-1.4 and v<uy+.3 and v>uy-1.4:return 'K'
       return None
-    ch=s.at(x,v,1,idx=-.8)
-    if ch and u<cut+.35 and ch not in('K','c'):return 'k'
-    return ch
+    return s.at(x,v,1,idx=-.8)
