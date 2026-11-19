@@ -32,13 +32,13 @@ IRCENTER=os.environ.get('IRCENTER','1')=='1';IRIN=float(os.environ.get('IRIN','.
 LASH=os.environ.get('LASH','')   # 睫毛種類（使用者 2026-11-19）：短／長／翹（長又翹）；空的＝教學量的原樣
 # 眼影顏色（SHC=粉紅／大地／紫／藍／金橘；空的＝沒畫）、高度 SHH（眼睛單位）；眼線顏色 ELC=黑／配合
 SHADOW_COLORS={'粉紅':(232,120,150),'大地':(170,104,74),'紫':(150,96,180),'藍':(90,130,200),'金橘':(230,150,60)}
-SHC=os.environ.get('SHC','');SHH=float(os.environ.get('SHH','4.5'));ELC=os.environ.get('ELC','黑')
+SHC=os.environ.get('SHC','');SHH=float(os.environ.get('SHH','10'));ELC=os.environ.get('ELC','黑')
 def extra_pal(skin=(242,204,177)):
   # 給出圖的程式：眼影兩階（貼眼線濃、上面淡）、眼線色
   o={'E':(30,24,28)}
   if SHC:
     c=SHADOW_COLORS[SHC];mix=lambda a:tuple(round(skin[k]*(1-a)+c[k]*a) for k in range(3))
-    o['S1']=mix(.55);o['S2']=mix(.28)
+    o['S1']=mix(.55);o['S2']=mix(.34);o['S3']=mix(.16)
     if ELC=='配合':o['E']=tuple(round(v*.55) for v in c)
   return o
 EL=os.environ.get('EL','')   # 眼線：自然／上揚／下垂／粗框（空的＝沒畫）
@@ -241,8 +241,9 @@ class Frame:
       xs=[p[0] for p in s.up]
       if xs[0]-.5<=x<=xs[-1]+1.5:
         i=min(range(len(s.up)),key=lambda k:abs(s.up[k][0]-x));q=i/(len(s.up)-1)
-        top=s.up[i][1]-s.upw[i]/2;d=top-y;H=SHH*(.55+.65*q)
-        if 0<=d<H:return 'S1' if d<H*.5 else 'S2'
+        top=s.up[i][1]-s.upw[i]/2;d=top-y;H=SHH*(.75+.35*q)
+        # 三階：貼眼線最濃 → 中間 → 靠眉毛最淡（使用者：眼影要高、在眉毛和眼睛之間）
+        if 0<=d<H:return 'S1' if d<H*.3 else 'S2' if d<H*.62 else 'S3'
     if not _inpoly(x,y,s.poly):return None
     # 眼睛裡面（同舊眼睛的配色）
     if 'ir' in T:   # 照教學量的黑眼珠：中心、橫半徑、直半徑（大、上緣藏在上眼線下面）

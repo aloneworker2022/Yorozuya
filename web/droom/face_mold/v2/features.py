@@ -122,11 +122,11 @@ LAYERS=[BROWS,EYES,NOSE,mouth_px()]
 def isface(img,X,Yp):
   return 0<=X<N and 0<=Yp<N and tuple(img[Yp,X])!=(255,255,255) and tuple(img[Yp,X])!=DK
 def paint_front(img):
-  for L in LAYERS:
+  for L in [l for l in LAYERS if l is not BROWS]+[BROWS]:   # 眉毛最後畫（眼影在眉毛下面，不能蓋到眉毛）
     for (X,Yp),(c,_) in L.items():
       if isface(img,X,Yp):img[Yp,X]=c
 def paint_turn(img,deg,cx):
-  a=math.radians(deg);ca,sa=math.cos(a),math.sin(a);zbuf={}
+  a=math.radians(deg);ca,sa=math.cos(a),math.sin(a);zbuf={};bbuf={}
   for L in LAYERS:
     if L is NOSE:continue          # 轉過去的鼻子另外畫（正面那條線投影過去會被壓扁）
     if L is BROWS and deg>=90:continue   # 側臉的眉毛另外畫（在眼睛正上方）
@@ -143,12 +143,14 @@ def paint_turn(img,deg,cx):
           z+=dz/S
           PX=math.floor(cx+(x*ca-z*sa)*S);PY=math.floor(fy)
           d=x*sa+z*ca
-          k=(PX,PY)
-          if k not in zbuf or zbuf[k][0]<d:zbuf[k]=(d,c)
+          k=(PX,PY);zb=bbuf if L is BROWS else zbuf
+          if k not in zb or zb[k][0]<d:zb[k]=(d,c)
   for (PX,PY),(d,c) in zbuf.items():
     if isface(img,PX,PY):img[PY,PX]=c
   if 0<deg<90:eyes_turn(img,ca,sa,cx);nose_turn(img,sa,cx)
   if deg>=90:side_eye(img,cx)
+  for (PX,PY),(d,c) in bbuf.items():   # 眉毛最後畫
+    if isface(img,PX,PY):img[PY,PX]=c
 SHG=float(os.environ.get('SHG','0'))   # 山根往外（往前凸）幾格（使用者 2026-11-19：遠側眼睛往內 3 格後，山根要往外一點）
 NX=float(os.environ.get('NX','6'))   # 斜臉整個鼻子（形狀不變）往前（畫面左）平移幾格（使用者 2026-11-19）
 def bridge_pts(sa,cx):
@@ -249,14 +251,15 @@ def side_brow(img,X0):
 def side_eye(img,cx):
   from shape3d import zp
   X0=cx-zp(545)*S+7;Y0=Y(EYEY-4)               # 眼睛前端：鼻樑往後 7 格、眼線上面一點
-  side_brow(img,X0)
   if FR:
     Yc=Y(EYEY);x0,x1,y0,y1=FR.box
     for Yp in range(math.floor(Yc+y0*ES*EH),math.ceil(Yc+y1*ES*EH)):
       for X in range(math.floor(X0-4*ES),math.ceil(X0+20*ES)):
         ch=FR.at_side((X+.5-X0)/ES,(Yp+.5-Yc)/(ES*EH))
         if ch and isface(img,X,Yp):img[Yp,X]=EPAL[ch]
+    side_brow(img,X0)   # 眉毛最後畫（眼影不能蓋到眉毛）
     return
+  side_brow(img,X0)
   for Yp in range(math.floor(Y0-8*ES*EH),math.ceil(Y0+13*ES*EH)):
     for X in range(math.floor(X0-6*ES),math.ceil(X0+25*ES)):
       ch=side_eye_at((X+.5-X0)/ES,(Yp+.5-Y0)/(ES*EH))
