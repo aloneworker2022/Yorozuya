@@ -79,14 +79,14 @@ def mouth_px():
   def nums(name):return [float(v) for v in re.search(name+r'=\[(.*?)\]',src).group(1).split(',')]
   MT=os.environ.get('MT','closed')
   SP,DZ=(arr('OPEN'),nums('DZ1')) if MT=='open' else (arr('LIPS'),nums('DZ0'))
-  # 大嘴（MS=大）用手點的一張（使用者 2026-11-19：放大的嘴角像分開的點）；左半 16 格（最後一格是中線），右半鏡射
+  # 大嘴（MS=大）用手點的一張（使用者 2026-11-19：放大的嘴角像分開的點；嘴角不要那麼勾、唇珠要大）；左半 16 格（最後一格是中線），右半鏡射
   if os.environ.get('MS','小')=='大':
     mir=lambda rows:[h+h[:15][::-1] for h in rows]
     if MT=='open':
-      SP=mir(["...........uubbb","......uuuUUUUbbH","....uuUUUUUUULLL","..uUUUULLLLLLTTT","CCLLLLLTTTTTTTTT",".C.LMTTTTTTTTTTT","...LMMMMMMMMMMMM","...lPPPPPPHHHHHH","....DPPPPPPHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
+      SP=mir(["...........ubbbb","......uuuUUbbbHH","....uuUUUUUUbbbb","..uUUUULLLLLLLLL","CCLLLLLTTTTTTTTT","...LMTTTTTTTTTTT","...LMMMMMMMMMMMM","...lPPPPPPHHHHHH","....DPPPPPPHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
       DZ=[0,0,0,0,-1.2,-3.2,-3.6,-1.8,-2.4,-3,-3.6]
     else:
-      SP=mir(["..........uuu...","......uuuUUUUu.u","....uuUUUUUUUUUU","..uUUUUUUUUUUUUU","CCLLLLLLLLLLLLLL",".C.lPPPPPPPPPPPP","...lPPPHHHHHHHHH","....DPPPPHHHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
+      SP=mir(["..........uuu...","......uuuUUUUu.u","....uuUUUUUUUbbb","..uUUUUUUUUUbbHH","CCLLLLLLLLLLLLLL","...lPPPPPPPPPPPP","...lPPPHHHHHHHHH","....DPPPPHHHHHHH",".....DDPPPPPPPPP",".......DDDDDDDDD"])
       DZ=[0,0,0,0,-.6,-1.6,-2.2,-2.8,-3.2,-3.6]
   LINE=[i for i,r in enumerate(SP) if 'C' in r][0]
   # 唇色樣式（使用者 2026-11-19）：LIPS=全＝上下唇都上色（原本）；LIPS=下唇＝上唇不上色、只留嘴縫的線，下唇有顏色
