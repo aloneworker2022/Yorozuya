@@ -66,7 +66,103 @@
     // 兩隻手：肩、手肘、手腕（零件 a 點，從上往下排）；armX[side]＝{up, fore, upper}
     const LIFT = { armL: .9, armR: .5 };
     const armX = {};
+    const lerp = (a, c, k) => a.map((v, i) => v + (c[i] - v) * k);
+    const armPts = (part) => {
+      const arm = sh.prims.filter(p => p.part === part && p.a && !p.cloth);
+      if (arm.length < 2) return null;
+      const lz = lift * LIFT[part], pt = (p) => [p.a[0] + p.off[0], p.a[1] + p.off[1], p.a[2] + p.off[2] + lz];
+      const sp = pt(arm[0]), ep = pt(arm[1]), w0 = arm[2] ? pt(arm[2]) : [ep[0], ep[1], ep[2] - 10];
+      return { arm, sp, ep, w0 };
+    };
+    /** 兩節手臂 IK：手腕要到 T（到不了就伸直往那邊）；手肘往 pole 那邊彎。回傳 {up, fore, upper}。 */
+    const ikArm = (part, T, pole) => {
+      const A = armPts(part); if (!A) return null;
+      const { arm, sp, ep, w0 } = A, sub = (a, c) => [a[0] - c[0], a[1] - c[1], a[2] - c[2]], len = (v) => Math.hypot(v[0], v[1], v[2]);
+      const l1 = len(sub(ep, sp)), l2 = len(sub(w0, ep));
+      const D = sub(T, sp), d = Math.max(Math.abs(l1 - l2) + .1, Math.min(l1 + l2 - .05, len(D))), dir = nrm(D);
+      const Tc = [sp[0] + dir[0] * d, sp[1] + dir[1] * d, sp[2] + dir[2] * d];
+      const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+      const pd = pole[0] * dir[0] + pole[1] * dir[1] + pole[2] * dir[2], n = nrm([pole[0] - dir[0] * pd, pole[1] - dir[1] * pd, pole[2] - dir[2] * pd]);
+      const elbow = [sp[0] + dir[0] * a + n[0] * h, sp[1] + dir[1] * a + n[1] * h, sp[2] + dir[2] * a + n[2] * h];
+      const up = H.about(rotTo(sub(ep, sp), sub(elbow, sp), 1), sp), w1 = app(up, w0);
+      return { up, fore: H.compose(H.about(rotTo(sub(w1, elbow), sub(Tc, elbow), 1), elbow), up), upper: arm[0] };
+    };
+    // 脫 T 恤（使用者：拉著衣角往上脫，衣服會被翻折，不是整件像紙板）：
+    //   雙手抓住下襬往上拉，翻折線從下襬一路往上捲——翻折線以下的布照翻折線反射到上面、裡面朝外疊在還穿著的那截外面；
+    //   翻折線到胸口時下襬已經被拉到頭頂附近（手舉起來），手搆不到的部分在手裡擠成一束；
+    //   最後整件連領口一起從頭上拉掉（往上、往中間收），u＞.8 不見，手放回來。
+    let shirtPlan = null;
+    if (anim && anim.kind === 'shirt') {
+      const u = anim.u, O = sh.prims.filter(p => p.cloth && !p.under && !p.sleeve);
+      if (O.length && u <= .8) {
+        const Q = O.map(p => [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]]);
+        const hemZ = Math.min(...Q.map(q => q[2])), topZ = Math.max(...Q.map(q => q[2]));
+        const headTop = Math.max(...sh.prims.filter(p => p.part === 'head' || p.mat === 1).map(p => p.bc[2] + p.off[2] + p.br * .6), topZ + 12);
+        const NB = 24, zb = (z) => Math.max(0, Math.min(Math.round(topZ - hemZ), Math.round(z - hemZ)));
+        const ring = [], R = [];
+        Q.forEach((q) => { const k = zb(q[2]); (ring[k] = ring[k] || [0, 0, 0])[0] += q[0]; ring[k][1] += q[1]; ring[k][2]++; });
+        for (let k = 0; k < ring.length; k++) if (ring[k]) ring[k] = [ring[k][0] / ring[k][2], ring[k][1] / ring[k][2]];
+        const ctr = (z) => { let k = zb(z); for (let d = 0; d < ring.length; d++) { if (ring[k - d]) return ring[k - d]; if (ring[k + d]) return ring[k + d]; } return [0, 0]; };
+        const polar = (q) => { const c = ctr(q[2]), dx = q[0] - c[0], dy = q[1] - c[1]; return [Math.atan2(dy, dx), Math.hypot(dx, dy)]; };
+        const tb = (t) => ((Math.round((t + Math.PI) / (2 * Math.PI) * NB) % NB) + NB) % NB;
+        Q.forEach((q) => { const [t, r] = polar(q), k = zb(q[2]), j = tb(t); R[k] = R[k] || []; R[k][j] = Math.max(R[k][j] || 0, r); });
+        const Rat = (z, t) => { let k = zb(z); const j = tb(t); for (let d = 0; d < R.length; d++) { const a = R[k - d] && R[k - d][j], c = R[k + d] && R[k + d][j]; if (a || c) return Math.max(a || 0, c || 0); } return 8; };
+        const frontY = (z) => ctr(z)[1] + Rat(z, Math.PI / 2);
+        // 手：抓下襬的兩側前面；超過肩膀以後往頭頂中間收
+        const A = { armL: armPts('armL'), armR: armPts('armR') };
+        const reach = Math.min(...['armL', 'armR'].filter(k => A[k]).map(k => { const a = A[k]; return a.sp[2] + .92 * (Math.hypot(a.ep[0] - a.sp[0], a.ep[1] - a.sp[1], a.ep[2] - a.sp[2]) + Math.hypot(a.w0[0] - a.ep[0], a.w0[1] - a.ep[1], a.w0[2] - a.ep[2])); }));
+        const zCap = Math.max(topZ + 4, Math.min(reach, headTop + 8));
+        const grip = (sd, z) => {
+          if (z <= topZ) return [sd * 6.5, frontY(z) + 2.2, z];
+          const t = sm((z - topZ) / Math.max(1, zCap - topZ));
+          return [sd * (6.5 - 3 * t), (frontY(topZ) + 2.2) * (1 - t) + (ctr(topZ)[1] + 1) * t, z];
+        };
+        const kGrab = sm(u / .12), kFold = sm((u - .12) / .48), kOff = sm((u - .6) / .2);
+        const zf = hemZ + kFold * (topZ + .5 - hemZ), zh = Math.min(zCap, 2 * zf - hemZ);
+        const lift2 = kOff * (headTop + 10 - topZ);
+        const handZ = zh + kOff * Math.max(0, zCap - zh);
+        const hands = {};
+        for (const [part, sd] of [['armL', -1], ['armR', 1]]) if (A[part]) {
+          const g = grip(sd, handZ);
+          hands[part] = u < .12 ? lerp(A[part].w0, grip(sd, hemZ), kGrab) : g;
+        }
+        const hmid = hands.armL && hands.armR ? lerp(hands.armL, hands.armR, .5) : [0, frontY(topZ), handZ];
+        /** 一片 T 恤布這一格在哪（中心點）。 */
+        const place = (q) => {
+          let [x, y, z] = q;
+          if (z < zf) {   // 翻折線以下：反射到翻折線上面、裡面朝外疊在外層
+            const [t] = polar(q);
+            let z2 = 2 * zf - z;
+            if (z2 > zCap) z2 = zCap + (z2 - zCap) * .25;   // 手搆不到：在手裡擠成一束
+            if (z2 <= topZ) { const c = ctr(z2), rr = Math.max(polar(q)[1], Rat(z2, t)) + 1.2; [x, y] = [c[0] + rr * Math.cos(t), c[1] + rr * Math.sin(t)]; }
+            else {
+              const c = ctr(topZ), rr = Rat(topZ, t) + 1.2, base = [c[0] + rr * Math.cos(t), c[1] + rr * Math.sin(t)];
+              const k = sm((z2 - topZ) / Math.max(1, zCap - topZ)), tgt = [hmid[0] + 4.5 * Math.cos(t), hmid[1] + 2.5 * Math.sin(t)];
+              [x, y] = [base[0] + (tgt[0] - base[0]) * k, base[1] + (tgt[1] - base[1]) * k];
+            }
+            z = z2;
+          }
+          if (kOff) {   // 最後：整件連領口往上拉過頭、往中間收
+            const c = ctr(topZ);
+            x = c[0] + (x - c[0]) * (1 - .4 * kOff); y = c[1] + (y - c[1]) * (1 - .4 * kOff); z += lift2;
+          }
+          return [x, y, z];
+        };
+        shirtPlan = { place, hands, kOff, hmid };
+      }
+    }
     for (const part of ['armL', 'armR']) {
+      if (shirtPlan) {   // 脫 T 恤：手腕跟著下襬走（IK）；u＞.8 手放回來
+        const u = anim.u, sd = part === 'armL' ? -1 : 1, T = shirtPlan.hands[part];
+        if (T) { const X = ikArm(part, T, [sd, .35, -.55]); if (X) armX[part] = X; }
+        continue;
+      }
+      if (anim && anim.kind === 'shirt' && anim.u > .8) {   // 脫完：手從頭頂慢慢放回原位
+        const A = armPts(part); if (!A) continue;
+        const sd = part === 'armL' ? -1 : 1, k = sm((anim.u - .8) / .2), top = [sd * 3.5, A.sp[1] + 2, A.sp[2] + 22];
+        const X = ikArm(part, lerp(top, A.w0, k), [sd, .35, -.55]); if (X) armX[part] = X;
+        continue;
+      }
       const arm = sh.prims.filter(p => p.part === part && p.a && !p.cloth);   // 照建立順序：上臂（a＝肩）、前臂（a＝手肘）、手（a＝手腕）——不能照高度排（手放在腿上時手腕比手肘高）
       if (arm.length < 2) continue;
       const sd = part === 'armL' ? -1 : 1, lz = lift * LIFT[part];
@@ -112,12 +208,9 @@
     let goneMove = null;
     if (anim) {
       const u = anim.u, G = sh.prims.filter(isGone);
-      if (u > .78 || !G.length) goneMove = () => [0, 0, 1000];   // 已經脫掉：移到畫面外
-      else if (anim.kind === 'shirt') {   // 往上拉過頭
-        const lo = Math.min(...G.map(p => p.bc[2] + p.off[2])), top = Math.max(...sh.prims.filter(p => p.part === 'head' || p.mat === 1).map(p => p.bc[2] + p.off[2] + p.br), S + 20);
-        const r = sm((u - .18) / .55) * (top + 4 - lo);
-        goneMove = (q) => [-q[0] * .25 * sm((u - .3) / .4), 0, r];
-      } else if (anim.kind === 'bra') {   // 解開後往下往前掉
+      if ((anim.kind === 'shirt' ? u > .8 : u > .78) || !G.length) goneMove = () => [0, 0, 1000];   // 已經脫掉：移到畫面外
+      else if (anim.kind === 'shirt') goneMove = null;   // T 恤另外照 shirtPlan 翻折（下面）
+      else if (anim.kind === 'bra') {   // 解開後往下往前掉
         const k = sm((u - .38) / .38);
         goneMove = () => [0, 5 * k, -16 * k];
       } else {   // 內褲：沿大腿往膝蓋方向滑下去
@@ -129,7 +222,11 @@
     for (const p of sh.prims) {
       let a;
       const q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
-      if (goneMove && isGone(p)) { const g = goneMove(q), f = field(q); a = [g[0] + f[0], g[1] + f[1], g[2] + f[2], null]; }
+      if (shirtPlan && p.cloth && !p.under) {   // 脫 T 恤：布照翻折算新位置；袖子先跟上臂，最後拉過頭時收進手裡
+        if (p.sleeve && !shirtPlan.kOff) a = armAct(p.bc[0] + p.off[0] < 0 ? 'armL' : 'armR', true);
+        else if (p.sleeve) { const sd = Math.sign(p.bc[0] + p.off[0]) || 1, h = shirtPlan.hmid; a = [h[0] + sd * 3 - q[0], h[1] - q[1], h[2] - 1 - q[2], null]; }
+        else { const n = shirtPlan.place(q); a = [n[0] - q[0], n[1] - q[1], n[2] - q[2], null]; }
+      } else if (goneMove && isGone(p)) { const g = goneMove(q), f = field(q); a = [g[0] + f[0], g[1] + f[1], g[2] + f[2], null]; }
       else if (p.sleeve) {   // 袖子：上臂那段跟上臂、前臂那段跟前臂
         const part = p.bc[0] + p.off[0] < 0 ? 'armL' : 'armR';
         a = armAct(part, p.sleeve === 1);
@@ -191,7 +288,8 @@
     const shape = () => ({ P: base.P, sh: Object.assign({}, base.sh, { prims: base.sh.prims.map(p => Object.assign({}, p)), areolaStamps: (base.sh.areolaStamps || []).map(q => Object.assign({}, q)) }) });
     const m = motion(pose, f, n, body === 'mermaid');
     // 分三次畫：只有身體 → 身體＋內衣（胸罩、丁字褲）→ 身體＋外衣（T 恤），再一層層疊灰色上去
-    const run = (keep) => F.render(doll, body, 0, 0, { scale, cv, shape: () => { const v = shape(); v.sh.prims = v.sh.prims.filter(keep); return v; }, deform: (sh, P, H) => deform(sh, P, H, m) });
+    // 先用全部零件變形（脫 T 恤時手要照 T 恤的下襬走——只畫身體那一層也要看得到 T 恤），再篩這一層要畫的
+    const run = (keep) => F.render(doll, body, 0, 0, { scale, cv, shape, deform: (sh, P, H) => { deform(sh, P, H, m); sh.prims = sh.prims.filter(keep); } });
     const hasU = base.sh.prims.some(p => p.cloth && p.under), hasO = base.sh.prims.some(p => p.cloth && !p.under);
     const r = run(p => !p.cloth);
     shade(r.pixels);
