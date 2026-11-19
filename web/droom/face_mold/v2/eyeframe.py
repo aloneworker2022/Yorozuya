@@ -6,6 +6,8 @@
 #   side 外側的直線（つり目・四角那種，畫粗線、也當開口的邊）
 #   iris 黑眼珠中心的位移；crease 雙眼皮線畫不畫
 import math
+# 2026-11-19 使用者：下眼眶太明顯 → 下眼線改淡色（陰影色 c）、細；四角的下眼線不要；眼角的勾、外側直線改細
+LOWC='c';HOOKK=.7
 TYPES={
  'T1':dict(name='つり目・杏仁',
    up=[(-12,1),(-8,-4),(-2,-7),(5,-7.5),(11,-6.2),(14,-5.6)],upw=(1.2,2.8,2.2),
@@ -14,12 +16,12 @@ TYPES={
  'T2':dict(name='つり目・四角',
    up=[(-12,-2),(-8,-6),(0,-7.6),(8,-7.2),(15,-6.8)],upw=(1.6,3.0,2.6),
    hooks=[([(-12,-2),(-12.6,1.2)],1.6),([(15,-6.8),(17,-7.6)],1.2)],
-   side=[(13.6,-6.4),(12.6,-.5),(9.5,5)],sidew=2.2,
-   lo=[(-12,4),(-6,5.6),(4,5.6),(9.5,5)],lod=(0,1),low=1.6,lohook=([(-12,4),(-12.8,2.8)],1.2),iris=(0,0),crease=True),
+   side=[(13.6,-6.4),(12.6,-.5),(9.5,5)],sidew=1.1,
+   lo=[(-12,4),(-6,5.6),(4,5.6),(9.5,5)],lod=(0,0),low=1.0,iris=(0,0),crease=True),
  'T3':dict(name='つり目・切れ長',
    up=[(-13,-1),(-6,-4.6),(4,-5.6),(12,-6.2),(17.5,-7.8)],upw=(1.0,3.0,1.0),
    hooks=[([(-13,-1),(-14.2,1)],1.0)],
-   lo=[(-13,-1),(-6,3),(4,3.6),(10,1.6),(13.2,-3.2)],lod=(.18,1),low=1.1,lotip=1.8,iris=(.5,-.6),crease=True),
+   lo=[(-13,-1),(-6,3),(4,3.6),(10,1.6),(13.2,-3.2)],lod=(.18,1),low=1.0,lotip=1.2,iris=(.5,-.6),crease=True),
  'T4':dict(name='つり目・細い',
    up=[(-9,.5),(0,-2.4),(9.5,-5.2)],upw=(.8,2.4,.8),hooks=[],
    lo=[(-9,.5),(-4,3.2),(3,3.2),(7.5,1.4),(9.5,-5.2)],lod=(.25,.8),low=1.0,iris=(0,-1.2),crease=False),
@@ -66,7 +68,7 @@ class Frame:
     s.side=side
     s.poly=s.up+side+s.lo[::-1]
     # 上眼線粗細：沿著線 0→1，內→中→外
-    a,b,c=T['upw'];n=len(s.up)
+    a,b,c=T['upw'];n=len(s.up);c=max(1.0,c*HOOKK)   # 外眼角那端也收細
     s.upw=[(a+(b-a)*(i/(n-1))*2) if i<n/2 else (b+(c-b)*((i/(n-1))-.5)*2) for i in range(n)]
     s.box=(min(p[0] for p in s.poly)-4,max(p[0] for p in s.poly)+4,min(p[1] for p in s.poly)-6,max(p[1] for p in s.poly)+4)
   def _near(s,x,y,pts,w):
@@ -84,20 +86,20 @@ class Frame:
         if abs(x-ux)<.5 and abs(y-(uy-3.6))<.5:return 'c'
     if s._near(x,y,s.up,s.upw):return 'K'
     for seg,w in T.get('hooks',[]):
-      if s._near(x,y,seg,w):return 'K'
+      if s._near(x,y,seg,w*HOOKK):return 'K'
     if s.side and s._near(x,y,s.side,T['sidew']):return 'K'
     n=len(s.lo);i0,i1=int(T['lod'][0]*(n-1)),int(T['lod'][1]*(n-1))
     if i1>i0:
       seg=s.lo[i0:i1+1];lw=T['low']
       if 'lotip' in T:w=[lw+(T['lotip']-lw)*(k/(len(seg)-1))**2 for k in range(len(seg))]
       else:w=lw
-      if s._near(x,y,seg,w):return 'L' if lw<1.5 else 'K'
+      if s._near(x,y,seg,w):return LOWC
     for key in('lohook','lotail'):
-      if key in T and s._near(x,y,*T[key]):return 'L'
+      if key in T and s._near(x,y,T[key][0],T[key][1]*HOOKK):return LOWC
     if T.get('lashes'):
       for k in range(3,len(s.lo)-3,6):
         lx,ly=s.lo[k]
-        if abs(x-lx)<.45 and ly<y<ly+1.4:return 'L'
+        if abs(x-lx)<.45 and ly<y<ly+1.4:return LOWC
     if not _inpoly(x,y,s.poly):return None
     # 眼睛裡面（同舊眼睛的配色）
     ic=(.5+T['iris'][0],.3+T['iris'][1]);k=T.get('irs',1);IRX,IRY=6.2*k,7*k
