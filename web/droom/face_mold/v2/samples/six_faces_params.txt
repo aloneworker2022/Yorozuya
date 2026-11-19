@@ -1,0 +1,6 @@
+1|普通3・類型1・棕・長睫毛・自然眼線|EYET=A3 PT=1 ICOL=棕 LASH=長 EL=自然 MT=closed
+2|つり目3・類型2・金黃・短睫毛・上揚眼線・黑眼珠提高|EYET=B3 PT=2 ICOL=金黃 LASH=短 EL=上揚 IRUP=0.2 MT=closed
+3|たれ目3・類型3・粉紅・翹睫毛・下垂眼線|EYET=C3 PT=3 ICOL=粉紅 LASH=翹 EL=下垂 BGAP=7 MT=open
+4|普通5・類型2・水藍・長睫毛・眼睛放大拉開|EYET=A5 PT=2 ICOL=水藍 LASH=長 EYS=1.15 EYEX=33 MT=closed
+5|つり目6・類型1・紅・短睫毛・粗框眼線・三白|EYET=B6 PT=1 ICOL=紅 LASH=短 EL=粗框 IRUP=0.35 MT=closed
+6|たれ目6・類型3・亮綠・翹睫毛・黑眼珠放大|EYET=C6 PT=3 ICOL=亮綠 LASH=翹 IRSC=1.15 BGAP=2 MT=open
