@@ -26,7 +26,7 @@ def samples():
   bang_layer={cl.rid:cl.layer for cl in bangs}
   bcuts=[-14];zz=-14
   while zz>-100:zz-=rnd.choice([18,22,26]);bcuts.append(zz)
-  P=[]
+  P=[];U=HC.HS=='bob'                               # 鮑伯：髮尾底下 2 格暗（收進去那面）
   for y in np.arange(CY-RO+.25,CY+48,.5):
     dy=y-CY;r=math.sqrt(max(0,RO*RO-dy*dy))
     if r<1:continue
@@ -54,7 +54,8 @@ def samples():
         if Yp<CY+8 and x*x+(Yp-CY)**2+zf*zf<(RO-1)**2:continue   # 在頭頂那圈裡面＝被蓋住，不取（側面看上端才順著頭的圓）
         zb=sum(1 for c in zcuts if c<=zf)
         sid=('side',zb,1 if x>0 else -1)               # 轉過去看到的是前後那幾刀（左右照片分會在每格跳來跳去、變成雜線）
-        P.append((x,Yp,zf,sid,cl.layer));P.append((x+.5,Yp+.5,zf,sid,cl.layer))
+        a=HC.bob_in(Yp,cl.tip);zq=5+(zf-5)*(1-a/14)          # 鮑伯：髮尾前後也往內收（側面看前緣往後、後緣往前）
+        P.append((x,Yp,zq,sid,cl.layer,U and Yp>=cl.tip-2));P.append((x+.5,Yp+.5,zq,sid,cl.layer,U and Yp+.5>=cl.tip-2))
   for cl in backs:                                  # 後髮：頭後面往下垂，前後也切
     rows=np.nonzero(cl.mask.any(1))[0]
     for Yp in rows:
@@ -64,23 +65,26 @@ def samples():
         x=X-128;zo=-math.sqrt(max(0,(RO+2)**2-x*x))*BACK
         for f in(1,.8,.6,.4):
           bid=('back',sum(1 for c in bcuts if c>=zo*f))   # 後髮也照前後深度切（照片分的話側面看每一格都換片、變成一堆直線）
-          for o in(0,.5):P.append((x+o,Yp,zo*f,bid,0));P.append((x+o,Yp+.5,zo*f,bid,0))
+          a=HC.bob_in(Yp,cl.tip);zq=zo*f+a*1.6                  # 鮑伯：後髮髮尾往脖子那邊收
+          for o in(0,.5):P.append((x+o,Yp,zq,bid,0,U and Yp>=cl.tip-2));P.append((x+o,Yp+.5,zq,bid,0,U and Yp+.5>=cl.tip-2))
   return P
 def render(img,deg,cx):
   a=math.radians(deg);ca,sa=math.cos(a),math.sin(a)
   HD=head_depth(deg,cx);white=(img==255).all(2)
   zb={};info={}
-  for x,y,z,cid,layer in samples():
+  und={}
+  for p in samples():
+    x,y,z,cid,layer=p[:5]
     X=int(math.floor(cx+x*ca-z*sa));Yp=int(math.floor(y));d=x*sa+z*ca
     if not(0<=X<N and 0<=Yp<N):continue
     k=(X,Yp);db=d+{'bang':2,'side':3,'lon':0,'back':-5}[cid[0]]   # 前後差不多時：瀏海、鬢髮在前，後髮在後（不然每格跳來跳去變雜線）
-    if k not in zb or db>zb[k][0]:zb[k]=(db,d);info[k]=(cid,layer,x,y,z)
+    if k not in zb or db>zb[k][0]:zb[k]=(db,d);info[k]=(cid,layer,x,y,z);und[k]=len(p)>5 and p[5]
   out=img.copy();vis={}
   for k,(db,d) in zb.items():
     X,Yp=k;cid,layer,x,y,z=info[k]
     near=cid[0]=='side' and x*sa>0            # 近側鬢髮一定在臉前面
     if white[Yp,X] or near or d>=HD[Yp,X]-1.5:
-      out[Yp,X]=C['mid'];vis[k]=info[k]
+      out[Yp,X]=C['sh'] if und[k] else C['mid'];vis[k]=info[k]
   # 片的邊：背光側（右）一格暗；疊在別片上 → 在下面那片投影子（右下）
   # 跟正面一樣：只有約 45% 的分界一路到頭頂，其他只畫中下段；孤立的點不畫（取樣跳動造成的雜點）
   rf=random.Random(13);full={}

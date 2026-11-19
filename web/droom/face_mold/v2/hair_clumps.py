@@ -13,6 +13,10 @@ C=dict(hi=(246,228,170),li=(222,192,124),mid=(190,152,90),sh=(150,114,64),dk=(11
 SKSH=(222,178,152)
 W=(128,36)
 BANG_Y=136 if HS!='bob' else 133
+CURL,CURLH=8,28   # 鮑伯髮尾往內收：最後 CURLH 格沿圓弧往內收 CURL 格（使用者 2026-11-19：鮑伯髮尾要往內收，不是直的）
+def bob_in(y,tip):
+  if HS!='bob':return 0
+  u=min(1,max(0,(y-(tip-CURLH))/CURLH));return CURL*(1-math.sqrt(1-u*u))
 def pm(pts):
   m=Image.new('L',(N,N),0);ImageDraw.Draw(m).polygon([(round(x),round(y)) for x,y in pts],fill=1);return np.array(m).astype(bool)
 def mer(phi,y):
@@ -52,18 +56,18 @@ def side_clumps(rnd):
       w=min(rnd.uniform(8,13),RO+1-abs(x-CX));xa,xb=(x,x+s*w) if s>0 else (x+s*w,x)
       ex=max(abs(xa-CX),abs(xb-CX))
       top=CY-math.sqrt(max(0,RO*RO-ex*ex))+6+rnd.uniform(0,3)   # 從頭頂那圈的邊緣下面長出來（不要在頭外面多出一個方角）
-      tip=bottom+rnd.uniform(-4,4);pointed=False
+      tip=bottom+(rnd.uniform(-2,2) if HS=='bob' else rnd.uniform(-4,4));pointed=False   # 鮑伯是剪齊的，長短差更少
       bulge=(4*math.sin(math.pi*(top-104)/130) if HS=='bob' else 0)
       lx=[(xa-.8,top)];rx=[(xb+.8,top)]
       for k in range(1,20):
         t=k/19;y=top+(tip-top)*t
         ob=s*(5*math.sin(math.pi*t*.85) if HS=='bob' else 0)       # 鮑伯：往外鼓
-        cur=s*(-4*max(0,t-.8)/.2 if HS=='bob' else 0)               # 鮑伯：髮尾往內捲
+        cur=-s*bob_in(y,tip)                                           # 鮑伯：髮尾往內收
         nar=(1-max(0,t-.85)/.15*.8) if pointed else 1
         cx=(xa+xb)/2+ob*abs(((xa+xb)/2-CX))/RO+cur;hw=(xb-xa)/2*nar
         lx.append((cx-hw,y));rx.append((cx+hw,y))
       pts=lx+[((xa+xb)/2+cur,tip+(3 if pointed else 0))]+rx[::-1]
-      out.append(Clump('side',pts,0 if i%2==0 else 1,i));x+=s*w*.85;i+=1
+      c=Clump('side',pts,0 if i%2==0 else 1,i);c.tip=tip;out.append(c);x+=s*w*.85;i+=1
   return out
 def back_clumps(rnd):
   out=[];bottom=256 if HS!='bob' else 222
@@ -74,8 +78,9 @@ def back_clumps(rnd):
       xb=min(xb,CX+RO+4);xa=max(xa,CX-RO-4)
       tip=bottom-rnd.uniform(0,10)
       cy=lambda X:CY-math.sqrt(max(0,RO*RO-min(RO,abs(X-CX))**2))+3     # 從頭頂那圈裡面長出來，不在頭外面多一個方角
-      pts=[(xa-1,cy(xa)),(xb+1,cy(xb)),(xb+1,tip),(xa-1,tip)]   # 下面平的
-      out.append(Clump('back',pts,0,len(out)));x+=s*w*.8
+      yb=np.linspace(cy(xb),tip,30);ya=np.linspace(cy(xa),tip,30)[::-1]   # 左右兩邊各從自己那點的頭頂圈開始（不然外側多一個角）
+      pts=[(xb+1-s*bob_in(y,tip),y) for y in yb]+[(xa-1-s*bob_in(y,tip),y) for y in ya]   # 下面平的；鮑伯髮尾往內收
+      c=Clump('back',pts,0,len(out));c.tip=tip;out.append(c);x+=s*w*.8
   return out
 def build():
   rnd=random.Random(7 if HS!='bob' else 11)
@@ -108,6 +113,13 @@ def render(img,stage):
     out[m]=C['mid'];hairmask|=m
     redge=m&~np.roll(m,-1,1)&~np.roll(m,-2,1)
     out[redge&(yy>ylim)]=C['sh']                             # 背光那側一格暗（跟影子同樣長）
+  if HS=='bob':
+    for cl in sides+backs:
+      m=cl.mask&(white|hairmask) if cl.kind=='back' else cl.mask
+      if cl.kind=='side' or True:
+        und=m&(yy>=cl.tip-2)
+        if cl.kind=='back':und&=white
+        out[und]=C['sh']
   # 瀏海投在額頭的影子
   allb=np.zeros((N,N),bool)
   for cl in bangs:allb|=cl.mask
