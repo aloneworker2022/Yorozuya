@@ -7243,6 +7243,12 @@ def edit_pic():
     return FileResponse(WEB_DIR / "edit_pic.html")
 
 
+@app.get("/wifepay")
+def wifepay_page():
+    from fastapi.responses import FileResponse
+    return FileResponse(WEB_DIR / "wifepay.html")
+
+
 @app.get("/test_sex")
 def test_sex():
     from fastapi.responses import FileResponse
