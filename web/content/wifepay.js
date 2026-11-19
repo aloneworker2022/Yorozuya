@@ -3,7 +3,7 @@ import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES } from "./girl_
 import { familyOf } from "./girl_voice.js?v=1";
 import {
   apiJson, fetchGallery, fetchDialog, generateFromItem, mountWifepayReveal, startWifepayPeek,
-} from "./wifepay_reveal.js?v=1";
+} from "./wifepay_reveal.js?v=2";
 
 const $ = (id) => document.getElementById(id);
 const ENG_KEY = "yorozuya_eng";
@@ -399,14 +399,19 @@ function revealHost() {
 
 async function testDialog() {
   if (!currentGirl) { setStatus("gen-status", "先選或抽一隻魅子", true); return; }
+  const info = genInfo();
   setStatus("gen-status", "產生對話…");
-  try {
-    const row = await fetchDialog(genInfo());
-    mountWifepayReveal(revealHost(), { page: true, dialog: row, images: [] });
-    setStatus("gen-status", row.ai ? "✓ 模型寫的對話" : "✓ 用本地後備（模型沒寫好）");
-  } catch (e) {
-    setStatus("gen-status", e.message, true);
-  }
+  mountWifepayReveal(revealHost(), {
+    page: true,
+    wifeName: info.name,
+    guestName: info.guestName,
+    dialog: async () => {
+      const row = await fetchDialog(info);
+      setStatus("gen-status", row.ai ? "✓ 模型寫的對話" : "✓ 用本地後備（模型沒寫好）");
+      return row;
+    },
+    images: [],
+  });
 }
 
 async function testOneImage() {
@@ -419,9 +424,12 @@ async function testOneImage() {
     const url = await generateFromItem(it, { ...genInfo(), prompt: $("item-prompt").value, negative: $("item-neg").value }, (sec) => {
       setStatus("gen-status", `生圖中… ${sec}s`);
     });
+    const info = genInfo();
     mountWifepayReveal(host, {
       page: true,
       waitText: "圖好了",
+      wifeName: info.name,
+      guestName: info.guestName,
       dialog: { narration: "（單張測試，沒有對話）", man: "—", wife: "—" },
       images: [url],
     });

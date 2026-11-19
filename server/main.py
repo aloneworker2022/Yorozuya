@@ -5145,12 +5145,12 @@ def wifepay_dialog_prompt_put(body: dict):
 
 @app.post("/api/wifepay/dialog")
 async def wifepay_dialog(body: dict):
-    """回 {narration, man, wife, ai}。模型約 20 秒沒回或寫壞／觸礁 → 本地三段後備。"""
+    """回 {narration, man, wife, ai}。模型約 30 秒沒回或寫壞／觸礁 → 本地三段後備。"""
     body = body or {}
     tpl = wifepay.load_dialog_prompt(ASSETS_DIR)
     system, user = wifepay.dialog_messages(body, tpl)
     try:
-        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=20)
+        reply = await asyncio.wait_for(_life_say(_dd_read_save() or {}, system, user), timeout=30)
     except Exception:
         reply = ""
     row, ai = wifepay.resolve_dialog(reply, body)

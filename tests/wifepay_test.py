@@ -77,30 +77,45 @@ def test_expand_and_vars():
 
 
 def test_parse_and_banned():
+    nar = (
+        "暖黃燈下，她仰躺在凌亂的床單上，眉心微蹙、唇瓣微張，眼尾含著水光卻還是看著壓上來的男人；"
+        "他額角沁著汗，眼神發亮、嘴角帶著得意，腰一下一下深深頂進去，床板跟著輕輕響。"
+    )
     ok = W.parse_dialog(
-        "旁白：她被壓在床上一下一下地頂著。\n"
+        f"旁白：{nar}\n"
         "男：夾這麼緊。\n"
         "她：嗯……慢一點……\n"
     )
     assert ok == {
-        "narration": "她被壓在床上一下一下地頂著。",
+        "narration": nar,
         "man": "夾這麼緊。",
         "wife": "嗯……慢一點……",
     }
-    # 別名
-    alt = W.parse_dialog("敘述：他們抱在一起。\n客人：叫出來。\n老婆：啊……好深……")
-    assert alt and alt["man"] == "叫出來。"
+    # 別名＋旁白跨行接起來
+    alt_nar = (
+        "他們面對面坐著緊緊抱在一起，她閉著眼、耳根發燙，手指抓著他的背；"
+        "男人吻得很深，手沿著她的腰慢慢磨，眼神裡帶著貪戀，呼吸都交纏在一塊。"
+    )
+    alt = W.parse_dialog(
+        "敘述：" + alt_nar[:30] + "\n" + alt_nar[30:] + "\n"
+        "客人：叫出來。\n老婆：啊……好深……"
+    )
+    assert alt and alt["man"] == "叫出來。" and alt["narration"] == alt_nar
     # 缺一段 → None
     assert W.parse_dialog("旁白：只有旁白。\n男：只有男。") is None
+    # 旁白太短（不到 NAR_MIN）→ None
+    short = W.parse_dialog("旁白：門後傳來喘息。\n男：再夾緊。\n她：嗯啊……")
+    assert short is None
     # BANNED 清掉該句 → 缺段 → None
-    bad = W.parse_dialog("旁白：她被壓著。\n男：放開我救命。\n她：嗯……")
+    bad = W.parse_dialog(f"旁白：{nar}\n男：放開我救命。\n她：嗯……")
     assert bad is None
     assert W.apply_banned("未成年不可以") == ""
     assert W.apply_banned("慢一點……") == "慢一點……"
     parsed, ai = W.resolve_dialog("這不是規定格式", {"pose": "kiss"})
     assert ai is False
     assert parsed["narration"] and parsed["man"] and parsed["wife"]
-    parsed2, ai2 = W.resolve_dialog("旁白：門後傳來喘息。\n男：再夾緊。\n她：嗯啊……", {})
+    assert W.NAR_MIN <= len(parsed["narration"]) <= W.NAR_MAX
+    parsed2, ai2 = W.resolve_dialog(f"旁白：{nar}\n男：再夾緊。\n她：嗯啊……", {})
     assert ai2 is True and parsed2["wife"].startswith("嗯")
 
 
@@ -110,6 +125,9 @@ def test_fallback_not_banned():
         for k in ("narration", "man", "wife"):
             assert row[k]
             assert W.apply_banned(row[k]) == row[k]
+        assert W.NAR_MIN <= len(row["narration"]) <= W.NAR_MAX
+        assert len(row["narration"]) > len(row["man"])
+        assert any(w in row["narration"] for w in ("眉", "眼", "表情", "嘴角", "臉", "耳根", "喘"))
 
 
 def test_pick_one_or_two():
@@ -139,6 +157,27 @@ def test_dialog_messages_expand():
     sys, user = W.dialog_messages({"name": "小焰", "pose": "doggy", "build": "slim", "stage": "wife"})
     assert "小焰" in user or "老婆" in user
     assert "老漢" in user or "後面" in user
+    assert "表情" in sys and "60" in sys and "120" in sys
+    assert "60～120" in user
+
+
+def test_migrate_old_dialog_default():
+    assets = _assets()
+    p = W.dialog_path(assets)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(W.OLD_DIALOG, ensure_ascii=False, indent=2), encoding="utf-8")
+    d = W.load_dialog_prompt(assets)
+    assert d["system"] == W.DEFAULT_DIALOG["system"]
+    assert d["user"] == W.DEFAULT_DIALOG["user"]
+    saved = json.loads(p.read_text("utf-8"))
+    assert saved["system"] == W.DEFAULT_DIALOG["system"]
+    # 使用者自訂的模板不能被蓋掉
+    assets2 = _assets()
+    custom = {"system": "我自己寫的系統提示", "user": "使用者 {name}"}
+    W.save_dialog_prompt(assets2, custom)
+    again = W.load_dialog_prompt(assets2)
+    assert again["system"] == "我自己寫的系統提示"
+    assert again["user"] == "使用者 {name}"
 
 
 if __name__ == "__main__":
@@ -149,4 +188,5 @@ if __name__ == "__main__":
     test_fallback_not_banned()
     test_pick_one_or_two()
     test_dialog_messages_expand()
+    test_migrate_old_dialog_default()
     print("wifepay_test: ok")

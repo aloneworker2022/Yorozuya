@@ -32,7 +32,8 @@ DEFAULT_NEGATIVE = (
     "worst quality, blurry, deformed, extra limbs"
 )
 
-DEFAULT_DIALOG = {
+# 舊預設：使用者若沒改過 dialog.json（內容等於這份），載入時遷到新預設。
+OLD_DIALOG = {
     "system": (
         "你替成人戀愛模擬遊戲寫一段玩家從門外聽到的對話。"
         "場景：成年女性為了替丈夫（玩家）還債，自願去接客；玩家剛按了門，先聽到裡面的聲音。"
@@ -52,19 +53,44 @@ DEFAULT_DIALOG = {
     ),
 }
 
+# 旁白要比對白長，寫動作＋兩人表情／態度／肢體；60～120 字。對白維持短句。
+NAR_MIN, NAR_MAX = 60, 180
+MAN_MAX, WIFE_MAX = 36, 40
+
+DEFAULT_DIALOG = {
+    "system": (
+        "你替成人戀愛模擬遊戲寫一段玩家從門外聽到的對話。"
+        "場景：成年女性為了替丈夫（玩家）還債，自願去接客；玩家剛按了門，先聽到裡面的聲音。"
+        "雙方都是成年人、你情我願，可以粗口、激烈、求饒式撒嬌（慢一點、輕一點、會壞掉），"
+        "但絕對不要寫強迫、不同意、暴力、未成年或任何救命／報警類台詞。"
+        "格式固定三行，只要這三行，不要編號、不要引號外的說明；旁白請寫成一行："
+        "旁白：……（第三人稱；先寫他們正在做什麼，再寫妻子和男子各自的表情、態度、肢體語言；不要寫玩家）"
+        "男：……（客人正在說的一句話）"
+        "她：……（老婆的回應）"
+        "繁體中文。旁白 60～120 字，必須比對白長，務必寫到兩人的表情與態度；男 ≤ 32 字，她 ≤ 36 字。"
+    ),
+    "user": (
+        "體位：{pose_zh}。\n客人：{man_build_zh}，{who}。\n"
+        "她是玩家的{stage_zh}，名叫{name}，現在在服務客人；偶爾會想到老公但不會說出名字。\n"
+        "{extra}"
+        "旁白要寫表情、態度、肢體，60～120 字。\n"
+        "開始："
+    ),
+}
+
 FALLBACKS = [
     {
-        "narration": "門縫裡傳來肉體拍打的聲音，她被客人壓在床上一下一下地頂著。",
+        "narration": "暖黃燈下，她仰躺在凌亂的床單上，眉心微蹙、唇瓣微張，眼尾含著水光卻還是看著壓上來的男人；他額角沁著汗，眼神發亮、嘴角帶著得意，腰一下一下深深頂進去，床板跟著輕輕響。",
         "man": "夾這麼緊……錢花得真值。",
         "wife": "嗯……慢、慢一點……太深了……",
     },
     {
-        "narration": "暖燈下她坐在客人大腿上自己動，喘息裡夾著壓抑的呻吟。",
+        "narration": "她跨坐在他大腿上自己起伏，臉頰潮紅、睫毛濕濕的，偶爾咬住下唇把呻吟壓低；男人仰躺著，一隻手捏著她的腰，表情又饞又滿意，不時往上頂，看她肩頭輕輕發抖。",
         "man": "對，再坐深一點，自己動啊。",
         "wife": "哈啊……進、進到最裡面了……",
     },
     {
-        "narration": "她跪在床上被從後面撞著，手指緊抓著被單，聲音一陣一陣洩出來。",
+        "narration": "她跪在床上被從後面撞著，手指緊抓著被單，側臉貼著枕頭，眉眼皺著卻沒有躲；身後的男人喘得低沉，掌心按在她腰上，動作又重又穩，每一下都讓她肩頭一顫。",
         "man": "屁股再翹高一點，這姿勢最深了吧。",
         "wife": "啊……從後面……好深……膝蓋好痠……",
     },
@@ -264,7 +290,12 @@ def delete_item(assets: Path, item_id: str) -> bool:
     return True
 
 
+def _same_tpl(a: str, b: str) -> bool:
+    return str(a or "").strip() == str(b or "").strip()
+
+
 def load_dialog_prompt(assets: Path) -> dict:
+    """讀對話模板。若檔案仍是舊預設（使用者沒改過），改寫成新預設；自訂內容不動。"""
     ensure_dirs(assets)
     p = dialog_path(assets)
     if p.is_file():
@@ -273,7 +304,17 @@ def load_dialog_prompt(assets: Path) -> dict:
             if isinstance(data, dict):
                 system = _clip(data.get("system"), 4000) or DEFAULT_DIALOG["system"]
                 user = _clip(data.get("user"), 4000) or DEFAULT_DIALOG["user"]
-                return {"system": system, "user": user}
+                changed = False
+                if _same_tpl(system, OLD_DIALOG["system"]):
+                    system = DEFAULT_DIALOG["system"]
+                    changed = True
+                if _same_tpl(user, OLD_DIALOG["user"]):
+                    user = DEFAULT_DIALOG["user"]
+                    changed = True
+                row = {"system": system, "user": user}
+                if changed:
+                    _atomic_write(p, json.dumps(row, ensure_ascii=False, indent=2))
+                return row
         except (OSError, json.JSONDecodeError):
             pass
     return dict(DEFAULT_DIALOG)
@@ -396,29 +437,32 @@ def dialog_messages(info: dict, template: dict | None = None) -> tuple[str, str]
 
 
 def parse_dialog(reply: str) -> dict | None:
+    """解析旁白／男／她。旁白可跨行接在「旁白：」後面；長度要落在 NAR_MIN～NAR_MAX，否則當寫壞。"""
     nar = man = wife = ""
+    cur = None
     for raw in str(reply or "").splitlines():
         m = _LINE_RE.match(raw)
-        if not m:
+        if m:
+            side, text = m.group(1), apply_banned(m.group(2))
+            if side in ("旁白", "敘述", "畫面"):
+                cur, nar = "nar", text
+            elif side in ("男", "客", "客人", "他"):
+                cur, man = "man", text
+            else:
+                cur, wife = "wife", text
             continue
-        side, text = m.group(1), apply_banned(m.group(2))
-        if not text:
-            continue
-        if side in ("旁白", "敘述", "畫面"):
-            if len(text) > 48:
-                continue
-            nar = text
-        elif side in ("男", "客", "客人", "他"):
-            if len(text) > 28:
-                continue
-            man = text
-        else:
-            if len(text) > 32:
-                continue
-            wife = text
-    if nar and man and wife:
-        return {"narration": nar, "man": man, "wife": wife}
-    return None
+        extra = apply_banned(str(raw or "").strip())
+        if extra and cur == "nar":
+            nar = f"{nar}{extra}" if nar else extra
+    if not (nar and man and wife):
+        return None
+    if _banned(nar) or _banned(man) or _banned(wife):
+        return None
+    if not (NAR_MIN <= len(nar) <= NAR_MAX):
+        return None
+    if len(man) > MAN_MAX or len(wife) > WIFE_MAX:
+        return None
+    return {"narration": nar, "man": man, "wife": wife}
 
 
 def fallback_dialog(info: dict | None = None, rnd=None) -> dict:
@@ -430,7 +474,7 @@ def fallback_dialog(info: dict | None = None, rnd=None) -> dict:
         "doggy": FALLBACKS[2],
         "reverse": FALLBACKS[2],
         "kiss": {
-            "narration": "他們面對面坐著抱在一起，一邊接吻一邊慢慢磨著。",
+            "narration": "他們面對面坐著緊緊抱在一起，她閉著眼、耳根發燙，手指抓著他的背；男人吻得很深，手沿著她的腰慢慢磨，眼神裡帶著貪戀，呼吸都交纏在一塊。",
             "man": "舌頭伸出來……貼這麼緊，喜歡嗎？",
             "wife": "嗯……好近……這樣好害羞……",
         },

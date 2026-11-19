@@ -1,22 +1,30 @@
 /* 老婆還債偷看：共用「中央對話框 → 圖淡入、對話框下移」元件（遊戲與 /wifepay 編輯頁同一套）。
- * 對話順序：門後傳來聲音…… → 旁白 → 男子 → 老婆。圖庫空或生圖失敗只留對話，不退回人偶、不改文生圖。 */
-const CSS_ID = "wifepay-reveal-css";
+ * 對話：先出說話人標籤，停約 0.8 秒後打字機逐字出現；一段跑完按「下一句」才換人（旁白→男子→妻子），舊句往上留著。
+ * 打字途中再點會一次跑完。圖庫空或生圖失敗只留對話，不退回人偶、不改文生圖。圖淡入不重設打字進度。 */
+const CSS_ID = "wifepay-reveal-css-2";
 const CSS = `
 .wp-reveal{position:absolute;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;background:rgba(8,6,12,.28)}
 .wp-reveal.page{position:relative;inset:auto;min-height:28rem;height:min(86dvh,40rem);background:#120e18;border-radius:12px;overflow:hidden;pointer-events:auto}
 .wp-pics{position:absolute;inset:0;display:flex;flex-direction:column;opacity:0;transition:opacity 1.8s ease;background:#0c0912}
 .wp-pics.show{opacity:1}
 .wp-pics img{flex:1 1 0;width:100%;height:0;object-fit:cover;display:block}
-.wp-dialog{position:relative;z-index:2;width:86%;max-width:22rem;margin:0 auto;padding:.85rem .95rem .95rem;border-radius:14px;background:rgba(22,16,30,.92);border:1px solid rgba(232,138,180,.35);color:#f2e9ff;font:600 15px/1.55 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.4);pointer-events:auto;transition:transform 1.15s ease,margin 1.15s ease}
+.wp-dialog{position:relative;z-index:2;width:90%;max-width:24rem;margin:0 auto;padding:.85rem .95rem .95rem;border-radius:14px;background:rgba(22,16,30,.92);border:1px solid rgba(232,138,180,.35);color:#f2e9ff;font:600 15px/1.55 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;box-shadow:0 10px 28px rgba(0,0,0,.4);pointer-events:auto;transition:transform 1.15s ease,margin 1.15s ease;cursor:pointer}
 .wp-reveal.has-pics .wp-dialog{transform:translateY(0);margin-top:auto;margin-bottom:7%}
-.wp-wait{margin:0;text-align:center;color:#e6be8c}
-.wp-nar,.wp-man,.wp-wife{margin:.55rem 0 0;opacity:0;transform:translateY(6px);transition:opacity .45s,transform .45s}
-.wp-nar.on,.wp-man.on,.wp-wife.on{opacity:1;transform:none}
-.wp-nar{color:#d8d0c0;font-weight:500}
-.wp-man{color:#8fb2ff}
-.wp-wife{color:#ffb0cf}
+.wp-wait{margin:0 0 .4rem;text-align:center;color:#e6be8c}
+.wp-log{width:100%;max-height:14.5rem;overflow:auto;display:flex;flex-direction:column;justify-content:flex-end;gap:.55rem}
+.wp-reveal.has-pics .wp-log{max-height:11.5rem}
+.wp-line{margin:0;opacity:1}
+.wp-line.hist{opacity:.7}
+.wp-line.wp-nar{color:#d8d0c0;font-weight:500}
+.wp-line.wp-man{color:#8fb2ff}
+.wp-line.wp-wife{color:#ffb0cf}
+.wp-k{display:block;margin-bottom:.12rem;opacity:.8;font-size:.85em;letter-spacing:.06em}
+.wp-t{display:block;min-height:1.35em;white-space:pre-wrap;word-break:break-word}
+.wp-t.waiting::after{content:"……";opacity:.55;animation:wpblink 1.1s steps(3,end) infinite}
+@keyframes wpblink{50%{opacity:.15}}
+.wp-next{display:block;margin:.7rem auto 0;padding:.32rem 1rem;border:1px solid rgba(232,138,180,.5);border-radius:999px;background:rgba(40,24,44,.92);color:#ffd0e4;font:600 13px/1.4 system-ui,"PingFang TC","Noto Sans CJK TC",sans-serif;cursor:pointer}
+.wp-next[hidden]{display:none}
 .wp-note{margin:.6rem 0 0;font-size:.82em;color:#a99bbd;text-align:center}
-.wp-k{display:inline-block;min-width:2.2em;opacity:.75;font-size:.85em}
 `;
 
 function ensureCss() {
@@ -108,6 +116,22 @@ export async function generateFromItem(item, opts = {}, onTick) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+function typeDelay(mark) {
+  if (/[。！？!?…]/.test(mark)) return 90;
+  if (/[、，,．.]/.test(mark)) return 50;
+  return 26;
+}
+
+function speakerLabels(opts, row) {
+  const wife = String(opts.wifeName || row?.wifeName || opts.name || "").trim() || "妻子";
+  const guest = String(opts.guestName || row?.guestName || "").trim();
+  return {
+    nar: "旁白",
+    man: guest ? `男子（${guest}）` : "男子",
+    wife,
+  };
+}
+
 /**
  * 在 host 裡掛上揭示畫面。
  * opts.dialog = 已有 {narration,man,wife} 或 ()=>Promise
@@ -125,39 +149,143 @@ export function mountWifepayReveal(host, opts = {}) {
   el.innerHTML = `<div class="wp-pics" hidden></div>
     <div class="wp-dialog">
       <p class="wp-wait">${opts.waitText || "門後傳來聲音……"}</p>
-      <p class="wp-nar"><span class="wp-k">旁白</span><span class="wp-t"></span></p>
-      <p class="wp-man"><span class="wp-k">男</span><span class="wp-t"></span></p>
-      <p class="wp-wife"><span class="wp-k">她</span><span class="wp-t"></span></p>
+      <div class="wp-log"></div>
+      <button type="button" class="wp-next" hidden>下一句</button>
       <p class="wp-note"></p>
     </div>`;
   host.append(el);
   const pics = el.querySelector(".wp-pics");
+  const box = el.querySelector(".wp-dialog");
   const wait = el.querySelector(".wp-wait");
+  const log = el.querySelector(".wp-log");
+  const nextBtn = el.querySelector(".wp-next");
   const note = el.querySelector(".wp-note");
   const closed = { yes: false };
+  const ctl = {
+    phase: "idle", // pause | typing | await-next | done
+    skipPause: null,
+    skipType: null,
+    goNext: null,
+  };
+
+  const hideWait = () => { wait.style.display = "none"; };
+  const showNext = (on) => { nextBtn.hidden = !on; };
+  const scrollLog = () => { log.scrollTop = log.scrollHeight; };
+
+  function addLine(kind, label, waiting) {
+    const node = document.createElement("p");
+    node.className = `wp-line ${kind}`;
+    node.innerHTML = `<span class="wp-k"></span><span class="wp-t"></span>`;
+    node.querySelector(".wp-k").textContent = label;
+    const body = node.querySelector(".wp-t");
+    if (waiting) body.classList.add("waiting");
+    log.append(node);
+    scrollLog();
+    return { node, body };
+  }
+
+  function markHist() {
+    log.querySelectorAll(".wp-line:not(.hist)").forEach((n) => n.classList.add("hist"));
+  }
+
+  function advanceFromClick() {
+    if (closed.yes) return;
+    if (ctl.phase === "pause" && ctl.skipPause) ctl.skipPause();
+    else if (ctl.phase === "typing" && ctl.skipType) ctl.skipType();
+    else if (ctl.phase === "await-next" && ctl.goNext) ctl.goNext();
+  }
+
+  box.addEventListener("click", (ev) => {
+    if (ev.target.closest(".wp-next")) return;
+    advanceFromClick();
+  });
+  nextBtn.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (ctl.phase === "await-next" && ctl.goNext) ctl.goNext();
+  });
+
+  function waitPause(ms) {
+    return new Promise((resolve) => {
+      if (closed.yes) return resolve();
+      ctl.phase = "pause";
+      const t = setTimeout(done, ms);
+      function done() {
+        clearTimeout(t);
+        ctl.skipPause = null;
+        if (ctl.phase === "pause") ctl.phase = "idle";
+        resolve();
+      }
+      ctl.skipPause = done;
+    });
+  }
+
+  function typeText(body, text) {
+    return new Promise((resolve) => {
+      const full = String(text || "");
+      const chars = Array.from(full);
+      body.classList.remove("waiting");
+      if (!chars.length) {
+        body.textContent = "";
+        return resolve();
+      }
+      if (closed.yes) {
+        body.textContent = full;
+        return resolve();
+      }
+      ctl.phase = "typing";
+      let i = 0;
+      let timer = 0;
+      const finish = () => {
+        clearTimeout(timer);
+        ctl.skipType = null;
+        body.textContent = full;
+        if (ctl.phase === "typing") ctl.phase = "idle";
+        scrollLog();
+        resolve();
+      };
+      ctl.skipType = finish;
+      const tick = () => {
+        if (closed.yes) return finish();
+        i += 1;
+        body.textContent = chars.slice(0, i).join("");
+        scrollLog();
+        if (i >= chars.length) return finish();
+        timer = setTimeout(tick, typeDelay(chars[i - 1]));
+      };
+      tick();
+    });
+  }
+
+  function waitNext() {
+    return new Promise((resolve) => {
+      if (closed.yes) return resolve();
+      ctl.phase = "await-next";
+      showNext(true);
+      ctl.goNext = () => {
+        ctl.goNext = null;
+        showNext(false);
+        if (ctl.phase === "await-next") ctl.phase = "idle";
+        resolve();
+      };
+    });
+  }
+
   const api = {
     el,
     close() {
       if (closed.yes) return;
       closed.yes = true;
+      try { ctl.skipPause?.(); } catch { /* */ }
+      try { ctl.skipType?.(); } catch { /* */ }
+      try { ctl.goNext?.(); } catch { /* */ }
       el.remove();
       try { opts.onClose?.(); } catch { /* */ }
     },
     setNote(text) { note.textContent = text || ""; },
     async setDialog(row) {
-      if (!row || closed.yes) return;
-      wait.style.display = "none";
-      const parts = [
-        [el.querySelector(".wp-nar"), row.narration],
-        [el.querySelector(".wp-man"), row.man],
-        [el.querySelector(".wp-wife"), row.wife],
-      ];
-      for (const [node, text] of parts) {
-        if (closed.yes) return;
-        node.querySelector(".wp-t").textContent = text ? " " + text : "";
-        node.classList.add("on");
-        await sleep(420);
-      }
+      if (closed.yes) return;
+      return playFrom(Promise.resolve(row));
     },
     setImages(urls) {
       const list = (urls || []).map((u) => String(u || "")).filter(Boolean);
@@ -170,23 +298,68 @@ export function mountWifepayReveal(host, opts = {}) {
       });
     },
   };
+
+  let playJob = 0;
+  async function playFrom(dialogP) {
+    const job = ++playJob;
+    const first = addLine("wp-nar", "旁白", true);
+    hideWait();
+    let row = null;
+    try {
+      row = await Promise.resolve(dialogP);
+    } catch {
+      row = null;
+    }
+    if (closed.yes || job !== playJob) return;
+    const labels = speakerLabels(opts, row);
+    first.node.querySelector(".wp-k").textContent = labels.nar;
+    if (!row || !(row.narration || row.man || row.wife)) {
+      first.body.classList.remove("waiting");
+      first.body.textContent = "聽不清楚裡面在說什麼。";
+      api.setNote("對話沒有產出");
+      return;
+    }
+    first.body.classList.remove("waiting");
+    await waitPause(800);
+    if (closed.yes || job !== playJob) return;
+    if (row.narration) {
+      await typeText(first.body, row.narration);
+    } else {
+      first.node.remove();
+    }
+    if (closed.yes || job !== playJob) return;
+    const rest = [];
+    if (row.man) rest.push(["wp-man", labels.man, row.man]);
+    if (row.wife) rest.push(["wp-wife", labels.wife, row.wife]);
+    for (let i = 0; i < rest.length; i++) {
+      await waitNext();
+      if (closed.yes || job !== playJob) return;
+      markHist();
+      const [kind, label, text] = rest[i];
+      const line = addLine(kind, label, false);
+      await waitPause(800);
+      if (closed.yes || job !== playJob) return;
+      await typeText(line.body, text);
+    }
+    ctl.phase = "done";
+    showNext(false);
+  }
+
   const run = async () => {
     try {
       if (opts.emptyMessage) api.setNote(opts.emptyMessage);
       const dlgP = typeof opts.dialog === "function" ? opts.dialog() : Promise.resolve(opts.dialog);
       const imgP = typeof opts.images === "function" ? opts.images() : Promise.resolve(opts.images);
-      const dlg = await Promise.resolve(dlgP).catch(() => null);
-      if (dlg && (dlg.narration || dlg.man || dlg.wife)) await api.setDialog(dlg);
-      else wait.textContent = opts.waitText || "門後傳來聲音……";
-      try {
-        const urls = await Promise.resolve(imgP);
+      Promise.resolve(imgP).then((urls) => {
+        if (closed.yes) return;
         if (Array.isArray(urls) && urls.length) {
           api.setNote("");
           api.setImages(urls);
         }
-      } catch (err) {
-        api.setNote(String(err?.message || err || "圖片沒有產出，只留對話"));
-      }
+      }).catch((err) => {
+        if (!closed.yes) api.setNote(String(err?.message || err || "圖片沒有產出，只留對話"));
+      });
+      await playFrom(dlgP);
     } catch (err) {
       api.setNote(String(err?.message || err || "出錯了"));
     }
@@ -245,6 +418,8 @@ export function startWifepayPeek(host, opts = {}) {
   const ui = mountWifepayReveal(host, {
     page: !!opts.page,
     waitText: opts.waitText || "門後傳來聲音……",
+    wifeName: info.name,
+    guestName: info.guestName,
     dialog,
     images: async () => {
       const urls = await images();

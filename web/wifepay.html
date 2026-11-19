@@ -62,7 +62,7 @@
 <h1>✦ Wife Pay — 老婆還債編輯</h1>
 <p class="warn">
   圖庫底圖由你上傳，生圖是圖生圖（832×1216），沒有底圖不會改走文生圖。
-  遊戲裡點門會先出對話（旁白→男→她），圖好了再慢慢顯現。
+  遊戲裡點門會先出旁白標籤，停約 0.8 秒後逐字打出旁白；按「下一句」才換成男子、再換成妻子。圖好了慢慢顯現，不會打斷打字。
   變數：<code>{name}</code> <code>{hair}</code> <code>{breasts}</code> <code>{body}</code> <code>{pose}</code> <code>{pose_zh}</code> <code>{man_build}</code> <code>{man_build_zh}</code> <code>{family}</code> <code>{voice}</code> <code>{stage}</code>。
   <a href="/edit_pic">Edit Pic</a> | <a href="/test_room">房間沙盒</a> | <a href="/">回遊戲</a>
 </p>
@@ -193,7 +193,7 @@
 
 <section>
   <h2>5. 測試</h2>
-  <p class="mini">「測試這張圖」只用目前選中的底圖生一張。「全部一起測試」隨機 1 或 2 張＋對話，播完整動畫（對話在中央，圖淡入後對話框下移）。</p>
+  <p class="mini">「測試這張圖」只用目前選中的底圖生一張。「全部一起測試」隨機 1 或 2 張＋對話，播完整動畫（旁白→男子→妻子逐字打出，按下一句換人；圖淡入後對話框下移，不重設打字進度）。</p>
   <div class="row">
     <button type="button" id="btn-test-img">測試這張圖</button>
     <button class="big" type="button" id="btn-test-all">全部一起測試</button>
@@ -202,6 +202,6 @@
   <div id="reveal-host"></div>
 </section>
 
-<script type="module" src="/content/wifepay.js?v=2"></script>
+<script type="module" src="/content/wifepay.js?v=3"></script>
 </body>
 </html>
