@@ -7,6 +7,8 @@ os.environ.setdefault('GUIDE','0')
 from eyeframe import Frame,TYPES
 from outline import Y,S,N
 EPAL=dict(K=(58,36,36),k=(110,70,62),W=(250,247,244),w=(214,206,214),I=(84,52,44),i=(140,88,62),j=(190,132,88),P=(38,22,22),O=(112,66,50),g1=(176,64,116),g2=(228,112,140),g3=(244,156,118),g4=(250,204,140),H=(255,255,255),L=(184,124,104),c=(216,166,140))
+from eyeframe import IRIS_COLORS,ICOL
+EPAL.update(IRIS_COLORS[ICOL])   # 黑眼珠顏色（ICOL=橘／水藍／亮綠／金黃／紅／粉紅／黑／棕）
 D=sys.argv[1];ES=1.35
 base=np.array(Image.open(D+'/front.png').convert('RGB'))
 F=ImageFont.truetype('/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',30)
