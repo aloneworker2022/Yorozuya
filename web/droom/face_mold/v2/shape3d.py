@@ -14,6 +14,11 @@ PROF=[(520,250),(532,253),(545,256),(554,250),(562,242),(567,238),(573,243),(577
 FLAT=[(520,250),(532,253),(545,256),(577,250),(582,247),(588,250),(593,251),(598,254),(604,256),(610,258),(613,264),(614.5,270)]
 zp=lambda y:322-lerp_tab(PROF,y)
 zc=lambda y:322-lerp_tab(FLAT,y)
+# 轉過去時鼻子凸出來的量再放大 NK 倍（使用者 2026-11-19：45° 時整個鼻子要明顯凸出）；側臉不用這個
+import os
+NK=float(os.environ.get('NK','1.6'))
+def znose(y):return max(0,zp(y)-zc(y))*NK
+NW=5   # 鼻子的寬（中線左右各幾格，參考圖像素）
 # 下顎底（側臉：下巴底 → 下顎角）：這幾列的切面後緣
 JAWB=[(593,4),(594,4),(601,12),(609,32),(612,46),(613,58),(614.5,52)]
 def zb(y):return lerp_tab(JAWB,y) if y>=593 else 2
@@ -28,6 +33,6 @@ def surf(x,y):
   if 505<=y<=614.5:
     w=lerp_tab(JAW,y)
     if abs(x)<w:
-      zm=zw(y);f=zc(y);v=zm+(f-zm)*math.sqrt(1-(x/w)**2)+(zp(y)-f)*max(0,1-abs(x)/4)
+      zm=zw(y);f=zc(y);v=zm+(f-zm)*math.sqrt(1-(x/w)**2)+znose(y)*max(0,1-abs(x)/NW)
       z=max(z,v)
   return z

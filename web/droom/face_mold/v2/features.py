@@ -120,14 +120,14 @@ def paint_turn(img,deg,cx):
     if isface(img,PX,PY):img[PY,PX]=c
   if 0<deg<90:eyes_turn(img,ca,sa,cx);nose_turn(img,sa,cx)
   if deg>=90:side_eye(img,cx)
-SHG=float(os.environ.get('SHG','3'))   # 山根往外（往前凸）幾格（使用者 2026-11-19：遠側眼睛往內 3 格後，山根要往外一點）
+SHG=float(os.environ.get('SHG','0'))   # 山根往外（往前凸）幾格（使用者 2026-11-19：遠側眼睛往內 3 格後，山根要往外一點）
 def bridge_pts(sa,cx):
   # 鼻樑線每一列的 X：側臉中線投影；山根那段再往外推 SHG 格，到鼻頭前收回 0
-  from shape3d import zp
+  from shape3d import zc,znose
   pts={}
   for k in range(400):
     y=528+k*(567-528)/399;w=1 if y<=545 else max(0,1-(y-545)/17)
-    X=cx-zp(y)*sa*S-SHG*w;pts.setdefault(round(Y(y)),[]).append(round(X))
+    X=cx-(zc(y)+znose(y))*sa*S-SHG*w;pts.setdefault(round(Y(y)),[]).append(round(X))
   return pts
 def nose_turn(img,sa,cx):
   # 45° 鼻子（使用者：山根要畫出來、要立體）：沿著側臉中線（x＝0、z＝zp）投影出鼻樑線——
@@ -138,11 +138,11 @@ def nose_turn(img,sa,cx):
   for Yp,xs in sorted(pts.items()):
     y=CYR+(Yp-CY)/S
     for X in set(xs):put(X,Yp,LT if y<538 else SH)
-    if 549<=y<565:                                         # 鼻樑右邊的影子（越往下越寬）
-      put(max(xs)+1,Yp,SH if y>=556 else LT)
-      if y>=556:put(max(xs)+2,Yp,LT)
+    if 549<=y<568:                                         # 鼻子右邊那一面（背光）：越往下越寬的影子，靠鼻樑那格深
+      wid=round(1+3.2*(y-549)/18)
+      for d in range(1,wid+1):put(max(xs)+d,Yp,SH if d==1 and y>=553 else LT)
   # 鼻頭：深色尖角朝左（翹頭尖鼻），底下往右一小段鼻底影子
-  for dx,dy,c in[(1,-2,SH),(0,-1,DK),(-1,0,DK),(0,0,DK),(0,1,DK),(1,1,DK),(2,1,DK),(3,1,SH),(4,0,SH),(2,2,LT),(3,2,LT)]:put(tipX+dx,tipY+dy,c)
+  for dx,dy,c in[(1,-2,SH),(0,-1,DK),(-1,0,DK),(0,0,DK),(0,1,DK),(1,1,DK),(2,1,DK),(3,1,SH),(4,1,SH),(5,0,SH),(5,-1,LT),(2,2,LT),(3,2,LT),(4,2,LT)]:put(tipX+dx,tipY+dy,c)   # 鼻底＋鼻翼
 
 # ── 45° 的眼睛（使用者給的教學）──
 # 近側：正面那隻往橫向壓窄（菱形往外拉），黑眼珠往內（鼻子那邊）靠，看的方向兩眼一致

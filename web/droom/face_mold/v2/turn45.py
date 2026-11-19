@@ -20,11 +20,11 @@ def rowpts(y):
       t=i/360*2*math.pi;x,z=r*math.cos(t),r*math.sin(t)
       P.append((x,z if z>0 else z*BACK))
   if 505<=y<=614.5:   # 下半臉：前半是橢圓（中間＝中線、兩邊＝正面半寬），後緣＝下顎
-    w=lerp_tab(JAW,y);z0=min(zb(y),zw(y));zm=zw(y);zf=zc(y);zn=zp(y)-zf
+    w=lerp_tab(JAW,y);z0=min(zb(y),zw(y));zm=zw(y);zf=zc(y);zn=znose(y)
     for i in range(361):
       t=i/360*2*math.pi;x=w*math.cos(t)
       z=zm+(zf-zm)*math.sin(t) if t<=math.pi else zm+(zm-z0)*math.sin(t)   # 前半到中線、後半到下顎
-      if t<=math.pi:z+=zn*max(0,1-abs(x)/4)          # 鼻子只在中間 4 格
+      if t<=math.pi:z+=zn*max(0,1-abs(x)/NW)          # 鼻子只在中間 4 格
       P.append((x,z))
   return P
 def scr(x,y,z):return (CX+(x*CA-z*SA)*S, Y(y))
