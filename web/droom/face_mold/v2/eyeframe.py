@@ -7,6 +7,8 @@
 #   iris 黑眼珠中心的位移；crease 雙眼皮線畫不畫
 import math
 # 2026-11-19 使用者：下眼眶太明顯 → 下眼線改淡色（陰影色 c）、細；四角的下眼線不要；眼角的勾、外側直線改細
+import os
+LINE=os.environ.get('LINE')=='1'
 LOWC='c';HOOKK=.7
 # 2026-11-19 第二本教學（普通／つり目／たれ目各 6 個）：上眼線外半段長出一根根細睫毛、下眼線外側幾根小短毛、
 # 雙眼皮線拉長貼著上眼線、黑眼珠改成直的橢圓（比較高、比較窄）
@@ -129,7 +131,8 @@ class Frame:
       seg=s.lo[i0:i1+1];lw=T['low']
       if 'lotip' in T:w=[lw+(T['lotip']-lw)*(k/(len(seg)-1))**2 for k in range(len(seg))]
       else:w=lw
-      if s._near(x,y,seg,w):return LOWC
+      if LINE:w=[min(a,1.0) for a in w] if isinstance(w,list) else min(w,1.0)   # 線稿：下眼線用 1 格深色線，看得出眼眶的形
+      if s._near(x,y,seg,w):return 'K' if LINE else LOWC
     for key in('lohook','lotail'):
       if key in T and s._near(x,y,T[key][0],T[key][1]*HOOKK):return LOWC
     for seg in s.lolash:
@@ -138,6 +141,8 @@ class Frame:
     # 眼睛裡面（同舊眼睛的配色）
     ic=(.5+T['iris'][0]+idx,.3+T['iris'][1]);k=T.get('irs',1);IRX,IRY=IRISW*k,IRISH*k
     r=math.hypot((x-ic[0])/IRX,(y-ic[1])/IRY)
+    if LINE:   # 線稿模式（使用者：先只看眼眶和瞳孔、不要著色）：黑眼珠只畫一圈外框
+      return 'K' if 1-.9/min(IRX,IRY)<=r<1 else None
     uy=min((p[1] for p in s.up if abs(p[0]-x)<.6),default=-9)
     if r<1:
       hx=sgn*(x-ic[0])+ic[0]
