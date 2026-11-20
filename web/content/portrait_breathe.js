@@ -1,13 +1,13 @@
 /* 立繪呼吸（2026-11-20，使用者：整張放大太假；應該是圖片中間放大、扭曲，兩邊沒有放大）。
    在 #portrait-img 上面疊一張 WebGL 畫布，每格把立繪照「中間（胸口一帶）鼓起來、往外越來越小、四周不動」扭曲畫出來：
-     慢慢鼓起 1.6 秒 → 停 0.6 秒 → 慢慢回去 1.6 秒 → 停 0.6 秒。
+     慢慢鼓起 2.4 秒 → 停 0.6 秒 → 慢慢回去 2.4 秒 → 停 0.6 秒。
    原本的 <img> 留著（位置、大小、進場動畫、長按都照舊），只用 filter: opacity(0) 藏起來；畫布照它的位置、透明度跟著。
    做愛步驟圖（data-sex-step）不扭；圖片跨網域讀不到像素、沒有 WebGL、使用者要求減少動態 → 不扭，照舊顯示原圖。 */
 (function () {
   'use strict';
-  const PERIOD = 4.4, UP = 1.6, HOLD = .6;   // 秒
+  const PERIOD = 6, UP = 2.4, HOLD = .6;   // 秒（使用者：再緩慢一點——鼓起、回去各 2.4 秒，停 0.6 秒）
   const AMT = .065;   // 中心最多放大 6.5%
-  const CENTER = [.5, .42], RAD = [.3, .24];   // 鼓起的中心（圖片寬高的比例，從左上算）、範圍
+  const CENTER = [.5, .42], RAD = [.42, .34];   // 鼓起的中心（圖片寬高的比例，從左上算）、範圍（使用者：範圍大一點）
   let img = null, cv = null, gl = null, prog = null, tex = null, texSrc = '', broken = false, raf = 0;
 
   function ease(x) { return x * x * (3 - 2 * x); }
