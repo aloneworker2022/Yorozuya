@@ -7,7 +7,7 @@
   'use strict';
   const PERIOD = 6, UP = 2.4, HOLD = .6;   // 秒（使用者：再緩慢一點——鼓起、回去各 2.4 秒，停 0.6 秒）
   const AMT = .065;   // 中心最多放大 6.5%
-  const CENTER = [.5, .42], RAD = [.42, .34];   // 鼓起的中心（圖片寬高的比例，從左上算）、範圍（使用者：範圍大一點）
+  const CENTER = [.5, .56], RAD = [.42, .34];   // 鼓起的中心（圖片寬高的比例，從左上算；使用者：半身立繪上方是頭，中心往下到胸口）、範圍（使用者：範圍大一點）
   let img = null, cv = null, gl = null, prog = null, tex = null, texSrc = '', broken = false, raf = 0;
 
   function ease(x) { return x * x * (3 - 2 * x); }
