@@ -1701,8 +1701,9 @@
           if (s === w) {
             const elbow = [s * Math.max(waist_out + 2.8 * F(b, 'arm') + 6.2, hip_out + 2.2), -1.8, tor.zW + 2.5];
             const wrist = [s * (waist_out + (hip_out - waist_out) * .45 + 1.6), .3, tor.zW - .22 * tor.T];
-            arm(sh, P, sh_j, elbow, wrist, false);
-            sh.ell(BODY, [wrist[0] - s * .6, wrist[1], wrist[2] - .6], [1.8, 1.6, 2.1]);
+            if (doll._mode) arm(sh, P, sh_j, elbow, wrist);   // 2026-11-20 聊天黑影脫光後的姿勢（手會被拉去遮下體／托胸）：畫完整的手掌、不畫插腰的拳頭
+            else { arm(sh, P, sh_j, elbow, wrist, false);
+            sh.ell(BODY, [wrist[0] - s * .6, wrist[1], wrist[2] - .6], [1.8, 1.6, 2.1]); }
           } else {
             const elbow = [s * Math.max(waist_out + 2.8 * F(b, 'arm') + 1.6, arm_clear()), -1.0, tor.zW - 1];
             const wrist = [s * (hip_out + 1.5 * F(b, 'arm') + 1.1), .8, tor.C - 1];

@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=8', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=9', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24 }, FPS = { breathe: 4, talk: 7 };
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
   const BEAT = {
@@ -115,7 +115,7 @@
       return { arm, sp, ep, w0 };
     };
     /** 兩節手臂 IK：手腕要到 T（到不了就伸直往那邊）；手肘往 pole 那邊彎。回傳 {up, fore, upper}。 */
-    const ikArm = (part, T, pole) => {
+    const ikArm = (part, T, pole, handDir) => {
       const A = armPts(part); if (!A) return null;
       const { arm, sp, ep, w0 } = A, sub = (a, c) => [a[0] - c[0], a[1] - c[1], a[2] - c[2]], len = (v) => Math.hypot(v[0], v[1], v[2]);
       const l1 = len(sub(ep, sp)), l2 = len(sub(w0, ep));
@@ -125,7 +125,18 @@
       const pd = pole[0] * dir[0] + pole[1] * dir[1] + pole[2] * dir[2], n = nrm([pole[0] - dir[0] * pd, pole[1] - dir[1] * pd, pole[2] - dir[2] * pd]);
       const elbow = [sp[0] + dir[0] * a + n[0] * h, sp[1] + dir[1] * a + n[1] * h, sp[2] + dir[2] * a + n[2] * h];
       const up = H.about(rotTo(sub(ep, sp), sub(elbow, sp), 1), sp), w1 = app(up, w0);
-      return { up, fore: H.compose(H.about(rotTo(sub(w1, elbow), sub(Tc, elbow), 1), elbow), up), upper: arm[0] };
+      const fore = H.compose(H.about(rotTo(sub(w1, elbow), sub(Tc, elbow), 1), elbow), up);
+      const X = { up, fore, upper: arm[0] };
+      if (handDir) {   // 手掌另外轉（手腕以下的零件）：例如遮下體時手掌往下指、蓋住陰唇
+        const f2 = sub(w0, ep), L2 = f2[0] * f2[0] + f2[1] * f2[1] + f2[2] * f2[2] || 1;
+        const raw = (p) => [p.a ? p.a[0] + p.off[0] : 0, p.a ? p.a[1] + p.off[1] : 0, p.a ? p.a[2] + p.off[2] : 0];
+        const e0 = raw(arm[1]);   // 手肘（還沒加呼吸、縮肩的位移）；前臂方向 f2 跟位移無關
+        X.hand = new Set(sh.prims.filter(p => p.part === part && !p.cloth && p !== arm[0] && p !== arm[1]
+          && ((p.bc[0] + p.off[0] - e0[0]) * f2[0] + (p.bc[1] + p.off[1] - e0[1]) * f2[1] + (p.bc[2] + p.off[2] - e0[2]) * f2[2]) / L2 > .95));
+        const fdir = H.mulV(fore.R, f2);
+        X.handX = H.compose(H.about(rotTo(fdir, handDir, 1), Tc), fore);
+      }
+      return X;
     };
     // 脫 T 恤（使用者：拉著衣角往上脫，衣服會被翻折，不是整件像紙板）：
     //   雙手抓住下襬往上拉，翻折線從下襬一路往上捲——翻折線以下的布照翻折線反射到上面、裡面朝外疊在還穿著的那截外面；
@@ -289,11 +300,12 @@
       const BR = [-1, 1].map(sd => { const L = sh.prims.filter(p => p.part === 'breast' && !p.cloth && !p.nip && Math.sign(W(p)[0]) === sd); if (!L.length) return null; const c = mean(L.map(W)); const r = Math.max(...L.filter(p => p.r).map(p => Math.max(...p.r)), 2); return { c, r, front: Math.max(...L.map(p => W(p)[1] + p.br * .7)) }; });
       const big = BR[1] ? Math.max(.3, Math.min(1, (BR[1].r - 3.4) / 2.6)) : .5;   // 罩杯越大（D 以上）被壓得越明顯
       const ph2 = ph * 2;
-      const hands = {}, poles = {}, push = { [-1]: [0, 0, 0], [1]: [0, 0, 0] }, round = { [-1]: 0, [1]: 0 };
+      const hands = {}, poles = {}, modeHand = {}, push = { [-1]: [0, 0, 0], [1]: [0, 0, 0] }, round = { [-1]: 0, [1]: 0 };
       if (m.mode === 'cover' && BR[1]) {
         // 左手（畫面左那隻）橫過胸前壓住另一邊的乳房；右手遮住下體。胸部被手臂往上、往中間擠：更挺、更圓
         hands.armL = [BR[1].c[0] - 1.6, BR[1].front + 1.6, BR[1].c[2] + .4]; poles.armL = [-.4, .7, -.7];
-        hands.armR = [1.6, frontY(1.6, C + 5) + 3.2, C + 5]; poles.armR = [1, .2, -.1];   // 手腕在下體上方一點、手掌往下蓋住   // 手腕在下體上方、手掌往下蓋住下體（手臂不夠長到胯下）；離身體一點，邊線才畫得出來
+        hands.armR = [.6, frontY(.6, C + 4.4) + 2.4, C + 4.4]; poles.armR = [1, .2, -.1];   // 手腕在恥骨上方、手掌轉成往下指，蓋住陰唇
+        modeHand.armR = [-.05, .3, -1];   // 手腕在下體上方、手掌往下蓋住下體（手臂不夠長到胯下）；離身體一點，邊線才畫得出來
         for (const sd of [-1, 1]) { push[sd] = [-sd * .7 * big, .6 * big, 1.6 * big]; round[sd] = big; }
       } else if (m.mode === 'fondle' && BR[0] && BR[1]) {
         // 兩手從下面托著自己的乳房，往上抬、揉（左右錯開）；乳房跟著手上下動
@@ -308,12 +320,12 @@
         const pk = m.peak || 0, k = Math.sin(ph2 * 1.5) * (1 - pk), k2 = Math.cos(ph2 * 1.5) * (1 - pk);   // 仰頭那一下手停住、按緊
         hands.armR = [.4 + .6 * k2, frontY(.4, C + 1.2) + 1.2 - .6 * pk, C + 1.2 + .6 * k]; poles.armR = [1, .45, -.3];
       }
-      modePlan = { hands, poles, push, round };
+      modePlan = { hands, poles, push, round, handDir: modeHand };
     }
     for (const part of ['armL', 'armR']) {
       if (modePlan) {
         const T = modePlan.hands[part];
-        if (T) { const X = ikArm(part, T, modePlan.poles[part]); if (X) armX[part] = X; }
+        if (T) { const X = ikArm(part, T, modePlan.poles[part], modePlan.handDir[part]); if (X) armX[part] = X; }
         continue;
       }
       if (garPlan) {   // 脫胸罩／內褲：手腕照步驟走（IK）
@@ -362,14 +374,15 @@
       for (const [i, b] of bcs.entries()) if (b) { const w = 1 - Math.hypot(q[0] - b.c[0], q[1] - b.c[1], q[2] - b.c[2]) / b.r; if (w > 0) { const ws = sm(w); d[0] += (i ? 1 : -1) * .3 * br * ws; d[1] += .2 * br * ws; } }
       return d;
     };
-    const armAct = (part, isUpper) => { const X = armX[part], e = SHRUG[part] || [0, 0, 0], jj = m.jolt ? 1 : 0; return [e[0], e[1] + (jj ? -.7 * m.jolt : 0), lift * LIFT[part] + e[2] + (jj ? 1.6 * m.jolt : 0), X ? (isUpper ? X.up : X.fore) : null]; };
+    /** which：true／'up' 上臂、'hand' 手掌（有另外轉才有）、其他＝前臂。 */
+    const armAct = (part, which) => { const X = armX[part], e = SHRUG[part] || [0, 0, 0], jj = m.jolt ? 1 : 0; return [e[0], e[1] + (jj ? -.7 * m.jolt : 0), lift * LIFT[part] + e[2] + (jj ? 1.6 * m.jolt : 0), X ? (which === true || which === 'up' ? X.up : which === 'hand' && X.handX ? X.handX : X.fore) : null]; };
     // 高潮抽搐（m.jolt）：上半身（胸、肩、頭、手、乳房）往上往後猛抽一下，腿不動
     const J = m.jolt || 0, jz = 1.6 * J, jy = -.7 * J;
     /** 一個身體零件這格怎麼動：[dx, dy, dz, 轉動或 null]。 */
     const act = (p, q) => {
       const part = p.part;
       if (part === 'head' || p.mat === 1) return [0, jy, hl + jz, headX];
-      if (part === 'armL' || part === 'armR') return armAct(part, armX[part] ? p === armX[part].upper : false);
+      if (part === 'armL' || part === 'armR') { const X = armX[part]; return armAct(part, !X ? false : p === X.upper ? 'up' : X.hand && X.hand.has(p) ? 'hand' : false); }
       if (part === 'legs') return null;
       const d = field(q);
       if (J) { const w = Math.max(0, Math.min(1, (q[2] - C) / (S - C))); d[1] += jy * w; d[2] += jz * w; }   // 越上面抽得越多
@@ -630,7 +643,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       img.style.bottom = (window.innerHeight - T + 2) + 'px';
       const bar = sheet.querySelector('.talk-acts.undress-bar'), br = bar && !bar.hidden ? bar.getBoundingClientRect() : null;
       const top = br && br.height ? br.bottom + 6 : 12;   // 脫衣按鈕在上方：立繪上緣讓開
-      img.style.height = Math.max(120, Math.min(720, (T - 2 - top) / 1.05)) + 'px';   // 立繪呼吸會放大 5%：先留出來，放大時頭頂才不會壓到上面的按鈕
+      img.style.height = Math.max(120, Math.min(720, T - 2 - top)) + 'px';
       img.style.maxHeight = 'none';
     } else if (img.style.bottom) { img.style.bottom = ''; img.style.height = ''; img.style.maxHeight = ''; }
   }
