@@ -1150,6 +1150,54 @@
           }
         }
       }
+      if (doll.pants === 'tie_thong') {
+        // 2026-11-19 聊天黑影（使用者：丁字褲要做好，不是一個三角形）：綁帶丁字褲——
+        //   前片：貼著身體、上寬下窄、兩側往內彎的腿口弧線，往下包住胯下接到背後細繩；腿口滾邊；
+        //   兩側細帶從前片上角繞過髖部到背後，髖部各一個蝴蝶結＋兩條垂下的帶尾（脫的時候拉開的就是這個）。
+        //   零件標 pk：front 前片／edge 滾邊／str 細帶／bow 蝴蝶結／back 背後；side：−1 右、＋1 左（脫的動畫用）。
+        const zb = C + 7.4, zc = C - gap, i0 = sh.prims.length;
+        // 只貼軀幹表面（不貼到插腰的手、坐著時的大腿上）
+        const surf = (x, z, back = false) => { for (let k = 0; k < 300; k++) { const y = back ? -20 + k * .1 : 20 - k * .1; if (torsoD(sh, x, y, z) < 0) return y; } return null; };
+        const patch = (x, z, r, d = .25) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y + d, z], [r, .35, r]); };
+        const tag = (from, pk, side = 0) => { for (let i = from; i < sh.prims.length; i++) if (!sh.prims[i].pk) { sh.prims[i].pk = pk; sh.prims[i].pside = side; } };
+        // 腿口弧線（不是三角形）：上面寬到髖骨、往下先寬寬地下來，靠近胯下才圓弧收進去（像內褲）
+        const hwAt = (z) => { const t = Math.max(0, Math.min(1, (z - zc) / (zb - zc))); return 1.5 + 5.6 * (1 - Math.pow(1 - t, 1.9)); };
+        sh.cloth = 7;
+        for (let z = zb - .3; z >= zc; z -= .45) { const hw = hwAt(z); for (let x = -hw; x <= hw + 1e-6; x += .5) patch(x, z, .5, .3); }
+        tag(i0, 'front');
+        let j = sh.prims.length;
+        sh.cloth = 8;   // 腿口滾邊、褲頭上緣
+        for (const sd of [-1, 1]) { const e = []; for (let z = zb - .2; z >= zc; z -= .6) { const x = sd * hwAt(z), y = surf(x, z); if (y !== null) e.push([x, y + .4, z]); } if (e.length > 1) sh.chain(BODY, e, e.map(() => .28)); }
+        { const e = []; for (let x = -hwAt(zb); x <= hwAt(zb) + 1e-6; x += .7) { const y = surf(x, zb - .3); if (y !== null) e.push([x, y + .45, zb - .3]); } if (e.length > 1) sh.chain(BODY, e, e.map(() => .5)); }   // 褲頭（粗一點）
+        tag(j, 'edge');
+        // 胯下往後：細細一條包到背後、接 T 字細繩
+        j = sh.prims.length;
+        const bk = []; for (let z = zc; z <= zb - .5; z += .8) { const y = surf(0, z, true); if (y !== null) bk.push([0, y - .2, z]); }
+        if (bk.length > 1) sh.chain(BODY, bk, bk.map(() => .3));
+        // 背後腰上一小段（左右細帶在這裡接起來）
+        // 只繞軀幹（不碰到手、腿——坐著時撐地的手、躺地的大腿就在旁邊）
+        const ringAt = (z, a0, a1, step) => { const R = []; for (let a = a0; a <= a1 + 1e-6; a += step) { const t = a * Math.PI / 180, dx = Math.sin(t), dy = Math.cos(t); for (let k = 0; k < 200; k++) { const r = 20 - k * .1; if (torsoD(sh, dx * r, dy * r, z) < 0) { R.push([dx * (r + .3), dy * (r + .3), z]); break; } } } return R; };
+        { const R = ringAt(zb + .8, 160, 200, 10); if (R.length > 1) sh.chain(BODY, R, R.map(() => .28)); }
+        tag(j, 'back');
+        for (const sd of [-1, 1]) {
+          // 細帶：前片上角 → 繞過髖部（往上一點）→ 背後
+          j = sh.prims.length;
+          const R = ringAt(zb + .8, sd > 0 ? 25 : -155, sd > 0 ? 155 : -25, 10).map(q => [q[0], q[1], zb + .8 - .25 * Math.cos(Math.atan2(q[0], q[1]))]);
+          const corner = [sd * hwAt(zb), (surf(sd * hwAt(zb), zb) ?? 4) + .4, zb - .2];
+          const pts = (sd > 0 ? [corner].concat(R) : R.concat([corner]));
+          if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .26));
+          tag(j, 'str', sd);
+          // 蝴蝶結：髖部正側面
+          j = sh.prims.length;
+          const side = ringAt(zb + .8, sd > 0 ? 80 : -100, sd > 0 ? 100 : -80, 10)[1] || [sd * 9, 0, zb + .8];
+          const k = [side[0] + sd * .5, side[1] + .6, side[2]];
+          sh.ell(BODY, k, [.55, .55, .55]);
+          for (const up of [1, -1]) sh.ell(BODY, [k[0] + sd * .5, k[1] + .4, k[2] + up * .9], [.5, .45, .8]);   // 兩個圈
+          sh.cone(BODY, k, [k[0] + sd * 1.0, k[1] + .5, k[2] - 3.2], .22, .2);   // 兩條帶尾垂下來
+          sh.cone(BODY, k, [k[0] + sd * .2, k[1] + .7, k[2] - 2.8], .22, .2);
+          tag(j, 'bow', sd);
+        }
+      }
       if (doll.pants === 'lace_thong') {
         const zb = C + 9.5;   // 低腰褲頭
         sh.cloth = 7;   // 前片三角蕾絲：上寬下窄收進胯下

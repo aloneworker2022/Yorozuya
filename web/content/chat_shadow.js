@@ -9,10 +9,10 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=7', (document.currentScript && document.currentScript.src) || location.href).href;
-  const N = 16, NA = 20, FPS = { breathe: 4, talk: 7, shirt: 10, bra: 10, panties: 10 };
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=8', (document.currentScript && document.currentScript.src) || location.href).href;
+  const N = 16, NA_OF = { shirt: 20, bra: 28, panties: 28 }, FPS = { breathe: 4, talk: 7, shirt: 10, bra: 10, panties: 10 };
   const ANIMS = ['shirt', 'bra', 'panties'];   // 脫衣動畫：undress.stage 0→1 脫 T 恤、1→2 脫胸罩、2→3 脫內褲
-  const nOf = (pose) => (ANIMS.includes(pose) ? NA : N);
+  const nOf = (pose) => NA_OF[pose] || N;
   const SCALE = 2, CV = { w: 84, h: 134, ax: 42, ay: 131, tMax: 40, tMin: -45 };   // 手抬起來也在框內；腳底固定在 ay
   // 坐著（美人魚坐姿，脫衣時）：腿往右收比較寬、人比較矮 → 自己的畫布（顯示時一樣撐滿高度＝坐著的她看起來比較大）
   const CV_SIT = { w: 116, h: 100, ax: 56, ay: 94, tMax: 70, tMin: -70 };   // 上面留空間給脫 T 恤時舉到頭上的手
@@ -47,7 +47,10 @@
    *  身體零件照部位動；衣服零件跟著離它最近的身體零件一起動；袖子跟上臂／前臂。
    *  m.anim＝脫衣動畫 {kind: shirt|bra|panties, u: 0～1}：兩手擺到位、那件衣服移走（u＞.78 不見）、手再放回來。 */
   function deform(sh, P, H, m) {
-    const { br, tilt, nod, gest, ph } = m, anim = m.anim || null, lift = br * 1.6, hl = lift * .85, S = P.S, zW = S - .6 * P.T;
+    const { br, tilt, nod, gest, ph } = m, anim = m.anim || null, lift = br * 1.6, hl = lift * .85;
+    // 肩線／胯下高度從實際的肩關節推（坐著時整個人往下移了，不能用站著的 P.S／P.C）
+    const shA = sh.prims.find(p => p.part === 'armL' && p.a && !p.cloth);
+    const S = shA ? shA.a[2] + shA.off[2] + 3.4 : P.S, C = S - P.T, zW = S - .6 * P.T;
     const sm = (u) => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
     const nrm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
     const app = (X, q) => { const r = H.mulV(X.R, q); return [r[0] + X.t[0], r[1] + X.t[1], r[2] + X.t[2]]; };
@@ -151,7 +154,86 @@
         shirtPlan = { place, hands, kOff, hmid };
       }
     }
+    // 脫胸罩／脫內褲（使用者給的步驟）：garPlan＝{hands: {armL, armR}（手腕要到哪；沒給＝不動）, place(q)（那件衣服的一片布在哪）}
+    let garPlan = null;
+    if (anim && (anim.kind === 'bra' || anim.kind === 'panties')) {
+      const u = anim.u, sub = (a, c) => [a[0] - c[0], a[1] - c[1], a[2] - c[2]], add = (a, c, k = 1) => [a[0] + c[0] * k, a[1] + c[1] * k, a[2] + c[2] * k];
+      const mean = (L) => { const c = [0, 0, 0]; for (const q of L) for (let i = 0; i < 3; i++) c[i] += q[i] / L.length; return c; };
+      const W = (p) => [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
+      /** 關鍵格之間平滑內插：keys＝[[u, 位置], …]。 */
+      const key = (keys) => { if (u <= keys[0][0]) return keys[0][1]; for (let i = 0; i + 1 < keys.length; i++) { const [u0, a] = keys[i], [u1, c] = keys[i + 1]; if (u <= u1) return lerp(a, c, sm((u - u0) / (u1 - u0))); } return keys[keys.length - 1][1]; };
+      const A = { armL: armPts('armL'), armR: armPts('armR') };
+      const rest = (part) => A[part] && A[part].w0;
+      // 大腿上（膝蓋前面）：腿零件裡在前面、靠中間的最高處
+      const legsF = sh.prims.filter(p => p.part === 'legs' && !p.cloth && W(p)[1] > 1 && Math.abs(W(p)[0]) < 14);
+      const lapZ = legsF.length ? Math.max(...legsF.map(p => W(p)[2] + p.br * .55)) : C;
+      const lap = [2.5, legsF.length ? mean(legsF.map(W))[1] : 6, lapZ + .6];
+      const toss = [80, 8, S - 4], throwHand = [21, 7, S - 9];   // 往她左邊（畫面右邊）、肩膀高度往外丟出去
+      if (anim.kind === 'bra') {
+        const G = sh.prims.filter(p => p.cloth && p.under && (p.cloth === 1 || p.cloth === 2));
+        if (G.length && u <= .84) {
+          const Q = G.map(W), qc = mean(Q), zBand = Math.min(...Q.map(q => q[2])), yBack = Math.min(...Q.map(q => q[1]));
+          const clasp = (sd) => [sd * 2.2, yBack - 1.2, zBand + 1.4];
+          const hands = {};
+          for (const [part, sd] of [['armL', -1], ['armR', 1]]) if (A[part]) {
+            const r = rest(part), c = clasp(sd), wig = add(c, [sd * -.8, 0, .3]);
+            hands[part] = part === 'armL'
+              ? key([[0, r], [.2, c], [.25, wig], [.3, c], [.48, r]])
+              : key([[0, r], [.2, c], [.25, wig], [.3, c], [.44, add(lap, [3, 2, 4])], [.56, add(lap, [0, 1, 1.4])], [.64, add(lap, [0, 1, 1.4])], [.72, [10, lap[1] + 3, S - 14]], [.84, throwHand], [1, r]]);
+          }
+          const grab = hands.armR || lap;
+          garPlan = { hands, place: (q) => {
+            if (u < .3) return null;   // 還沒解開：照身體動
+            const land = add(lap, [(q[0] - qc[0]) * 1.1, (q[1] - qc[1]) * .45, (q[2] - qc[2]) * .18]);   // 掉在大腿上：攤開、壓扁（軟的）
+            if (u < .5) { const k = ((u - .3) / .2) ** 2; return lerp(q, land, k); }   // 往下掉（越掉越快）
+            if (u < .64) return land;
+            const held = add(grab, [(q[0] - qc[0]) * .3, (q[1] - qc[1]) * .3, (q[2] - qc[2]) * .3 - 1.2]);   // 抓在手裡：揉成一團
+            if (u < .72) return lerp(land, held, sm((u - .64) / .04));
+            return lerp(held, add(toss, sub(q, qc).map(v => v * .3)), sm((u - .74) / .1) ** 1.6);   // 甩出去
+          } };
+        } else if (u > .84) garPlan = { hands: { armR: A.armR ? key([[.84, throwHand], [1, rest('armR')]]) : null }, place: () => [0, 0, 1000] };
+      } else {
+        const G = sh.prims.filter(p => p.cloth && p.under && p.pk);
+        if (G.length && u <= .84) {
+          const by = (pk, sd) => G.filter(p => p.pk === pk && (sd == null || p.pside === sd)).map(W);
+          const bow = { [-1]: mean(by('bow', -1).length ? by('bow', -1) : [[-8, 0, C + 8]]), [1]: mean(by('bow', 1).length ? by('bow', 1) : [[8, 0, C + 8]]) };
+          const fr = by('front'), ftop = Math.max(...fr.map(q => q[2])), grab0 = [0, Math.max(...fr.filter(q => q[2] > ftop - 1.5).map(q => q[1])) + 1.2, ftop - .4];
+          const lift = [8, grab0[1] + 6, grab0[2] + 9];
+          const hands = {};
+          for (const [part, sd] of [['armL', -1], ['armR', 1]]) if (A[part]) {
+            const r = rest(part), b = add(bow[sd], [sd * 1.2, 1, .2]), pull = add(bow[sd], [sd * 3.6, 1.4, 2.6]);
+            hands[part] = part === 'armL'
+              ? key([[0, r], [.2, b], [.3, pull], [.44, r]])
+              : key([[0, r], [.2, b], [.3, pull], [.42, grab0], [.46, grab0], [.66, lift], [.78, throwHand], [1, r]]);
+          }
+          const Dmax = Math.max(...G.map(p => Math.hypot(...sub(W(p), grab0))));
+          garPlan = { hands, place: (q, p) => {
+            let out = q;
+            // 拉開結：那一邊的蝴蝶結、帶尾跟著手；拉開以後帶子鬆開垂下來
+            if (p.pk === 'bow' || (p.pk === 'str' && Math.abs(q[0]) > 5)) {
+              const sd = p.pside || Math.sign(q[0]), b = bow[sd];
+              const near = Math.max(0, 1 - Math.hypot(...sub(q, b)) / 6);
+              const pullOff = sub(add(b, [sd * 3.6, 1.4, 2.6]), add(b, [sd * 1.2, 1, .2]));
+              if (u >= .2 && u < .32) out = add(out, pullOff, near * sm((u - .2) / .1));
+              else if (u >= .32) out = add(out, [sd * .8 * near, .5 * near, -3.5 * near], sm((u - .32) / .1));
+            }
+            if (u < .46) return out;
+            // 抓住前片往前上方抽出來：離手近的先動，背後的細繩最後從腿間抽出來
+            const hand = grab, d = Math.hypot(...sub(q, grab0)), k = sm(((u - .46) / .2) * (Dmax + 6) / 6 - d / 6);
+            const held = add(hand, sub(q, grab0), .22);
+            if (u < .7) return lerp(out, held, k);
+            return lerp(held, add(toss, sub(q, grab0).map(v => v * .25)), sm((u - .7) / .14) ** 1.6);   // 丟到一旁
+          } };
+          var grab = hands.armR || grab0;
+        } else if (u > .84) garPlan = { hands: { armR: A.armR ? key([[.84, throwHand], [1, rest('armR')]]) : null }, place: () => [0, 0, 1000] };
+      }
+    }
     for (const part of ['armL', 'armR']) {
+      if (garPlan) {   // 脫胸罩／內褲：手腕照步驟走（IK）
+        const sd = part === 'armL' ? -1 : 1, T = garPlan.hands[part];
+        if (T) { const X = ikArm(part, T, anim.kind === 'bra' && anim.u < .48 ? [sd, -.4, .1] : [sd, .35, -.55]); if (X) armX[part] = X; }
+        continue;
+      }
       if (shirtPlan) {   // 脫 T 恤：手腕跟著下襬走（IK）；u＞.8 手放回來
         const u = anim.u, sd = part === 'armL' ? -1 : 1, T = shirtPlan.hands[part];
         if (T) { const X = ikArm(part, T, [sd, .35, -.55]); if (X) armX[part] = X; }
@@ -185,7 +267,6 @@
       armX[part] = { up, fore, upper: arm[0] };
     }
     // 軀幹（含乳房、衣服）用連續的位移場：往上從胯下 0 平滑升到肩膀 lift；往前胸口最多；乳房附近再往前往外一點
-    const C = P.C;
     const bcs = [-1, 1].map(sd => { const L = sh.prims.filter(p => p.part === 'breast' && !p.cloth && Math.sign(p.bc[0] + p.off[0]) === sd); if (!L.length) return null; const c = [0, 0, 0]; let r = 0; for (const p of L) { for (let i = 0; i < 3; i++) c[i] += (p.bc[i] + p.off[i]) / L.length; r = Math.max(r, p.br); } return { c, r: Math.min(r, 9) + 2 }; });
     const field = (q) => {
       const f = sm((q[2] - C) / (S - C)), fc = sm((q[2] - zW) / (S - zW));
@@ -226,6 +307,11 @@
         if (p.sleeve && !shirtPlan.kOff) a = armAct(p.bc[0] + p.off[0] < 0 ? 'armL' : 'armR', true);
         else if (p.sleeve) { const sd = Math.sign(p.bc[0] + p.off[0]) || 1, h = shirtPlan.hmid; a = [h[0] + sd * 3 - q[0], h[1] - q[1], h[2] - 1 - q[2], null]; }
         else { const n = shirtPlan.place(q); a = [n[0] - q[0], n[1] - q[1], n[2] - q[2], null]; }
+      } else if (garPlan && isGone(p)) {
+        const n = garPlan.place(q, p);
+        if (!n) { const f = field(q); a = [f[0], f[1], f[2], null]; }
+        else if (n[2] >= 999 && n[0] === 0) a = [0, 0, 1000, null];
+        else a = [n[0] - q[0], n[1] - q[1], n[2] - q[2], null];
       } else if (goneMove && isGone(p)) { const g = goneMove(q), f = field(q); a = [g[0] + f[0], g[1] + f[1], g[2] + f[2], null]; }
       else if (p.sleeve) {   // 袖子：上臂那段跟上臂、前臂那段跟前臂
         const part = p.bc[0] + p.off[0] < 0 ? 'armL' : 'armR';
@@ -368,7 +454,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (st === 0) { doll.cloth = 'tee'; doll.underBra = true; }
     else if (st === 1) doll.cloth = 'bra';
     if (st <= 1) doll.braSupport = true;
-    if (st <= 2) doll.pants = 'lace_thong';
+    if (st <= 2) doll.pants = 'tie_thong';   // 綁帶丁字褲（使用者：要像內褲、脫的時候解開兩側的帶子）
     const key = JSON.stringify(doll);
     if (cur && cur.key === key) return isReady(cur);
     if (cur) cur.dead = true;
@@ -377,7 +463,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const todo = [];
     if (undressing) {
       // 脫衣對話（使用者）：平常顯示立繪，黑影只在她答應脫的時候出來播動畫 → 只預載下一件的脫衣動畫
-      if (st < 3) { const a = ANIMS[st]; job.anim = a; job.sets[a] = []; for (let f = 0; f < NA; f++) todo.push([a, f]); }
+      if (st < 3) { const a = ANIMS[st]; job.anim = a; job.sets[a] = []; for (let f = 0; f < nOf(a); f++) todo.push([a, f]); }
     } else {
       todo.push(['breathe', 0]);
       for (let f = 1; f < N; f++) todo.push(['breathe', f]);
@@ -397,7 +483,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   }
 
   /** 這一組可以顯示了嗎：一般＝第一格呼吸好了；脫衣中＝脫衣動畫整段好了。 */
-  function isReady(job) { return job.anim ? full(job.sets[job.anim], NA) : !!job.sets.breathe[0]; }
+  function isReady(job) { return job.anim ? full(job.sets[job.anim], nOf(job.anim)) : !!job.sets.breathe[0]; }
   function full(set, n = N) { if (!set || set.length < n) return false; for (let i = 0; i < n; i++) if (!set[i]) return false; return true; }
   function draw(img, tag) {
     if (canvas.width !== img.width || canvas.height !== img.height) { canvas.width = img.width; canvas.height = img.height; }   // 站著↔坐著畫布大小不同
@@ -417,8 +503,20 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     }
     return y;
   }
+  /** 脫衣對話（使用者）：立繪的底端也在對話框上緣上面 2 px（平常的聊天照舊：立繪貼畫面底、下半身被對話框蓋住）。 */
+  function placePortrait() {
+    const img = document.getElementById('portrait-img'), sheet = document.getElementById('portrait-sheet');
+    if (!img || !sheet) return;
+    const box = document.getElementById('talk-box'), T = box ? box.getBoundingClientRect().top : 0;
+    if (sheet.classList.contains('undress-chat') && !sheet.hidden && T > 0) {
+      img.style.bottom = (window.innerHeight - T + 2) + 'px';
+      img.style.height = Math.max(120, Math.min(720, T - 2 - 12)) + 'px';
+      img.style.maxHeight = 'none';
+    } else if (img.style.bottom) { img.style.bottom = ''; img.style.height = ''; img.style.maxHeight = ''; }
+  }
   /** 量對話框上緣，把黑影往上／下移到腳底剛好在對話框上面 2 px（畫布縮放會跟著高度變，量三次收斂）。 */
   function placeFeet() {
+    placePortrait();
     if (!wrap || wrap.hidden || canvas._feet == null) return;
     const box = document.getElementById('talk-box');
     const T = box ? box.getBoundingClientRect().top : 0;
@@ -447,15 +545,16 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     raf = 0;
     if (!wrap || !cur || (wrap.hidden && !animPlay)) return;
     const dt = Math.min(.25, lastT ? (t - lastT) / 1000 : 0); lastT = t;
+    if (!tick.placed || t - tick.placed > 500) { tick.placed = t; placeFeet(); }   // 對話框晚一點才到位也對得齊
     if (animPlay) {
       const set = cur.sets[animPlay.kind];
       if (!animPlay.t0) {
-        if (full(set, NA)) { animPlay.t0 = t; draw(set[0], animPlay.kind + 0); sync(); }   // 算好了：從立繪切到黑影開始播
+        if (full(set, nOf(animPlay.kind))) { animPlay.t0 = t; draw(set[0], animPlay.kind + 0); sync(); }   // 算好了：從立繪切到黑影開始播
         else if (t - animPlay.wait > 25000) { const to = animPlay.to; animPlay = null; pinStage = to; sync(); }   // 等太久（還沒算好）：不播，直接換
       }
       if (animPlay && animPlay.t0) {
         const i = Math.floor((t - animPlay.t0) / 1000 * FPS[animPlay.kind]);
-        if (i >= NA) { const to = animPlay.to; animPlay = null; pinStage = to; sync(); }   // 播完：黑影淡出回到立繪，開始預載下一件
+        if (i >= nOf(animPlay.kind)) { const to = animPlay.to; animPlay = null; pinStage = to; sync(); }   // 播完：黑影淡出回到立繪，開始預載下一件
         else if (canvas.dataset.f !== animPlay.kind + i) draw(set[i], animPlay.kind + i);
       }
       raf = requestAnimationFrame(tick);
@@ -518,7 +617,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       } else { wrap.hidden = true; wrap.classList.remove('cs-in', 'cs-out'); }
     }
     if (on || (animPlay && !animPlay.t0)) play(); else stop();
-    if (on) placeFeet();
+    if (on) placeFeet(); else placePortrait();
   }
 
   // ---------------------------------------------------------------- 長按切換（黑影的頭 ↔ 半身立繪）
