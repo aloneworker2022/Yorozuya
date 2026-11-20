@@ -807,7 +807,7 @@ body.room-home.kb-open #talk-acts { display: none; }
 /* ===== 聊天時放大的她（chat_shadow.js，2026-11-19）：右側正面全身黑影；長按黑影的頭換半身立繪 ===== */
 #chat-shadow{position:fixed;left:50%;bottom:calc(var(--talk-bottom,8px) + var(--talk-box-h,120px) + 6px);top:max(76px,calc(env(safe-area-inset-top) + 70px));z-index:0;
   width:min(94vw,560px);display:flex;align-items:flex-end;justify-content:center;
-  pointer-events:none;opacity:0;transform:translateX(-50%) translateY(14px);transition:transform .55s cubic-bezier(.2,.85,.2,1),opacity .45s ease-out}
+  pointer-events:none;opacity:0;transform:translateX(-50%);transition:opacity .45s ease-out}   /* 只淡入（不往上滑）：腳底要量得準 */
 #chat-shadow[hidden]{display:none!important}
 #chat-shadow.cs-in{opacity:1;transform:translateX(-50%)}
 #chat-shadow.cs-out{opacity:0;transform:translateX(-50%);transition:opacity .4s ease-in}

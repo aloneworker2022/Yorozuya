@@ -370,16 +370,19 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (st <= 1) doll.braSupport = true;
     if (st <= 2) doll.pants = 'lace_thong';
     const key = JSON.stringify(doll);
-    if (cur && cur.key === key) return !!cur.sets.breathe[0];
+    if (cur && cur.key === key) return isReady(cur);
     if (cur) cur.dead = true;
     if (canvas) canvas.dataset.f = '';   // 新的一組：格名跟上一組一樣（breathe0…）也要重畫
     const job = cur = { key, sets: { breathe: [], talk: [] }, dead: false, P: F.proportions ? F.proportions(doll) : null, cv: cvOf(doll), stage: st };
     const todo = [];
-    todo.push(['breathe', 0]);
-    // 脫衣對話：第一格呼吸之後馬上算下一件的脫衣動畫（她可能很快就脫），其他的呼吸、說話放後面
-    if (undressing && st < 3) { const a = ANIMS[st]; job.sets[a] = []; for (let f = 0; f < NA; f++) todo.push([a, f]); }
-    for (let f = 1; f < N; f++) todo.push(['breathe', f]);
-    for (let f = 0; f < N; f++) todo.push(['talk', f]);
+    if (undressing) {
+      // 脫衣對話（使用者）：平常顯示立繪，黑影只在她答應脫的時候出來播動畫 → 只預載下一件的脫衣動畫
+      if (st < 3) { const a = ANIMS[st]; job.anim = a; job.sets[a] = []; for (let f = 0; f < NA; f++) todo.push([a, f]); }
+    } else {
+      todo.push(['breathe', 0]);
+      for (let f = 1; f < N; f++) todo.push(['breathe', f]);
+      for (let f = 0; f < N; f++) todo.push(['talk', f]);
+    }
     (async () => {
       for (const [pose, f] of todo) {
         if (job.dead) return;
@@ -387,40 +390,72 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
         if (job.dead) return;
         if (r.err) { console.warn('chat_shadow', r.err); return; }
         job.sets[pose][f] = new ImageData(new Uint8ClampedArray(r.px), r.w, r.h);
-        if (pose === 'breathe' && f === 0) sync();
+        if (isReady(job) && !job.sentReady) { job.sentReady = true; sync(); }
       }
     })();
     return false;
   }
 
+  /** 這一組可以顯示了嗎：一般＝第一格呼吸好了；脫衣中＝脫衣動畫整段好了。 */
+  function isReady(job) { return job.anim ? full(job.sets[job.anim], NA) : !!job.sets.breathe[0]; }
   function full(set, n = N) { if (!set || set.length < n) return false; for (let i = 0; i < n; i++) if (!set[i]) return false; return true; }
   function draw(img, tag) {
     if (canvas.width !== img.width || canvas.height !== img.height) { canvas.width = img.width; canvas.height = img.height; }   // 站著↔坐著畫布大小不同
     ctx.putImageData(img, 0, 0); canvas.dataset.f = tag;
+    const fb = feetRow(img);
+    if (fb !== canvas._feet) { canvas._feet = fb; placeFeet(); }
+  }
+  // ---------------------------------------------------------------- 站在對話框上面（使用者：不要被對話框擋到，差 2 px）
+  const feetCache = new WeakMap();
+  /** 這一格她最低的那一列（腳底／坐著的屁股、腿）。 */
+  function feetRow(img) {
+    let y = feetCache.get(img);
+    if (y == null) {
+      const { width: w, height: h, data } = img; y = h - 1;
+      scan: for (; y >= 0; y--) for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3]) break scan;
+      feetCache.set(img, y);
+    }
+    return y;
+  }
+  /** 量對話框上緣，把黑影往上／下移到腳底剛好在對話框上面 2 px（畫布縮放會跟著高度變，量三次收斂）。 */
+  function placeFeet() {
+    if (!wrap || wrap.hidden || canvas._feet == null) return;
+    const box = document.getElementById('talk-box');
+    const T = box ? box.getBoundingClientRect().top : 0;
+    if (!T || T <= 0) return;
+    for (let i = 0; i < 3; i++) {
+      const cr = canvas.getBoundingClientRect(); if (!cr.height) return;
+      const k = Math.min(cr.width / canvas.width, cr.height / canvas.height);
+      const feet = cr.bottom - (canvas.height - canvas._feet - 1) * k;
+      const d = feet - (T - 2);
+      if (Math.abs(d) < .5) break;
+      const b = parseFloat(getComputedStyle(wrap).bottom) || 0;
+      wrap.style.bottom = (b + d) + 'px';
+    }
   }
 
   // ---------------------------------------------------------------- 脫衣（使用者：按下脫衣、她脫了 → 黑影表演脫衣動畫）
   let pinStage = null, animPlay = null;   // pinStage：脫衣對話中畫的是哪一階；animPlay：{kind, to, t0, wait}
   /** test_room_summon.js 在她決定脫一件時叫（from→to）。動畫還沒算好就等一下（最多 25 秒），算不出來就直接換。 */
   function undress(from, to) {
-    if (pinStage == null || !cur || wrap.hidden || from >= 3) { if (pinStage != null) { pinStage = to; sync(); } return; }
+    if (pinStage == null || !cur || from >= 3) { if (pinStage != null) { pinStage = to; sync(); } return; }
     animPlay = { kind: ANIMS[from], to, t0: 0, wait: performance.now() };
-    play();
+    play();   // 立繪顯示中也要跑：動畫算好就切到黑影播
   }
 
   function tick(t) {
     raf = 0;
-    if (!wrap || wrap.hidden || !cur) return;
+    if (!wrap || !cur || (wrap.hidden && !animPlay)) return;
     const dt = Math.min(.25, lastT ? (t - lastT) / 1000 : 0); lastT = t;
     if (animPlay) {
       const set = cur.sets[animPlay.kind];
       if (!animPlay.t0) {
-        if (full(set, NA)) animPlay.t0 = t;
+        if (full(set, NA)) { animPlay.t0 = t; draw(set[0], animPlay.kind + 0); sync(); }   // 算好了：從立繪切到黑影開始播
         else if (t - animPlay.wait > 25000) { const to = animPlay.to; animPlay = null; pinStage = to; sync(); }   // 等太久（還沒算好）：不播，直接換
       }
       if (animPlay && animPlay.t0) {
         const i = Math.floor((t - animPlay.t0) / 1000 * FPS[animPlay.kind]);
-        if (i >= NA) { const to = animPlay.to; animPlay = null; pinStage = to; sync(); }   // 播完：停在最後一格，等下一階的黑影算好再換
+        if (i >= NA) { const to = animPlay.to; animPlay = null; pinStage = to; sync(); }   // 播完：黑影淡出回到立繪，開始預載下一件
         else if (canvas.dataset.f !== animPlay.kind + i) draw(set[i], animPlay.kind + i);
       }
       raf = requestAnimationFrame(tick);
@@ -460,9 +495,12 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (undressOn && pinStage == null) { const sp = spec(); pinStage = Math.max(0, Math.min(3, Number(sp?.undressStage) || 0)); }
     if (!undressOn && pinStage != null) { pinStage = null; animPlay = null; }
     const s = wanted(sheet);
-    const want = !!s && !portraitMode;
+    const ready = s ? prepare(s) : false;   // 立繪顯示時也照算（脫衣動畫預載）
+    // 脫衣中（使用者）：平常是立繪，只有她答應脫、動畫開始播的時候才是黑影
+    const show = !portraitMode && (!undressOn || !!(animPlay && animPlay.t0));
+    const want = !!s && show;
     // 換姿勢／換下一階時新的一組還在算：黑影留著（畫布停在上一格），不要閃掉
-    const on = !!s && !portraitMode && (prepare(s) || (open && !wrap.hidden && !wrap.classList.contains('cs-out')));
+    const on = want && (ready || (open && !wrap.hidden && !wrap.classList.contains('cs-out')));
     sheet?.classList.toggle('portrait-mode', open && portraitMode);
     // 使用者：點房間的她先跑出立繪才生字不對 → 一打開就把立繪藏起來（不等黑影第一格算好）
     sheet?.classList.toggle('has-shadow', want);
@@ -474,12 +512,13 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       void wrap.offsetWidth;
       requestAnimationFrame(() => wrap.classList.add('cs-in'));
     } else if (!on && !wrap.hidden && !fadeT) {
-      if (open && portraitMode) {   // 換成立繪：黑影淡出（立繪同時在中間淡入，CSS）
+      if (open) {   // 換成立繪（長按、脫衣動畫播完、進脫衣對話）：黑影淡出（立繪同時在中間淡入，CSS）
         wrap.classList.remove('cs-in'); wrap.classList.add('cs-out');
         fadeT = setTimeout(() => { fadeT = 0; if (wrap.classList.contains('cs-out')) { wrap.hidden = true; wrap.classList.remove('cs-out'); } }, 420);
       } else { wrap.hidden = true; wrap.classList.remove('cs-in', 'cs-out'); }
     }
-    if (on) play(); else stop();
+    if (on || (animPlay && !animPlay.t0)) play(); else stop();
+    if (on) placeFeet();
   }
 
   // ---------------------------------------------------------------- 長按切換（黑影的頭 ↔ 半身立繪）
@@ -564,6 +603,10 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (meta) new MutationObserver(talking).observe(meta, { childList: true, subtree: true, characterData: true });
     // 換衣服、脫衣、懷孕肚子變了：開著的時候每 2 秒對一次（同一個身形不重算）
     setInterval(() => { if (!sheet.hidden) sync(); }, 2000);
+    // 對話框高度、螢幕大小變了：重新對齊腳底
+    window.addEventListener('resize', () => placeFeet());
+    const tb = document.getElementById('talk-box');
+    if (tb && typeof ResizeObserver === 'function') new ResizeObserver(() => placeFeet()).observe(tb);
     sync();
   }
 
