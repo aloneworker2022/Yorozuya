@@ -10,11 +10,13 @@
 (function () {
   'use strict';
   const DROOM_URL = new URL('../droom/room_doll_chest.js?v=8', (document.currentScript && document.currentScript.src) || location.href).href;
-  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32 }, FPS = { breathe: 4, talk: 7 };
+  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 16 }, FPS = { breathe: 4, talk: 7 };
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
   const BEAT = {
     shirt: (u) => (u < .12 ? 160 : u < .45 ? 130 : u < .62 ? 120 : u < .8 ? 95 : 150) + (Math.abs(u - .57) < .025 ? 380 : 0),   // 套過頭時卡一下
     bra: (u) => (u < .28 ? 175 : u < .42 ? 160 : u < .6 ? 125 : u < .78 ? 70 : u < .86 ? 85 : 140) + (Math.abs(u - .37) < .015 ? 520 : 0) + (Math.abs(u - .86) < .015 ? 750 : 0),
+    // 妻子摸陰唇時忽然仰頭（高潮）：先揉快一點 → 一格忽然仰頭 → 頓住 → 慢慢放鬆
+    peak: (u) => (u < .2 ? 110 : u < .27 ? 55 : u < .6 ? 230 : 170),
     panties: (u) => (u < .2 ? 165 : u < .32 ? 160 : u < .46 ? 125 : u < .7 ? 75 : u < .84 ? 85 : 140) + (Math.abs(u - .27) < .017 ? 480 : 0) + (Math.abs(u - .84) < .017 ? 700 : 0),
   };
   const beatCum = {};
@@ -48,10 +50,15 @@
   /** 第 f 格的動作量（worker 裡也用，不能用外面的變數）。pose：breathe／talk／脫衣動畫 shirt／bra／panties；sit＝坐著（不比劃）。 */
   function motion(pose, f, n, sit, mode) {
     const ph = 2 * Math.PI * f / n;
-    if (mode && (pose === 'breathe' || pose === 'talk')) {   // 脫光後的動作：手照 mode 擺（deform），這裡只給頭和呼吸
+    if (mode && (pose === 'breathe' || pose === 'talk' || pose === 'peak')) {   // 脫光後的動作：手照 mode 擺（deform），這裡只給頭和呼吸
       const talk = pose === 'talk', b = talk ? .65 * (.5 - .5 * Math.cos(2 * ph)) : .5 - .5 * Math.cos(ph);
       const tn = talk ? 3 * Math.max(0, Math.sin(2 * ph)) : 0;
       if (mode === 'cover') return { ph, br: b, tilt: -3 + 1.5 * Math.sin(ph), nod: 9 + tn, turn: -52, gest: 0, mode };   // 側臉看旁邊、微低頭（害羞）
+      if (pose === 'peak') {   // 忽然仰頭：前 20% 揉快、接著一格頭就往後仰到底，頓住、大口喘，再慢慢回來
+        const u = f / (n - 1), smo = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+        const k = u < .2 ? 0 : u < .27 ? 1 : u < .6 ? 1 : 1 - smo((u - .6) / .4);
+        return { ph: ph * 2, br: .3 + .7 * k * (.6 + .4 * Math.sin(ph * 3)), tilt: 3 * Math.sin(ph) + 5 * k, nod: -15 - 30 * k, turn: 0, gest: 0, mode, peak: k };
+      }
       if (mode === 'fondle') return { ph, br: b, tilt: 5 * Math.sin(ph), nod: -7 - tn, turn: 0, gest: 0, mode };   // 頭微微往後仰
       return { ph, br: b, tilt: 3 * Math.sin(ph), nod: -15 - tn, turn: 0, gest: 0, mode };   // touch：抬頭
     }
@@ -296,8 +303,8 @@
         }
       } else if (m.mode === 'touch') {
         // 坐著：右手伸到下體揉陰唇（小小地上下左右揉），左手照舊撐地
-        const k = Math.sin(ph2 * 1.5), k2 = Math.cos(ph2 * 1.5);
-        hands.armR = [.4 + .6 * k2, frontY(.4, C + 1.2) + 1.2, C + 1.2 + .6 * k]; poles.armR = [1, .45, -.3];
+        const pk = m.peak || 0, k = Math.sin(ph2 * 1.5) * (1 - pk), k2 = Math.cos(ph2 * 1.5) * (1 - pk);   // 仰頭那一下手停住、按緊
+        hands.armR = [.4 + .6 * k2, frontY(.4, C + 1.2) + 1.2 - .6 * pk, C + 1.2 + .6 * k]; poles.armR = [1, .45, -.3];
       }
       modePlan = { hands, poles, push, round };
     }
@@ -425,7 +432,7 @@
       if (!px[i + 3]) continue;
       const r = px[i], g = px[i + 1], b = px[i + 2];
       let o = null;
-      if (r === 240 && g === 240 && b === 240) o = [92, 84, 110];   // 手腳疊在身體前面的邊：淺一點（手遮胸、遮下體、托胸才看得出來）
+      if (r === 240 && g === 240 && b === 240) o = [30, 24, 40];   // 手腳疊在身體前面的邊：深色
       else if (r === 150 && g === 100 && b === 128) o = [72, 58, 84];
       else if (r === 205 && g === 150 && b === 175) o = [88, 72, 100];
       else if ((r === 90 && g === 60 && b === 60) || (r === 110 && g === 75 && b === 75)) o = [51, 45, 64];
@@ -467,13 +474,13 @@
     const hasU = base.sh.prims.some(p => p.cloth && p.under), hasO = base.sh.prims.some(p => p.cloth && !p.under);
     const r = run(p => !p.cloth);
     shade(r.pixels);
-    if (doll._mode) {   // 脫光後的姿勢：手臂疊在身體前面的地方淺一點（不然黑影同色，遮胸、遮下體、托胸的手看不出來）
+    if (doll._mode) {   // 脫光後的姿勢：手臂疊在身體前面的地方加深（使用者：半透明的影子疊兩層＝比較深；不用淺色）
       const isArm = (p) => !p.cloth && (p.part === 'armL' || p.part === 'armR');
       const arms = run(isArm), body = run(p => !p.cloth && !isArm(p)), px = r.pixels, ad = arms.depth, bd = body.depth;
       for (let i = 0, n = px.length / 4; i < n; i++) {
         if (!arms.pixels[i * 4 + 3] || !body.pixels[i * 4 + 3] || !(ad[i] > bd[i])) continue;   // 手臂在身體前面
         const j = i * 4; if (px[j] === 31 || px[j] === 78) continue;   // 頭髮蓋在手上：照舊
-        px[j] = px[j] * .45 + 104 * .55; px[j + 1] = px[j + 1] * .45 + 96 * .55; px[j + 2] = px[j + 2] * .45 + 124 * .55;
+        px[j] = px[j] * .66; px[j + 1] = px[j + 1] * .66; px[j + 2] = px[j + 2] * .66; px[j + 3] = Math.min(255, px[j + 3] + 30);
       }
     }
     if (hasU) veil(r.pixels, run(p => !p.cloth || p.under).pixels);
@@ -572,6 +579,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       todo.push(['breathe', 0]);
       for (let f = 1; f < N; f++) todo.push(['breathe', f]);
       for (let f = 0; f < N; f++) todo.push(['talk', f]);
+      if (doll._mode === 'touch') { job.sets.peak = []; for (let f = 0; f < NA_OF.peak; f++) todo.push(['peak', f]); }   // 忽然仰頭（偶爾播）
     }
     (async () => {
       for (const [pose, f] of todo) {
@@ -665,6 +673,16 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       }
       raf = requestAnimationFrame(tick);
       return;
+    }
+    // 妻子摸陰唇：每 8～16 秒忽然仰頭一次（說話時不播）
+    if (cur.sets.peak && full(cur.sets.peak, nOf('peak'))) {
+      if (!cur.peakAt) cur.peakAt = t + 5000 + Math.random() * 6000;
+      if (!cur.peakT0 && t >= cur.peakAt && t >= talkUntil) cur.peakT0 = t;
+      if (cur.peakT0) {
+        const i = beatFrame('peak', t - cur.peakT0);
+        if (i >= nOf('peak')) { cur.peakT0 = 0; cur.peakAt = t + 8000 + Math.random() * 8000; mode = ''; }
+        else { if (canvas.dataset.f !== 'peak' + i) draw(cur.sets.peak[i], 'peak' + i); raf = requestAnimationFrame(tick); return; }
+      }
     }
     const next = t < talkUntil && full(cur.sets.talk) ? 'talk' : 'breathe';
     if (next !== mode) { mode = next; clock = 0; }
