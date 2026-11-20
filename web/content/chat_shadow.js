@@ -10,13 +10,13 @@
 (function () {
   'use strict';
   const DROOM_URL = new URL('../droom/room_doll_chest.js?v=8', (document.currentScript && document.currentScript.src) || location.href).href;
-  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 16 }, FPS = { breathe: 4, talk: 7 };
+  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24 }, FPS = { breathe: 4, talk: 7 };
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
   const BEAT = {
     shirt: (u) => (u < .12 ? 160 : u < .45 ? 130 : u < .62 ? 120 : u < .8 ? 95 : 150) + (Math.abs(u - .57) < .025 ? 380 : 0),   // 套過頭時卡一下
     bra: (u) => (u < .28 ? 175 : u < .42 ? 160 : u < .6 ? 125 : u < .78 ? 70 : u < .86 ? 85 : 140) + (Math.abs(u - .37) < .015 ? 520 : 0) + (Math.abs(u - .86) < .015 ? 750 : 0),
-    // 妻子摸陰唇時忽然仰頭（高潮）：先揉快一點 → 一格忽然仰頭 → 頓住 → 慢慢放鬆
-    peak: (u) => (u < .2 ? 110 : u < .27 ? 55 : u < .6 ? 230 : 170),
+    // 妻子摸陰唇時高潮（使用者）：揉快 4 格 → 3 格頭往後仰到底 → 抽搐（抽動 1 格快、停頓不規則，越來越弱）→ 慢慢放鬆
+    peak: (u) => { const i = Math.round(u * 23); return i < 4 ? 110 : i < 7 ? 75 : i < 17 ? ((i - 7) % 2 === 0 ? 55 : [140, 200, 120, 180, 220][((i - 7) >> 1) % 5]) : 170; },
     panties: (u) => (u < .2 ? 165 : u < .32 ? 160 : u < .46 ? 125 : u < .7 ? 75 : u < .84 ? 85 : 140) + (Math.abs(u - .27) < .017 ? 480 : 0) + (Math.abs(u - .84) < .017 ? 700 : 0),
   };
   const beatCum = {};
@@ -54,10 +54,12 @@
       const talk = pose === 'talk', b = talk ? .65 * (.5 - .5 * Math.cos(2 * ph)) : .5 - .5 * Math.cos(ph);
       const tn = talk ? 3 * Math.max(0, Math.sin(2 * ph)) : 0;
       if (mode === 'cover') return { ph, br: b, tilt: -3 + 1.5 * Math.sin(ph), nod: 9 + tn, turn: -52, gest: 0, mode };   // 側臉看旁邊、微低頭（害羞）
-      if (pose === 'peak') {   // 忽然仰頭：前 20% 揉快、接著一格頭就往後仰到底，頓住、大口喘，再慢慢回來
-        const u = f / (n - 1), smo = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
-        const k = u < .2 ? 0 : u < .27 ? 1 : u < .6 ? 1 : 1 - smo((u - .6) / .4);
-        return { ph: ph * 2, br: .3 + .7 * k * (.6 + .4 * Math.sin(ph * 3)), tilt: 3 * Math.sin(ph) + 5 * k, nod: -15 - 30 * k, turn: 0, gest: 0, mode, peak: k };
+      if (pose === 'peak') {   // 高潮：揉快 → 3 格仰頭 → 抽搐（身體、頭各抽一下＝一格）→ 慢慢回來
+        const i = Math.round(f * 23 / (n - 1)), smo = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+        const k = i < 4 ? 0 : i < 7 ? (i - 3) / 3 : i < 17 ? 1 : 1 - smo((i - 16) / 7);
+        const tw = i >= 7 && i < 17 && (i - 7) % 2 === 0 ? 1 - (i - 7) / 14 : 0;   // 抽動的那一格（越抽越弱）
+        const sgn = ((i - 7) >> 1) % 2 ? -1 : 1;
+        return { ph: ph * 2, br: .3 + .7 * k, tilt: 3 * Math.sin(ph) + 4 * k + 7 * tw * sgn, nod: -15 - 30 * k - 9 * tw, turn: 4 * tw * sgn, gest: 0, mode, peak: k, jolt: tw };
       }
       if (mode === 'fondle') return { ph, br: b, tilt: 5 * Math.sin(ph), nod: -7 - tn, turn: 0, gest: 0, mode };   // 頭微微往後仰
       return { ph, br: b, tilt: 3 * Math.sin(ph), nod: -15 - tn, turn: 0, gest: 0, mode };   // touch：抬頭
@@ -360,14 +362,18 @@
       for (const [i, b] of bcs.entries()) if (b) { const w = 1 - Math.hypot(q[0] - b.c[0], q[1] - b.c[1], q[2] - b.c[2]) / b.r; if (w > 0) { const ws = sm(w); d[0] += (i ? 1 : -1) * .3 * br * ws; d[1] += .2 * br * ws; } }
       return d;
     };
-    const armAct = (part, isUpper) => { const X = armX[part], e = SHRUG[part] || [0, 0, 0]; return [e[0], e[1], lift * LIFT[part] + e[2], X ? (isUpper ? X.up : X.fore) : null]; };
+    const armAct = (part, isUpper) => { const X = armX[part], e = SHRUG[part] || [0, 0, 0], jj = m.jolt ? 1 : 0; return [e[0], e[1] + (jj ? -.7 * m.jolt : 0), lift * LIFT[part] + e[2] + (jj ? 1.6 * m.jolt : 0), X ? (isUpper ? X.up : X.fore) : null]; };
+    // 高潮抽搐（m.jolt）：上半身（胸、肩、頭、手、乳房）往上往後猛抽一下，腿不動
+    const J = m.jolt || 0, jz = 1.6 * J, jy = -.7 * J;
     /** 一個身體零件這格怎麼動：[dx, dy, dz, 轉動或 null]。 */
     const act = (p, q) => {
       const part = p.part;
-      if (part === 'head' || p.mat === 1) return [0, 0, hl, headX];
+      if (part === 'head' || p.mat === 1) return [0, jy, hl + jz, headX];
       if (part === 'armL' || part === 'armR') return armAct(part, armX[part] ? p === armX[part].upper : false);
       if (part === 'legs') return null;
-      const d = field(q); d.push(null); return d;
+      const d = field(q);
+      if (J) { const w = Math.max(0, Math.min(1, (q[2] - C) / (S - C))); d[1] += jy * w; d[2] += jz * w; }   // 越上面抽得越多
+      d.push(null); return d;
     };
     const body = sh.prims.filter(p => p.mat === 0 && !p.cloth && !p.carve);
     // 脫衣動畫：要移走的那件（T 恤＝外衣；胸罩＝內衣的布 1／2；內褲＝內衣的其他（蕾絲、褲頭））
@@ -624,7 +630,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       img.style.bottom = (window.innerHeight - T + 2) + 'px';
       const bar = sheet.querySelector('.talk-acts.undress-bar'), br = bar && !bar.hidden ? bar.getBoundingClientRect() : null;
       const top = br && br.height ? br.bottom + 6 : 12;   // 脫衣按鈕在上方：立繪上緣讓開
-      img.style.height = Math.max(120, Math.min(720, T - 2 - top)) + 'px';
+      img.style.height = Math.max(120, Math.min(720, (T - 2 - top) / 1.05)) + 'px';   // 立繪呼吸會放大 5%：先留出來，放大時頭頂才不會壓到上面的按鈕
       img.style.maxHeight = 'none';
     } else if (img.style.bottom) { img.style.bottom = ''; img.style.height = ''; img.style.maxHeight = ''; }
   }

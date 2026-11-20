@@ -822,3 +822,8 @@ body.room-home.kb-open #talk-acts { display: none; }
 #chat-shadow-tip[hidden]{display:none}
 /* 2026-11-20 使用者：脫衣的按鈕（叫她脫／幫她脫／下一句／回到對話）移到螢幕上方——原本輸入框的位置（脫衣時輸入框藏起來） */
 #portrait-sheet .talk-acts.undress-bar{top:max(8px,env(safe-area-inset-top));bottom:auto;background:none;padding:6px 10px}
+/* 2026-11-20 使用者：立繪呼吸——原尺寸 ↔ 放大 5% 來回：慢慢放大（1.6 秒）、停 0.6 秒、慢慢縮回（1.6 秒）、停 0.6 秒。
+   用獨立的 scale 屬性（不碰進場用的 transform），從底部縮放（腳底留在對話框上緣上面）。做愛步驟圖不動。 */
+@keyframes portrait-breathe{0%{scale:1}36.36%{scale:1.05}50%{scale:1.05}86.36%{scale:1}100%{scale:1}}
+#portrait-img:not([data-sex-step]),#portrait-img[data-sex-step=""]{transform-origin:50% 100%;animation:portrait-breathe 4.4s ease-in-out infinite}
+@media(prefers-reduced-motion:reduce){#portrait-img{animation:none!important}}
