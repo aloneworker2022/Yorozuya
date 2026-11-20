@@ -396,7 +396,8 @@ const $ = (id) => document.getElementById(id);
 
 let girl = null;
 /** 房間剪影（room_doll.js）讀她的外觀：身高／體型／罩杯／髮型＋身上那套（裙子）＋脫到第幾階。test_room.js 每秒問一次。 */
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl) } : null);
+// wife：妻子以上（聊天黑影脫光後的動作：妻子以下害羞遮著、妻子主動——chat_shadow.js）
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage) } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity

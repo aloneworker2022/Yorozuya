@@ -29,7 +29,8 @@
   const SCALE = 2, CV = { w: 84, h: 134, ax: 42, ay: 131, tMax: 40, tMin: -45 };   // 手抬起來也在框內；腳底固定在 ay
   // 坐著（美人魚坐姿，脫衣時）：腿往右收比較寬、人比較矮 → 自己的畫布（顯示時一樣撐滿高度＝坐著的她看起來比較大）
   const CV_SIT = { w: 116, h: 100, ax: 56, ay: 94, tMax: 70, tMin: -70 };   // 上面留空間給脫 T 恤時舉到頭上的手
-  const cvOf = (doll) => (doll && doll._body === 'mermaid' ? CV_SIT : CV);
+  const CV_SIT_LOW = { w: 116, h: 76, ax: 56, ay: 72, tMax: 70, tMin: -70 };   // 一般聊天坐著（妻子摸自己）：手不會舉過頭 → 上面不留空，人顯示得比較大
+  const cvOf = (doll) => (doll && doll._body === 'mermaid' ? (doll._mode ? CV_SIT_LOW : CV_SIT) : CV);
 
   // look.breast_shape → 模型乳型（照 droom-chest-model 備忘錄 MEMO-2026-11-18、使用者確認的表）；外擴／八字使用者取消 → 先用自然圓潤
   const SHAPE_OF = [[/母乳|沉重/, { shape: 'heavy' }], [/木瓜/, { shape: 'pendulous' }], [/鐘/, { shape: 'bell' }], [/水滴/, { shape: 'teardrop' }],
@@ -45,8 +46,15 @@
   }
 
   /** 第 f 格的動作量（worker 裡也用，不能用外面的變數）。pose：breathe／talk／脫衣動畫 shirt／bra／panties；sit＝坐著（不比劃）。 */
-  function motion(pose, f, n, sit) {
+  function motion(pose, f, n, sit, mode) {
     const ph = 2 * Math.PI * f / n;
+    if (mode && (pose === 'breathe' || pose === 'talk')) {   // 脫光後的動作：手照 mode 擺（deform），這裡只給頭和呼吸
+      const talk = pose === 'talk', b = talk ? .65 * (.5 - .5 * Math.cos(2 * ph)) : .5 - .5 * Math.cos(ph);
+      const tn = talk ? 3 * Math.max(0, Math.sin(2 * ph)) : 0;
+      if (mode === 'cover') return { ph, br: b, tilt: -3 + 1.5 * Math.sin(ph), nod: 9 + tn, turn: -52, gest: 0, mode };   // 側臉看旁邊、微低頭（害羞）
+      if (mode === 'fondle') return { ph, br: b, tilt: 5 * Math.sin(ph), nod: -7 - tn, turn: 0, gest: 0, mode };   // 頭微微往後仰
+      return { ph, br: b, tilt: 3 * Math.sin(ph), nod: -15 - tn, turn: 0, gest: 0, mode };   // touch：抬頭
+    }
     const breath = (q) => { q = ((q % 1) + 1) % 1; return q < .4 ? .5 - .5 * Math.cos(Math.PI * q / .4) : .5 + .5 * Math.cos(Math.PI * (q - .4) / .6); };
     if (pose === 'shirt' || pose === 'bra' || pose === 'panties') {
       // 脫胸罩／內褲：害羞，頭轉向一邊、微微低下（伸手時慢慢轉過去，脫完才慢慢轉回來）
@@ -86,12 +94,14 @@
     const headX = tilt || nod || turn ? H.about(H.mulR(RZ, H.mulR(H.rotY(tilt), H.rotX(-nod))), [o[0], o[1], S - 1 + o[2] + hl]) : null;
     // 兩隻手：肩、手肘、手腕（零件 a 點，從上往下排）；armX[side]＝{up, fore, upper}
     const LIFT = { armL: .9, armR: .5 };
+    // 害羞遮下體：肩膀往前、往下沉一點（縮肩），手才搆得到胯下前面
+    const SHRUG = !anim && m.mode === 'cover' ? { armR: [-.4, 1.5, -3] } : {};
     const armX = {};
     const lerp = (a, c, k) => a.map((v, i) => v + (c[i] - v) * k);
     const armPts = (part) => {
       const arm = sh.prims.filter(p => p.part === part && p.a && !p.cloth);
       if (arm.length < 2) return null;
-      const lz = lift * LIFT[part], pt = (p) => [p.a[0] + p.off[0], p.a[1] + p.off[1], p.a[2] + p.off[2] + lz];
+      const lz = lift * LIFT[part], e = SHRUG[part] || [0, 0, 0], pt = (p) => [p.a[0] + p.off[0] + e[0], p.a[1] + p.off[1] + e[1], p.a[2] + p.off[2] + lz + e[2]];
       const sp = pt(arm[0]), ep = pt(arm[1]), w0 = arm[2] ? pt(arm[2]) : [ep[0], ep[1], ep[2] - 10];
       return { arm, sp, ep, w0 };
     };
@@ -259,7 +269,44 @@
         }
       }
     }
+    // 脫光後的動作（m.mode）：cover 一手遮胸、一手遮下體；fondle 兩手托著乳房揉；touch（坐著）右手摸陰唇
+    let modePlan = null;
+    if (!anim && m.mode) {
+      const W = (p) => [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
+      const mean = (L) => { const c = [0, 0, 0]; for (const q of L) for (let i = 0; i < 3; i++) c[i] += q[i] / L.length; return c; };
+      const bodyP = sh.prims.filter(p => p.mat === 0 && !p.cloth && !p.carve && p.part !== 'armL' && p.part !== 'armR');
+      /** (x, z) 那一點身體最前面的 y。 */
+      const frontY = (x, z) => { for (let y = 22; y > -10; y -= .25) { for (const p of bodyP) if (H.primDist(p, x, y, z) < 0) return y; } return 4; };
+      const BR = [-1, 1].map(sd => { const L = sh.prims.filter(p => p.part === 'breast' && !p.cloth && !p.nip && Math.sign(W(p)[0]) === sd); if (!L.length) return null; const c = mean(L.map(W)); const r = Math.max(...L.filter(p => p.r).map(p => Math.max(...p.r)), 2); return { c, r, front: Math.max(...L.map(p => W(p)[1] + p.br * .7)) }; });
+      const big = BR[1] ? Math.max(.3, Math.min(1, (BR[1].r - 3.4) / 2.6)) : .5;   // 罩杯越大（D 以上）被壓得越明顯
+      const ph2 = ph * 2;
+      const hands = {}, poles = {}, push = { [-1]: [0, 0, 0], [1]: [0, 0, 0] }, round = { [-1]: 0, [1]: 0 };
+      if (m.mode === 'cover' && BR[1]) {
+        // 左手（畫面左那隻）橫過胸前壓住另一邊的乳房；右手遮住下體。胸部被手臂往上、往中間擠：更挺、更圓
+        hands.armL = [BR[1].c[0] - 1.6, BR[1].front + 1.6, BR[1].c[2] + .4]; poles.armL = [-.4, .7, -.7];
+        hands.armR = [1.6, frontY(1.6, C + 5) + 3.2, C + 5]; poles.armR = [1, .2, -.1];   // 手腕在下體上方一點、手掌往下蓋住   // 手腕在下體上方、手掌往下蓋住下體（手臂不夠長到胯下）；離身體一點，邊線才畫得出來
+        for (const sd of [-1, 1]) { push[sd] = [-sd * .7 * big, .6 * big, 1.6 * big]; round[sd] = big; }
+      } else if (m.mode === 'fondle' && BR[0] && BR[1]) {
+        // 兩手從下面托著自己的乳房，往上抬、揉（左右錯開）；乳房跟著手上下動
+        for (const [part, sd] of [['armL', -1], ['armR', 1]]) {
+          const b = BR[sd < 0 ? 0 : 1], k = Math.sin(ph2 + (sd > 0 ? 1.4 : 0));
+          hands[part] = [b.c[0] * 1.05 + sd * .4 * k, b.front - b.r * .25, b.c[2] - b.r * .55 + 1.1 * k];
+          poles[part] = [sd, .25, -.8];
+          push[sd] = [-sd * .45 * (1 + k) * .5, .3, .9 + .9 * k]; round[sd] = .6 * big;
+        }
+      } else if (m.mode === 'touch') {
+        // 坐著：右手伸到下體揉陰唇（小小地上下左右揉），左手照舊撐地
+        const k = Math.sin(ph2 * 1.5), k2 = Math.cos(ph2 * 1.5);
+        hands.armR = [.4 + .6 * k2, frontY(.4, C + 1.2) + 1.2, C + 1.2 + .6 * k]; poles.armR = [1, .45, -.3];
+      }
+      modePlan = { hands, poles, push, round };
+    }
     for (const part of ['armL', 'armR']) {
+      if (modePlan) {
+        const T = modePlan.hands[part];
+        if (T) { const X = ikArm(part, T, modePlan.poles[part]); if (X) armX[part] = X; }
+        continue;
+      }
       if (garPlan) {   // 脫胸罩／內褲：手腕照步驟走（IK）
         const sd = part === 'armL' ? -1 : 1, T = garPlan.hands[part];
         const pole = anim.kind === 'bra' && anim.u < .48 ? [sd, -.4, .1] : anim.kind === 'bra' && part === 'armL' ? [sd * .4, .7, -.7] : [sd, .35, -.55];   // 遮胸：手肘往前下、前臂橫在胸前
@@ -306,7 +353,7 @@
       for (const [i, b] of bcs.entries()) if (b) { const w = 1 - Math.hypot(q[0] - b.c[0], q[1] - b.c[1], q[2] - b.c[2]) / b.r; if (w > 0) { const ws = sm(w); d[0] += (i ? 1 : -1) * .3 * br * ws; d[1] += .2 * br * ws; } }
       return d;
     };
-    const armAct = (part, isUpper) => { const X = armX[part]; return [0, 0, lift * LIFT[part], X ? (isUpper ? X.up : X.fore) : null]; };
+    const armAct = (part, isUpper) => { const X = armX[part], e = SHRUG[part] || [0, 0, 0]; return [e[0], e[1], lift * LIFT[part] + e[2], X ? (isUpper ? X.up : X.fore) : null]; };
     /** 一個身體零件這格怎麼動：[dx, dy, dz, 轉動或 null]。 */
     const act = (p, q) => {
       const part = p.part;
@@ -356,11 +403,20 @@
       } else a = act(p, q);
       if (a) acts.set(p, a);
     }
+    if (modePlan) for (const p of sh.prims) {   // 被手壓著／托著的乳房：往上往中間擠、更挺更圓（乳房零件和乳暈一起動）
+      if (p.part !== 'breast' || p.cloth) continue;
+      const sd = Math.sign(p.bc[0] + p.off[0]) || 1, d = modePlan.push[sd], k = modePlan.round[sd];
+      const a = acts.get(p) || [0, 0, 0, null]; acts.set(p, [a[0] + d[0], a[1] + d[1], a[2] + d[2], a[3]]);
+      if (k && p.k === 0 && p.r && !p.nip) { p.r = [p.r[0] * (1 - .04 * k), p.r[1] * (1 + .1 * k), p.r[2] * (1 - .05 * k)]; p.br = Math.max(p.br, ...p.r); }   // 前後更凸、上下稍扁＝圓潤挺
+    }
     for (const [p, a] of acts) {
       p.off = [p.off[0] + a[0], p.off[1] + a[1], p.off[2] + a[2]];
       if (a[3]) p.xf = p.xf ? H.compose(a[3], p.xf) : a[3];
     }
-    for (const st of sh.areolaStamps || []) { const sd = Math.sign(st.q[0]) || 1; st.q = [st.q[0] + sd * .3 * br, st.q[1] + .45 * br, st.q[2] + lift * .75]; }
+    for (const st of sh.areolaStamps || []) {
+      const sd = Math.sign(st.q[0]) || 1, d = modePlan ? modePlan.push[sd] : [0, 0, 0], k = modePlan ? modePlan.round[sd] : 0;
+      st.q = [st.q[0] + sd * .3 * br + d[0], st.q[1] + .45 * br + d[1] + .25 * k, st.q[2] + lift * .75 + d[2]];
+    }
   }
 
   /** droom 的部位標記色 → 房間黑影配色（白邊→深線；乳暈乳頭→淡淡的印子；摺線→身體色）。 */
@@ -369,7 +425,7 @@
       if (!px[i + 3]) continue;
       const r = px[i], g = px[i + 1], b = px[i + 2];
       let o = null;
-      if (r === 240 && g === 240 && b === 240) o = [30, 24, 40];
+      if (r === 240 && g === 240 && b === 240) o = [92, 84, 110];   // 手腳疊在身體前面的邊：淺一點（手遮胸、遮下體、托胸才看得出來）
       else if (r === 150 && g === 100 && b === 128) o = [72, 58, 84];
       else if (r === 205 && g === 150 && b === 175) o = [88, 72, 100];
       else if ((r === 90 && g === 60 && b === 60) || (r === 110 && g === 75 && b === 75)) o = [51, 45, 64];
@@ -404,13 +460,22 @@
     if (cache.key !== key) { cache.key = key; cache.base = F.build(doll, body, 0, 0, {}); }
     const base = cache.base;
     const shape = () => ({ P: base.P, sh: Object.assign({}, base.sh, { prims: base.sh.prims.map(p => Object.assign({}, p)), areolaStamps: (base.sh.areolaStamps || []).map(q => Object.assign({}, q)) }) });
-    const m = motion(pose, f, n, body === 'mermaid');
+    const m = motion(pose, f, n, body === 'mermaid', doll._mode || null);
     // 分三次畫：只有身體 → 身體＋內衣（胸罩、丁字褲）→ 身體＋外衣（T 恤），再一層層疊灰色上去
     // 先用全部零件變形（脫 T 恤時手要照 T 恤的下襬走——只畫身體那一層也要看得到 T 恤），再篩這一層要畫的
     const run = (keep) => F.render(doll, body, 0, 0, { scale, cv, shape, deform: (sh, P, H) => { deform(sh, P, H, m); sh.prims = sh.prims.filter(keep); } });
     const hasU = base.sh.prims.some(p => p.cloth && p.under), hasO = base.sh.prims.some(p => p.cloth && !p.under);
     const r = run(p => !p.cloth);
     shade(r.pixels);
+    if (doll._mode) {   // 脫光後的姿勢：手臂疊在身體前面的地方淺一點（不然黑影同色，遮胸、遮下體、托胸的手看不出來）
+      const isArm = (p) => !p.cloth && (p.part === 'armL' || p.part === 'armR');
+      const arms = run(isArm), body = run(p => !p.cloth && !isArm(p)), px = r.pixels, ad = arms.depth, bd = body.depth;
+      for (let i = 0, n = px.length / 4; i < n; i++) {
+        if (!arms.pixels[i * 4 + 3] || !body.pixels[i * 4 + 3] || !(ad[i] > bd[i])) continue;   // 手臂在身體前面
+        const j = i * 4; if (px[j] === 31 || px[j] === 78) continue;   // 頭髮蓋在手上：照舊
+        px[j] = px[j] * .45 + 104 * .55; px[j + 1] = px[j + 1] * .45 + 96 * .55; px[j + 2] = px[j + 2] * .45 + 124 * .55;
+      }
+    }
     if (hasU) veil(r.pixels, run(p => !p.cloth || p.under).pixels);
     if (hasO) veil(r.pixels, run(p => !p.cloth || !p.under).pixels);
     return r;
@@ -483,6 +548,13 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const st = Math.max(0, Math.min(3, Number(undressing ? pinStage : s.undressStage) || 0));
     doll.skirt = '';
     if (undressing) doll._body = 'mermaid';
+    // 一般聊天、脫光以後（使用者）：妻子以下害羞——一手遮胸（壓得胸部更挺更圓）、一手遮下體、側臉看旁邊；
+    //   妻子以上主動——站著兩手托著乳房揉，或坐下來摸陰唇、抬頭（每次打開聊天隨機一種）
+    if (!undressing && st >= 3) {
+      if (!s.wife) doll._mode = 'cover';
+      else if (wifePick === 'touch') { doll._mode = 'touch'; doll._body = 'mermaid'; }
+      else doll._mode = 'fondle';
+    }
     if (st === 0) { doll.cloth = 'tee'; doll.underBra = true; }
     else if (st === 1) doll.cloth = 'bra';
     if (st <= 1) doll.braSupport = true;
@@ -616,12 +688,12 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   }
 
   // 2026-11-19 使用者：聊天先出現黑影；長按黑影的頭 → 半身立繪；長按立繪 → 回到黑影。每次打開聊天都從黑影開始。
-  let portraitMode = false, wasOpen = false, fadeT = 0;
+  let portraitMode = false, wasOpen = false, fadeT = 0, wifePick = 'fondle';
   function sync() {
     const sheet = document.getElementById('portrait-sheet');
     if (!ensureEl()) return;
     const open = !!(sheet && !sheet.hidden);
-    if (open && !wasOpen) portraitMode = false;
+    if (open && !wasOpen) { portraitMode = false; wifePick = Math.random() < .5 ? 'fondle' : 'touch'; }
     wasOpen = open;
     // 脫衣對話開始／結束：開始時釘住目前的脫衣進度（坐下）；結束就照實際進度（站起來）
     const undressOn = open && !!sheet?.classList.contains('undress-chat');
