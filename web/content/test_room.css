@@ -820,3 +820,5 @@ body.room-home.kb-open #talk-acts { display: none; }
 #portrait-sheet.portrait-mode #portrait-img{pointer-events:auto;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-user-drag:none}
 #chat-shadow-tip{position:fixed;left:50%;top:38%;transform:translate(-50%,-50%);z-index:80;padding:8px 14px;background:rgba(20,24,44,.86);color:#f4fbff;border-radius:6px;font-size:.9em;pointer-events:none}
 #chat-shadow-tip[hidden]{display:none}
+/* 2026-11-20 使用者：脫衣的按鈕（叫她脫／幫她脫／下一句／回到對話）移到螢幕上方——原本輸入框的位置（脫衣時輸入框藏起來） */
+#portrait-sheet .talk-acts.undress-bar{top:max(8px,env(safe-area-inset-top));bottom:auto;background:none;padding:6px 10px}
