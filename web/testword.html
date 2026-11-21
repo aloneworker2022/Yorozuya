@@ -194,8 +194,9 @@
     <label style="display:inline-flex;gap:.3em;align-items:center"><input id="cst-splay" type="checkbox">外擴</label>
     <span><label>乳暈</label><select id="cst-areola"></select></span>
     <span><label>髮型</label><select id="cst-hair"></select></span>
+    <span><label>身上那套（衣著選第一項時）</label><select id="cst-outfit"></select></span>
     <span><label>衣著</label><select id="cst-st">
-      <option value="0">白 T 恤＋胸罩＋丁字褲</option><option value="1">胸罩＋丁字褲</option><option value="2">只剩丁字褲</option><option value="3">全裸</option></select></span>
+      <option value="0">穿著（身上那套）＋胸罩＋丁字褲</option><option value="1">胸罩＋丁字褲</option><option value="2">只剩丁字褲</option><option value="3">全裸</option></select></span>
     <span><label>關係</label><select id="cst-tier">
       <option value="stranger">陌生（被摸：推開、遮）</option><option value="friend">朋友（遮）</option><option value="girlfriend">女友（單手遮、嘆氣）</option><option value="wife">妻子（仰頭、摀嘴）</option></select></span>
     <span><label>全裸時的姿勢</label><select id="cst-mode">
@@ -214,7 +215,7 @@
   </div>
   <div id="cst-frame" class="mini"></div>
 </details>
-<script src="/content/chat_shadow.js?v=40"></script>
+<script src="/content/chat_shadow.js?v=41"></script>
 <script>
 (() => {
   const POSE_ZH = { breathe: '呼吸', talk: '說話', r_breast: '被摸：胸部', r_groin: '被摸：下體', r_waist: '被摸：腰臀',
@@ -231,6 +232,7 @@
     fill($('cst-shape'), tx(A.breast_shape).length ? tx(A.breast_shape) : ['自然圓潤'], '自然圓潤');
     fill($('cst-areola'), tx(A.areola).length ? tx(A.areola) : ['圓潤櫻花粉、中等大小乳暈'], '圓潤櫻花粉、中等大小乳暈');
     fill($('cst-hair'), tx(A.hair).length ? tx(A.hair) : ['及腰長直髮'], '及腰長直髮');
+    fill($('cst-outfit'), ['白色 T 恤配胸罩和丁字褲', ...tx(A.style), ...tx(A.sleep_style), ...tx(A.erotic_style)], '白色 T 恤配胸罩和丁字褲');
   }
   let timer = 0, token = 0;
   function stop() { clearTimeout(timer); timer = 0; token++; }
@@ -240,7 +242,7 @@
     if (!CS || !CS.test) { $('cst-status').textContent = 'chat_shadow.js 沒載到'; return; }
     const tier = $('cst-tier').value, pose = $('cst-pose').value;
     const spec = { look: { height_cm: +$('cst-h').value || 163, build: $('cst-build').value, cup: $('cst-cup').value + ' 罩杯', breast_shape: $('cst-shape').value, breast_splay: $('cst-splay').checked ? '外擴' : '', areola: $('cst-areola').value, hair: $('cst-hair').value },
-      undressStage: +$('cst-st').value, wife: tier === 'wife', tier, mode: $('cst-mode').value || null };
+      outfit: $('cst-outfit').value, undressStage: +$('cst-st').value, wife: tier === 'wife', tier, mode: $('cst-mode').value || null };
     $('cst-status').textContent = '算圖中…';
     const t0 = performance.now();
     let res;
