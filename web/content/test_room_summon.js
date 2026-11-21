@@ -216,7 +216,8 @@ import {
   dressedReactionLine,
   dressedReactionPrompt,
 } from "./undress_shy.js?v=3";
-import { PERSONALITY_FAMILY, familyStageLine, familyOf } from "./girl_voice.js?v=1";
+import { PERSONALITY_FAMILY, familyStageLine, familyOf, scrubHusband as scrubHusbandV } from "./girl_voice.js?v=1";
+import { touchTierOf, touchBankMessages, parseTouchBank, pickTouchLine, moanLevelOf, moanify, TOUCH_TIERS, TOUCH_BANK_REV } from "./touch_lines.js?v=1";
 import { lineEventPromptLines } from "./line_social.js?v=1";
 import {
   TRIGGERS as TALK_TRIGGERS, TRIGGER_ZH as TALK_TRIGGER_ZH, talkEligible, ensureTalkState, talkGate, tickTalk, freshMemory, freshLineEvent,
@@ -397,7 +398,7 @@ const $ = (id) => document.getElementById(id);
 let girl = null;
 /** 房間剪影（room_doll.js）讀她的外觀：身高／體型／罩杯／髮型＋身上那套（裙子）＋脫到第幾階。test_room.js 每秒問一次。 */
 // wife：妻子以上（聊天黑影脫光後的動作：妻子以下害羞遮著、妻子主動——chat_shadow.js）
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage) } : null);
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage) } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
@@ -2851,7 +2852,53 @@ document.addEventListener("visibilitychange", () => {
  * 換衣服：clothedOnly，只重畫會露出衣服的。大頭、喜怒哀樂都不在這裡。
  * 手機關了，伺服器仍照清單跑。
  */
+/** 召喚流程裡順便把「摸她的回應」產好（使用者：摸了才等模型太慢）。四個關係帶、每帶胸部／下體／腰臀各幾句；目前的關係帶先產。
+ *  產好存在 who.touchBank（跟著存檔）；舊的那份留到新的產好才換掉。模型失敗＝用 touch_lines.js 內建的。 */
+const touchBankJobs = new Map();
+function pregenTouchBank(who) {
+  if (!who?.id) return Promise.resolve(null);
+  if (touchBankJobs.has(who.id)) return touchBankJobs.get(who.id);
+  const job = (async () => {
+    const route = await gameChatRoute();
+    const persona = { name: who.name || "", base: basePersonality(who), pet: who.playerPet || "", playerName: who.playerName || player?.name || "" };
+    const first = touchTierOf(who.stage || "stranger");
+    const tiers = {};
+    for (const tier of [first, ...TOUCH_TIERS.filter((t) => t !== first)]) {
+      try {
+        const msgs = touchBankMessages(tier, persona);
+        const reply = route.provider === "ollama"
+          ? await askOllama(route, msgs, null, { temperature: 0.95 })
+          : await askGrok(route, msgs, `roomtouch:${who.id}:${tier}:${Date.now().toString(36)}`, { temperature: 0.95 });
+        const got = parseTouchBank(reply);
+        if (got) {
+          tiers[tier] = got;
+          // 一帶好了就先用（不用等四帶都好）
+          const old = who.touchBank?.rev === TOUCH_BANK_REV ? who.touchBank.tiers || {} : {};
+          who.touchBank = { rev: TOUCH_BANK_REV, at: Date.now(), tiers: { ...old, ...tiers } };
+        }
+      } catch (err) {
+        console.warn("[touchBank]", tier, err?.message || err);
+      }
+    }
+    if (who === girl) { try { persistRoom(); } catch { /* */ } }
+    return who.touchBank || null;
+  })().finally(() => touchBankJobs.delete(who.id));
+  touchBankJobs.set(who.id, job);
+  return job;
+}
+
 async function pregenSummonBundle(who, opts = {}) {
+  // 進房的召喚（抽人、名冊召喚、召回）：圖在畫的同時把摸她的回應產好；圖畫完最多再等 20 秒
+  const touchJob = opts.portraits && who?.id && (opts.mode === "arrive" || opts.mode === "back" || !opts.mode)
+    ? pregenTouchBank(who).catch(() => null) : null;
+  try {
+    return await pregenSummonBundleInner(who, opts);
+  } finally {
+    if (touchJob) await Promise.race([touchJob, new Promise((r) => setTimeout(r, 20000))]);
+  }
+}
+
+async function pregenSummonBundleInner(who, opts = {}) {
   if (!who?.id) return { planned: 0, done: 0, failed: 0, skipped: true, finished: true, id: "" };
   const mode = opts.mode || "arrive";
   const items = [];
@@ -10206,7 +10253,18 @@ async function deliverUserTalk(text, opts = {}) {
       // 餘韻強制回覆數尚餘且佔有度未到 65 → 餘韻模板（同舊行為）。
       const occ = takeOccupancy(girl, actId, { climaxNow: herClimaxNow });
       if (occ.score >= 10) { pushDebug(`佔有度 ${occupancyLabel(occ)}`); renderDebug(); }
-      if (occ.score >= 95) {
+      if (opts.touchZone) {
+        // 摸黑影（使用者）：不等模型、不走佔有度／餘韻的呻吟模板（使用者：輸出的差別只在依高潮程度穿插嗯嗯啊啊）——從召喚時產好的台詞庫拿一句（照關係帶、摸的部位），依高潮程度穿插嗯嗯啊啊
+        const tier = touchTierOf(girl.stage || "stranger");
+        if (!Array.isArray(girl.touchRecent)) girl.touchRecent = [];
+        const base = pickTouchLine(girl.touchBank, tier, opts.touchZone, girl.touchRecent);
+        let lvl = moanLevelOf(arousalStage(girl.bodyState?.arousal || 0), { climaxNow: herClimaxNow, spasm: inSpasm(girl) });
+        if (occ.score >= 95) lvl = 4; else if (occ.score >= 65) lvl = Math.max(lvl, 3);
+        line = moanify(scrubHusbandV(base, girl.stage || "stranger", girl.playerPet || ""), lvl) || base;
+        pushDebug(`摸（${opts.touchZone}・${tier}${girl.touchBank?.tiers?.[tier] ? "" : "・內建"}）呻吟 ${lvl}`);
+        renderDebug();
+        setTyping(false);
+      } else if (occ.score >= 95) {
         line = occupancyMoanLine(occ, girl) || "……嗯啊…";
         setTyping(false);
       } else if (occ.score < 65 && !inSpasm(girl) && inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0) {
@@ -10336,11 +10394,11 @@ async function sendTalk(event) {
   if (order) closeAfterOrderReply(order);
 }
 
-async function sendTalkAct(actId) {
+async function sendTalkAct(actId, extra = {}) {
   if (!girl || talkBusy || talkFor !== girl.id) return;
   const act = TALK_ACTS.find((a) => a.id === actId);
   if (!act) return;
-  await deliverUserTalk(act.text, { actId });
+  await deliverUserTalk(act.text, { actId, ...extra });
 }
 
 // 2026-11-19 使用者：調戲不用按鈕——在聊天的黑影上摸（chat_shadow.js 判斷摸到哪裡）：
@@ -10360,7 +10418,9 @@ function touchZone(zone) {
   player = ensurePlayer(player);
   const ok = availableActs(girl, { canTease: canTease(player) }).map((a) => a.id).filter((id) => ids.includes(id));
   if (!ok.length) return false;
-  void sendTalkAct(ok[Math.floor(Math.random() * ok.length)]);
+  // 台詞庫還沒有（舊的一趟、召喚時模型失敗）：背景補產，這次先用內建的
+  if (girl.touchBank?.rev !== TOUCH_BANK_REV && !touchBankJobs.has(girl.id)) void pregenTouchBank(girl).catch(() => null);
+  void sendTalkAct(ok[Math.floor(Math.random() * ok.length)], { touchZone: zone });
   return true;
 }
 window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES };

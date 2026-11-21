@@ -10,15 +10,19 @@
 (function () {
   'use strict';
   const DROOM_URL = new URL('../droom/room_doll_chest.js?v=9', (document.currentScript && document.currentScript.src) || location.href).href;
-  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24 }, FPS = { breathe: 4, talk: 7 };
+  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 12, r_groin: 12, r_waist: 12 }, FPS = { breathe: 4, talk: 7 };
+  const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
   const BEAT = {
     shirt: (u) => (u < .12 ? 160 : u < .45 ? 130 : u < .62 ? 120 : u < .8 ? 95 : 150) + (Math.abs(u - .57) < .025 ? 380 : 0),   // 套過頭時卡一下
     bra: (u) => (u < .28 ? 175 : u < .42 ? 160 : u < .6 ? 125 : u < .78 ? 70 : u < .86 ? 85 : 140) + (Math.abs(u - .37) < .015 ? 520 : 0) + (Math.abs(u - .86) < .015 ? 750 : 0),
     // 妻子摸陰唇時高潮（使用者）：揉快 4 格 → 3 格頭往後仰到底 → 抽搐（抽動 1 格快、停頓不規則，越來越弱）→ 慢慢放鬆
     peak: (u) => { const i = Math.round(u * 23); return i < 4 ? 110 : i < 7 ? 75 : i < 17 ? ((i - 7) % 2 === 0 ? 55 : [140, 200, 120, 180, 220][((i - 7) >> 1) % 5]) : 170; },
+    // 被摸：很快縮手遮住（3 格）→ 遮著、掙扎（6 格）→ 慢慢放下（3 格）
+    r_breast: (u) => { const i = Math.round(u * 11); return i < 3 ? 75 : i < 9 ? 125 : 115; },
     panties: (u) => (u < .2 ? 165 : u < .32 ? 160 : u < .46 ? 125 : u < .7 ? 75 : u < .84 ? 85 : 140) + (Math.abs(u - .27) < .017 ? 480 : 0) + (Math.abs(u - .84) < .017 ? 700 : 0),
   };
+  BEAT.r_groin = BEAT.r_waist = BEAT.r_breast;
   const beatCum = {};
   /** 播了 ms 毫秒，該是第幾格（超過最後一格回 n）。 */
   function beatFrame(kind, ms) {
@@ -48,8 +52,23 @@
   }
 
   /** 第 f 格的動作量（worker 裡也用，不能用外面的變數）。pose：breathe／talk／脫衣動畫 shirt／bra／panties；sit＝坐著（不比劃）。 */
-  function motion(pose, f, n, sit, mode) {
+  function motion(pose, f, n, sit, mode, tier) {
     const ph = 2 * Math.PI * f / n;
+    if (pose === 'r_breast' || pose === 'r_groin' || pose === 'r_waist') {
+      // 被摸的反應（使用者：陌生生氣、朋友生氣、女友無奈嫌煩、妻子喜歡調情；摸的時候會反抗、遮擋）：
+      //   陌生／朋友：轉頭、低頭，手先推開再遮住被摸的地方，遮著的時候掙扎（頭小幅甩）；陌生多一下驚跳
+      //   女友：一隻手遮、頭轉一點點、低頭嘆一口氣；妻子：不遮，頭往後仰、身體一顫、手摀嘴
+      const u = f / (n - 1), sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+      const w = u < .22 ? sm(u / .22) : u < .72 ? 1 : 1 - sm((u - .72) / .28);
+      const base = mode ? motion('breathe', 0, 16, sit, mode) : { ph: 0, br: .2, tilt: 0, nod: 0, turn: 0, gest: 0 };
+      const T = tier || 'stranger', shake = u > .22 && u < .72 ? Math.sin((u - .22) * 38) : 0;
+      const D = { stranger: [-38, 6, -5, .35, 4], friend: [-30, 9, -4, .3, 2.5], girlfriend: [-14, 11, 4, .8, 0], wife: [12, -15, 7, .6, 0] }[T] || [-30, 8, -4, .3, 2];
+      const bump = (c, r) => Math.max(0, 1 - Math.abs(u - c) / r);
+      const jolt = T === 'wife' ? .45 * bump(.3, .09) : T === 'stranger' ? .3 * bump(.1, .1) : 0;
+      return { ph: base.ph, br: base.br + D[3] * w, tilt: base.tilt + D[2] * w, nod: base.nod + D[1] * w,
+        turn: Math.max(-62, Math.min(62, (base.turn || 0) + (D[0] + D[4] * shake) * w)), gest: 0, mode: mode || null,
+        react: { zone: pose.slice(2), u, w, tier: T }, jolt };
+    }
     if (mode && (pose === 'breathe' || pose === 'talk' || pose === 'peak')) {   // 脫光後的動作：手照 mode 擺（deform），這裡只給頭和呼吸
       const talk = pose === 'talk', b = talk ? .65 * (.5 - .5 * Math.cos(2 * ph)) : .5 - .5 * Math.cos(ph);
       const tn = talk ? 3 * Math.max(0, Math.sin(2 * ph)) : 0;
@@ -104,7 +123,9 @@
     // 兩隻手：肩、手肘、手腕（零件 a 點，從上往下排）；armX[side]＝{up, fore, upper}
     const LIFT = { armL: .9, armR: .5 };
     // 害羞遮下體：肩膀往前、往下沉一點（縮肩），手才搆得到胯下前面
-    const SHRUG = !anim && m.mode === 'cover' ? { armR: [-.4, 1.5, -3] } : {};
+    const rx = !anim && !m.mode && m.react && m.react.w > .02 ? m.react : null;   // 被摸的反應（脫光後的姿勢手已經在擺，只動頭）
+    const kS = rx && rx.zone === 'groin' && rx.tier !== 'wife' ? rx.w : 0;   // 遮下體：縮肩手才搆得到
+    const SHRUG = !anim && m.mode === 'cover' ? { armR: [-.4, 1.5, -3] } : kS ? Object.assign({ armR: [-.4 * kS, 1.5 * kS, -3 * kS] }, rx.tier === 'girlfriend' ? {} : { armL: [.4 * kS, 1.5 * kS, -3 * kS] }) : {};
     const armX = {};
     const lerp = (a, c, k) => a.map((v, i) => v + (c[i] - v) * k);
     const armPts = (part) => {
@@ -321,6 +342,40 @@
         hands.armR = [.4 + .6 * k2, frontY(.4, C + 1.2) + 1.2 - .6 * pk, C + 1.2 + .6 * k]; poles.armR = [1, .45, -.3];
       }
       modePlan = { hands, poles, push, round, handDir: modeHand };
+    } else if (rx) {
+      // 被摸的反應：照關係帶擺手（hands＝手腕目標；從原本的位置照 w 過去再回來）
+      const W = (p) => [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
+      const mean = (L) => { const c = [0, 0, 0]; for (const q of L) for (let i = 0; i < 3; i++) c[i] += q[i] / L.length; return c; };
+      const bodyP = sh.prims.filter(p => p.mat === 0 && !p.cloth && !p.carve && p.part !== 'armL' && p.part !== 'armR' && p.part !== 'head');
+      const frontY = (x, z) => { for (let y = 22; y > -10; y -= .25) { for (const p of bodyP) if (H.primDist(p, x, y, z) < 0) return y; } return 4; };
+      const backY = (x, z) => { for (let y = -22; y < 10; y += .25) { for (const p of bodyP) if (H.primDist(p, x, y, z) < 0) return y; } return -6; };
+      const BR = [-1, 1].map(sd => { const L = sh.prims.filter(p => p.part === 'breast' && !p.cloth && !p.nip && Math.sign(W(p)[0]) === sd); if (!L.length) return null; const c = mean(L.map(W)); const r = Math.max(...L.filter(p => p.r).map(p => Math.max(...p.r)), 2); return { c, r, front: Math.max(...L.map(p => W(p)[1] + p.br * .7)) }; });
+      const big = BR[1] ? Math.max(.3, Math.min(1, (BR[1].r - 3.4) / 2.6)) : .5;
+      const HP = sh.prims.filter(p => p.part === 'head' && !p.cloth && p.mat === 0), hc = HP.length ? mean(HP.map(W)) : [0, 2, S + 8];
+      const mouth = [-.6, (HP.length ? Math.max(...HP.map(p => W(p)[1] + p.br * .6)) : hc[1] + 4) + 1.6, hc[2] - 2.2];
+      const A = { armL: armPts('armL'), armR: armPts('armR') }, w = rx.w, u = rx.u, T = rx.tier;
+      const hands = {}, poles = {}, hd = {}, push = { [-1]: [0, 0, 0], [1]: [0, 0, 0] }, round = { [-1]: 0, [1]: 0 };
+      const go = (part, tgt, pole, dir, pushAt) => {   // 手腕：原位 → （陌生先往前推開）→ 遮住；照 w 收回
+        if (!A[part]) return;
+        let t = tgt;
+        if (pushAt && T === 'stranger') t = u < .18 ? lerp(A[part].w0, pushAt, sm(u / .14)) : lerp(pushAt, tgt, sm((u - .18) / .16));
+        hands[part] = lerp(A[part].w0, t, w); poles[part] = pole; if (dir) hd[part] = dir;
+      };
+      const angry = T === 'stranger' || T === 'friend';
+      if (T === 'wife') go('armL', mouth, [-.7, .5, -.6]);   // 妻子：手摀嘴（舒服、忍住聲音），另一手不動
+      else if (rx.zone === 'breast' && BR[0] && BR[1]) {
+        go('armL', [BR[1].c[0] - 1.2, BR[1].front + 2.2, BR[1].c[2] + .6], [-.4, .7, -.7], null, [-2, BR[1].front + 10, S - 4]);
+        if (angry) go('armR', [BR[0].c[0] + 1.4, BR[0].front + 3.4, BR[0].c[2] - 1.4], [.4, .7, -.7]);
+        const k = sh.prims.some(p => p.cloth && !p.pk) ? 0 : (angry ? 1 : .6) * w;   // 穿著 T 恤／胸罩不擠（不然乳房會穿出衣服）
+        for (const sd of [-1, 1]) { push[sd] = [-sd * .6 * big * k, .5 * big * k, 1.2 * big * k]; round[sd] = big * k; }   // 手臂夾著：胸部往中間擠
+      } else if (rx.zone === 'groin') {
+        go('armR', [.6, frontY(.6, C + 4.4) + 2.4, C + 4.4], [1, .2, -.1], [-.05, .3, -1]);
+        if (angry) go('armL', [-1.4, frontY(-1.4, C + 5.8) + 3.2, C + 5.8], [-1, .2, -.1], [.05, .3, -1], [-3, frontY(-3, C + 8) + 10, C + 9]);
+      } else if (rx.zone === 'waist') {
+        go('armR', [7, backY(7, C + 1.5) - 1.6, C + 1.5], [1, -.3, -.4]);   // 手繞到後面護住屁股
+        if (angry) go('armL', [-8.5, frontY(-8.5, zW) + 2, zW], [-1, .3, -.5], null, [-10, frontY(-8.5, zW) + 10, zW + 3]);   // 另一手擋在腰側（陌生先往前推）
+      }
+      modePlan = { hands, poles, push, round, handDir: hd };
     }
     for (const part of ['armL', 'armR']) {
       if (modePlan) {
@@ -486,14 +541,14 @@
     if (cache.key !== key) { cache.key = key; cache.base = F.build(doll, body, 0, 0, {}); }
     const base = cache.base;
     const shape = () => ({ P: base.P, sh: Object.assign({}, base.sh, { prims: base.sh.prims.map(p => Object.assign({}, p)), areolaStamps: (base.sh.areolaStamps || []).map(q => Object.assign({}, q)) }) });
-    const m = motion(pose, f, n, body === 'mermaid', doll._mode || null);
+    const m = motion(pose, f, n, body === 'mermaid', doll._mode || null, doll._tier || null);
     // 分三次畫：只有身體 → 身體＋內衣（胸罩、丁字褲）→ 身體＋外衣（T 恤），再一層層疊灰色上去
     // 先用全部零件變形（脫 T 恤時手要照 T 恤的下襬走——只畫身體那一層也要看得到 T 恤），再篩這一層要畫的
     const run = (keep) => F.render(doll, body, 0, 0, { scale, cv, shape, deform: (sh, P, H) => { deform(sh, P, H, m); sh.prims = sh.prims.filter(keep); } });
     const hasU = base.sh.prims.some(p => p.cloth && p.under), hasO = base.sh.prims.some(p => p.cloth && !p.under);
     const r = run(p => !p.cloth);
     shade(r.pixels);
-    if (doll._mode) {   // 脫光後的姿勢：手臂疊在身體前面的地方加深（使用者：半透明的影子疊兩層＝比較深；不用淺色）
+    if (doll._mode || m.react) {   // 脫光後的姿勢、被摸的反應：手臂疊在身體前面的地方加深（使用者：半透明的影子疊兩層＝比較深；不用淺色）
       const isArm = (p) => !p.cloth && (p.part === 'armL' || p.part === 'armR');
       const arms = run(isArm), body = run(p => !p.cloth && !isArm(p)), px = r.pixels, ad = arms.depth, bd = body.depth;
       for (let i = 0, n = px.length / 4; i < n; i++) {
@@ -576,6 +631,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (undressing) doll._body = 'mermaid';
     // 一般聊天、脫光以後（使用者）：妻子以下害羞——一手遮胸（壓得胸部更挺更圓）、一手遮下體、側臉看旁邊；
     //   妻子以上主動——站著兩手托著乳房揉，或坐下來摸陰唇、抬頭（每次打開聊天隨機一種）
+    if (!undressing) doll._tier = s.tier || (s.wife ? 'wife' : 'stranger');   // 被摸的反應照關係帶
     if (!undressing && st >= 3) {
       if (!s.wife) doll._mode = 'cover';
       else if (wifePick === 'touch') { doll._mode = 'touch'; doll._body = 'mermaid'; }
@@ -598,6 +654,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       todo.push(['breathe', 0]);
       for (let f = 1; f < N; f++) todo.push(['breathe', f]);
       for (let f = 0; f < N; f++) todo.push(['talk', f]);
+      if (cvOf(doll) === CV) for (const r of REACTS) { job.sets[r] = []; for (let f = 0; f < NA_OF[r]; f++) todo.push([r, f]); }   // 站著才摸得到
       if (doll._mode === 'touch') { job.sets.peak = []; for (let f = 0; f < NA_OF.peak; f++) todo.push(['peak', f]); }   // 忽然仰頭（偶爾播）
     }
     (async () => {
@@ -666,6 +723,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   }
 
   // ---------------------------------------------------------------- 脫衣（使用者：按下脫衣、她脫了 → 黑影表演脫衣動畫）
+  let reactPlay = null;   // 被摸的反應 {kind, t0}
   let pinStage = null, animPlay = null;   // pinStage：脫衣對話中畫的是哪一階；animPlay：{kind, to, t0, wait}
   /** test_room_summon.js 在她決定脫一件時叫（from→to）。動畫還沒算好就等一下（最多 25 秒），算不出來就直接換。 */
   function undress(from, to) {
@@ -692,6 +750,16 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       }
       raf = requestAnimationFrame(tick);
       return;
+    }
+    if (reactPlay) {   // 被摸的反應：播完回到呼吸／說話
+      const set = cur.sets[reactPlay.kind];
+      if (!full(set, nOf(reactPlay.kind))) reactPlay = null;
+      else {
+        if (!reactPlay.t0) reactPlay.t0 = t;
+        const i = beatFrame(reactPlay.kind, t - reactPlay.t0);
+        if (i >= nOf(reactPlay.kind)) { reactPlay = null; mode = ''; }
+        else { if (canvas.dataset.f !== reactPlay.kind + i) draw(set[i], reactPlay.kind + i); raf = requestAnimationFrame(tick); return; }
+      }
     }
     // 妻子摸陰唇：每 8～16 秒忽然仰頭一次（說話時不播）
     if (cur.sets.peak && full(cur.sets.peak, nOf('peak'))) {
@@ -824,7 +892,8 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       const solid = xi >= 0 && yi >= 0 && xi < f.width && yi < f.height && f.data[(yi * f.width + xi) * 4 + 3] > 0;
       if (!solid) { document.getElementById('portrait-backdrop')?.click(); return; }
       const zone = zoneAt(x, y);
-      if (zone) window.RoomTouch?.zone(zone);
+      // 真的摸到（已解鎖、送出去了）才有反應
+      if (zone && window.RoomTouch?.zone(zone) && cur && full(cur.sets['r_' + zone], NA_OF['r_' + zone])) { reactPlay = { kind: 'r_' + zone, t0: 0 }; play(); }
     });
   }
 
@@ -854,5 +923,5 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
-  window.ChatShadow = { sync, undress, shapeOf, areolaOf, motion, deform, shade };
+  window.ChatShadow = { sync, undress, shapeOf, areolaOf, motion, deform, shade, ready: (k) => !!(cur && full(cur.sets[k], nOf(k))), P: () => cur && cur.P };
 })();
