@@ -758,11 +758,18 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   function placePortrait() {
     const img = document.getElementById('portrait-img'), sheet = document.getElementById('portrait-sheet');
     if (!img || !sheet) return;
-    const box = document.getElementById('talk-box'), T = box ? box.getBoundingClientRect().top : 0;
-    if (sheet.classList.contains('undress-chat') && !sheet.hidden && T > 0) {
+    const box = document.getElementById('talk-box');
+    let T = box ? box.getBoundingClientRect().top : 0;
+    // 鍵盤出來時對話框會往上移：立繪照鍵盤出來之前的位置算（不縮小，只是被鍵盤蓋住）
+    if (T > 0 && document.body.classList.contains('kb-open')) T += parseFloat(getComputedStyle(document.body).getPropertyValue('--kb')) || 0;
+    const undress = sheet.classList.contains('undress-chat');
+    // 2026-11-21 使用者：長按頭換成的半身立繪太低、被對話框擋到 → 一般聊天的立繪模式也放在對話框上面 2 px，上緣讓開最上面的輸入列
+    const pmode = sheet.classList.contains('portrait-mode') && !img.dataset.sexStep;
+    if ((undress || pmode) && !sheet.hidden && T > 0) {
       img.style.bottom = (window.innerHeight - T + 2) + 'px';
-      const bar = sheet.querySelector('.talk-acts.undress-bar'), br = bar && !bar.hidden ? bar.getBoundingClientRect() : null;
-      const top = br && br.height ? br.bottom + 6 : 12;   // 脫衣按鈕在上方：立繪上緣讓開
+      let top = 12;
+      if (undress) { const bar = sheet.querySelector('.talk-acts.undress-bar'), br = bar && !bar.hidden ? bar.getBoundingClientRect() : null; if (br && br.height) top = br.bottom + 6; }   // 脫衣按鈕在上方：立繪上緣讓開
+      else { const row = document.getElementById('talk-input-row'), rr = row ? row.getBoundingClientRect() : null; if (rr && rr.height && rr.bottom < T) top = rr.bottom + 6; }   // 輸入列在上方
       img.style.height = Math.max(120, Math.min(720, T - 2 - top)) + 'px';
       img.style.maxHeight = 'none';
     } else if (img.style.bottom) { img.style.bottom = ''; img.style.height = ''; img.style.maxHeight = ''; }
