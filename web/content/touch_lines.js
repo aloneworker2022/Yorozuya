@@ -1,8 +1,8 @@
 /* 摸她的回應（2026-11-20 使用者）：
    - 摸她一下就等模型生一句太慢 → 回應台詞跟著召喚流程一起先產好（每個關係帶 × 胸部／下體／腰臀各幾句），摸的時候直接拿。
    - 關係帶：陌生（陌生、認識）生氣；朋友（朋友、親密好友）生氣；女友（女友、熱戀、愛人）無奈、嫌煩；妻子（妻子以上）喜歡、調情。
-   - 輸出的差別只在：依她當下的高潮程度，把「嗯嗯啊啊」隨機長短、隨機穿插進台詞。
-   這個檔只放純函式（分帶、prompt、解析、內建保底台詞、插呻吟）；呼叫模型、存到她身上在 test_room_summon.js。 */
+   - 回應：摸胸部、下體先一聲嬌喘（依高潮程度，只有一聲）再接台詞；腰臀只在已經興奮時輕輕一聲（2026-11-21 使用者：只是一下而已，不會有一連串叫聲）。
+   這個檔只放純函式（分帶、prompt、解析、內建保底台詞、嬌喘）；呼叫模型、存到她身上在 test_room_summon.js。 */
 import { STAGE_IDX, stageIndexOf, familyStageLine, addressRule } from "./girl_voice.js?v=1";
 
 export const TOUCH_TIERS = ["stranger", "friend", "girlfriend", "wife"];
@@ -112,35 +112,24 @@ export function moanLevelOf(arousalStageKey, { climaxNow = false, spasm = false 
 }
 
 const rnd = (n) => Math.floor(Math.random() * n);
-/** 一聲呻吟：字數隨機（程度越高越長、越多「啊」）。 */
-function moan(level) {
-  const n = 1 + rnd(Math.min(4, level + 1));   // 1～level+1 個字（最多 4）
-  // 第一個字可以是「哈」（喘），後面只用嗯／啊，傾向重複同一個字（嗯嗯、啊啊啊）
-  let c = (level >= 3 ? ["哈", "啊", "嗯", "啊"] : ["嗯", "嗯", "啊", "唔"])[rnd(4)], s = c;
-  for (let i = 1; i < n; i++) { if (c === "哈" || c === "唔" || Math.random() < .35) c = level >= 2 ? (Math.random() < .55 ? "啊" : "嗯") : "嗯"; s += c; }
-  const tail = level >= 4 ? ["…", "——", "♡", "…♡"][rnd(4)] : level >= 2 ? ["…", "…", "～"][rnd(3)] : "…";
-  return s + tail;
+/** 被摸那一下的嬌喘（2026-11-21 使用者：摸胸部、下體應該馬上一聲嬌喘就是回應；只是一下而已，不會有後面一連串叫聲）。
+ *  只有一聲、很短；越接近高潮越嬌、越長一點。程度 0 是嚇一跳的短叫。 */
+const GASP = [
+  ["呀！", "啊！", "咿！", "嗯…！"],
+  ["嗯…♡", "啊♡", "呀…♡", "嗯！♡"],
+  ["嗯啊♡", "哈啊…♡", "啊嗯♡", "呀啊♡"],
+  ["啊啊♡", "嗯啊啊…♡", "哈啊啊♡", "呀啊啊♡"],
+  ["啊啊啊♡", "嗯啊啊啊…♡", "哈啊啊…♡", "咿啊啊♡"],
+];
+export function touchGasp(level) {
+  const row = GASP[Math.max(0, Math.min(4, Number(level) || 0))];
+  return row[rnd(row.length)];
 }
 
-/** 依高潮程度把嗯嗯啊啊隨機穿插進台詞（程度 0 原樣）：句首、標點後面；快高潮時話會被打斷（字中間插一聲）。 */
-export function moanify(line, level) {
-  const t = String(line || "");
-  if (!level || !t) return t;
-  const chars = Array.from(t), P = /[，。！？、…～,!?]/;
-  const spots = [0];
-  chars.forEach((c, i) => { if (P.test(c) && i + 1 < chars.length && !P.test(chars[i + 1])) spots.push(i + 1); });
-  const want = Math.min(spots.length, [0, 1, 1 + rnd(2), 2 + rnd(2), 2 + rnd(3)][level] || 1);
-  const chosen = new Set();
-  while (chosen.size < want) chosen.add(spots[rnd(spots.length)]);
-  if (level >= 3 && chars.length > 5 && Math.random() < (level >= 4 ? .8 : .4)) {   // 話被打斷：字中間插一聲
-    const mid = [];
-    for (let i = 2; i < chars.length - 1; i++) if (!P.test(chars[i - 1]) && !P.test(chars[i])) mid.push(i);
-    if (mid.length) chosen.add(mid[rnd(mid.length)]);
-  }
-  const out = [];
-  chars.forEach((c, i) => { if (chosen.has(i)) out.push(moan(level)); out.push(c); });
-  let s = out.join("");
-  if (level >= 3 && Math.random() < .6) s += moan(level);   // 句尾再拖一聲
-  if (level >= 4) s = s.replace(/。/g, "…");
-  return s;
+/** 摸她的回應：胸部、下體＝先一聲嬌喘再接台詞；腰臀不是敏感帶，只有已經有點興奮（程度 ≥2）才輕輕一聲「嗯…」。 */
+export function touchReply(line, zone, level) {
+  const t = String(line || "").trim();
+  if (zone === "breast" || zone === "groin") return touchGasp(level) + t;
+  if (level >= 2) return (level >= 3 ? "嗯…♡" : "嗯…") + t;
+  return t;
 }

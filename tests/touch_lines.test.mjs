@@ -7,7 +7,6 @@ const M = await import(`${dir}touch_lines.js`);
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass += 1; console.log("ok -", name); };
-const strip = (s) => s.replace(/[嗯啊哈唔]+(…♡|——|♡|…|～)/g, "");
 
 t("關係帶：陌生／朋友／女友／妻子", () => {
   assert.equal(M.touchTierOf("stranger"), "stranger");
@@ -42,13 +41,18 @@ t("內建台詞：老公只出現在妻子帶", () => {
   for (const tier of ["stranger", "friend", "girlfriend"]) for (const z of M.TOUCH_BANK_ZONES) for (const l of M.TOUCH_FALLBACK[tier][z]) assert.ok(!l.includes("老公"), l);
 });
 
-t("呻吟：程度 0 原樣；程度越高插越多；拿掉呻吟還是原句", () => {
+t("回應：胸部、下體一聲嬌喘再接台詞（只有一聲）；腰臀只在興奮時輕輕一聲", () => {
   const line = "你幹嘛！手拿開，我會生氣喔。";
-  assert.equal(M.moanify(line, 0), line);
-  const count = (lvl) => { let n = 0; for (let i = 0; i < 300; i++) n += (M.moanify(line, lvl).match(/[嗯啊哈唔]+(…♡|——|♡|…|～)/g) || []).length; return n / 300; };
-  const c1 = count(1), c2 = count(2), c4 = count(4);
-  assert.ok(c1 >= 1 && c1 < c2 && c2 < c4, `${c1} ${c2} ${c4}`);
-  for (let i = 0; i < 50; i++) assert.equal(strip(M.moanify(line, 2)), line);
+  const G = /^(?:呀|啊|咿|嗯|哈)[呀啊咿嗯哈]*(?:…|！)*♡?/;
+  for (let lvl = 0; lvl <= 4; lvl++) for (const z of ["breast", "groin"]) for (let i = 0; i < 30; i++) {
+    const r = M.touchReply(line, z, lvl), g = r.match(G);
+    assert.ok(g && r.slice(g[0].length) === line, r);   // 開頭一聲，後面就是原句（中間、句尾都不插）
+    assert.ok(g[0].length <= 6, r);
+  }
+  assert.ok(!/♡/.test(M.touchReply(line, "breast", 0)));   // 沒興奮：嚇一跳的短叫
+  assert.equal(M.touchReply(line, "waist", 0), line);
+  assert.equal(M.touchReply(line, "waist", 1), line);
+  assert.equal(M.touchReply(line, "waist", 2), "嗯…" + line);
   assert.equal(M.moanLevelOf("none"), 0);
   assert.equal(M.moanLevelOf("aroused"), 2);
   assert.equal(M.moanLevelOf("slight", { climaxNow: true }), 4);

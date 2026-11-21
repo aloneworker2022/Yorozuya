@@ -217,7 +217,7 @@ import {
   dressedReactionPrompt,
 } from "./undress_shy.js?v=3";
 import { PERSONALITY_FAMILY, familyStageLine, familyOf, scrubHusband as scrubHusbandV } from "./girl_voice.js?v=1";
-import { touchTierOf, touchBankMessages, parseTouchBank, pickTouchLine, moanLevelOf, moanify, TOUCH_TIERS, TOUCH_BANK_REV } from "./touch_lines.js?v=1";
+import { touchTierOf, touchBankMessages, parseTouchBank, pickTouchLine, moanLevelOf, touchReply, TOUCH_TIERS, TOUCH_BANK_REV } from "./touch_lines.js?v=2";
 import { lineEventPromptLines } from "./line_social.js?v=1";
 import {
   TRIGGERS as TALK_TRIGGERS, TRIGGER_ZH as TALK_TRIGGER_ZH, talkEligible, ensureTalkState, talkGate, tickTalk, freshMemory, freshLineEvent,
@@ -9973,7 +9973,8 @@ async function deliverUserTalk(text, opts = {}) {
   try {
     // 2026-11-13 使用者：玩家打完的話不用再顯示在對話框——直接亮像素「……」等她回（lines 照記，模型看得到）。
     // 按鈕動作（不是打字）照舊把動作那句打出來。
-    if (opts.actId && !opts.typedAct) await typeLine("你", raw);
+    // 摸黑影（使用者：要馬上一聲嬌喘）：不先打「你摸了她…」那行（動作圖照閃、lines 照記）
+    if (opts.actId && !opts.typedAct && !opts.touchZone) await typeLine("你", raw);
     else {
       typeJob += 1;   // 停掉上一句還在打的字
       setTyping(true);
@@ -10254,14 +10255,15 @@ async function deliverUserTalk(text, opts = {}) {
       const occ = takeOccupancy(girl, actId, { climaxNow: herClimaxNow });
       if (occ.score >= 10) { pushDebug(`佔有度 ${occupancyLabel(occ)}`); renderDebug(); }
       if (opts.touchZone) {
-        // 摸黑影（使用者）：不等模型、不走佔有度／餘韻的呻吟模板（使用者：輸出的差別只在依高潮程度穿插嗯嗯啊啊）——從召喚時產好的台詞庫拿一句（照關係帶、摸的部位），依高潮程度穿插嗯嗯啊啊
+        // 摸黑影（使用者）：不等模型、不走佔有度／餘韻的呻吟模板——從召喚時產好的台詞庫拿一句（照關係帶、摸的部位）；
+        //   胸部、下體先一聲嬌喘（只有一聲，越接近高潮越嬌），腰臀只在已經興奮時輕輕一聲（2026-11-21 使用者：只是一下而已，不會有一連串叫聲）
         const tier = touchTierOf(girl.stage || "stranger");
         if (!Array.isArray(girl.touchRecent)) girl.touchRecent = [];
         const base = pickTouchLine(girl.touchBank, tier, opts.touchZone, girl.touchRecent);
         let lvl = moanLevelOf(arousalStage(girl.bodyState?.arousal || 0), { climaxNow: herClimaxNow, spasm: inSpasm(girl) });
         if (occ.score >= 95) lvl = 4; else if (occ.score >= 65) lvl = Math.max(lvl, 3);
-        line = moanify(scrubHusbandV(base, girl.stage || "stranger", girl.playerPet || ""), lvl) || base;
-        pushDebug(`摸（${opts.touchZone}・${tier}${girl.touchBank?.tiers?.[tier] ? "" : "・內建"}）呻吟 ${lvl}`);
+        line = touchReply(scrubHusbandV(base, girl.stage || "stranger", girl.playerPet || ""), opts.touchZone, lvl) || base;
+        pushDebug(`摸（${opts.touchZone}・${tier}${girl.touchBank?.tiers?.[tier] ? "" : "・內建"}）嬌喘 ${lvl}`);
         renderDebug();
         setTyping(false);
       } else if (occ.score >= 95) {
