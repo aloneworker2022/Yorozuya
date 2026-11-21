@@ -398,7 +398,14 @@ const $ = (id) => document.getElementById(id);
 let girl = null;
 /** 房間剪影（room_doll.js）讀她的外觀：身高／體型／罩杯／髮型＋身上那套（裙子）＋脫到第幾階。test_room.js 每秒問一次。 */
 // wife：妻子以上（聊天黑影脫光後的動作：妻子以下害羞遮著、妻子主動——chat_shadow.js）
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage) } : null);
+/** 聊天黑影用：她現在在生氣嗎（2026-11-21 使用者：生氣時說話會叉腰或雙手抱胸）——情緒餘溫是生氣（被冒犯、被亂摸抗議），
+ *  或剛被陌生人／朋友摸（那句就是在罵你）。 */
+function girlAngryNow(who) {
+  if (!who) return false;
+  if ((Number(who._angryUntil) || 0) > Date.now()) return true;
+  try { const m = getMoodCarry(who); return !!(m && m.type === "angry" && (Number(m.level) || 0) >= 15); } catch { return false; }
+}
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl) } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
@@ -10424,6 +10431,9 @@ function touchZone(zone) {
   if (!ok.length) return false;
   // 台詞庫還沒有（舊的一趟、召喚時模型失敗）：背景補產，這次先用內建的
   if (girl.touchBank?.rev !== TOUCH_BANK_REV && !touchBankJobs.has(girl.id)) void pregenTouchBank(girl).catch(() => null);
+  // 陌生、朋友被摸＝生氣（台詞庫那句就是在罵你）→ 黑影叉腰／抱胸講
+  const tierNow = touchTierOf(girl.stage || "stranger");
+  if (tierNow === "stranger" || tierNow === "friend") girl._angryUntil = Date.now() + 6000;
   void sendTalkAct(ok[Math.floor(Math.random() * ok.length)], { touchZone: zone });
   return true;
 }
