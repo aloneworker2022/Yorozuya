@@ -10,7 +10,7 @@
 (function () {
   'use strict';
   const DROOM_URL = new URL('../droom/room_doll_chest.js?v=9', (document.currentScript && document.currentScript.src) || location.href).href;
-  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 12, r_groin: 12, r_waist: 12 }, FPS = { breathe: 4, talk: 7 };
+  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
   const BEAT = {
@@ -18,11 +18,10 @@
     bra: (u) => (u < .28 ? 175 : u < .42 ? 160 : u < .6 ? 125 : u < .78 ? 70 : u < .86 ? 85 : 140) + (Math.abs(u - .37) < .015 ? 520 : 0) + (Math.abs(u - .86) < .015 ? 750 : 0),
     // 妻子摸陰唇時高潮（使用者）：揉快 4 格 → 3 格頭往後仰到底 → 抽搐（抽動 1 格快、停頓不規則，越來越弱）→ 慢慢放鬆
     peak: (u) => { const i = Math.round(u * 23); return i < 4 ? 110 : i < 7 ? 75 : i < 17 ? ((i - 7) % 2 === 0 ? 55 : [140, 200, 120, 180, 220][((i - 7) >> 1) % 5]) : 170; },
-    // 被摸：很快縮手遮住（3 格）→ 遮著、掙扎（6 格）→ 慢慢放下（3 格）
-    r_breast: (u) => { const i = Math.round(u * 11); return i < 3 ? 75 : i < 9 ? 125 : 115; },
     panties: (u) => (u < .2 ? 165 : u < .32 ? 160 : u < .46 ? 125 : u < .7 ? 75 : u < .84 ? 85 : 140) + (Math.abs(u - .27) < .017 ? 480 : 0) + (Math.abs(u - .84) < .017 ? 700 : 0),
   };
-  BEAT.r_groin = BEAT.r_waist = BEAT.r_breast;
+  // 被摸的反應（2026-11-21 使用者：摸她沒動作——反應要算很久）：只算 8 格（縮手遮住 3 格、遮著掙扎 5 格），放下時把縮手那幾格倒著播
+  const REACT_SEQ = [0, 1, 2, 3, 4, 5, 6, 7, 1, 0], REACT_MS = [60, 70, 90, 120, 120, 120, 120, 140, 110, 110];
   const beatCum = {};
   /** 播了 ms 毫秒，該是第幾格（超過最後一格回 n）。 */
   function beatFrame(kind, ms) {
@@ -58,7 +57,7 @@
       // 被摸的反應（使用者：陌生生氣、朋友生氣、女友無奈嫌煩、妻子喜歡調情；摸的時候會反抗、遮擋）：
       //   陌生／朋友：轉頭、低頭，手先推開再遮住被摸的地方，遮著的時候掙扎（頭小幅甩）；陌生多一下驚跳
       //   女友：一隻手遮、頭轉一點點、低頭嘆一口氣；妻子：不遮，頭往後仰、身體一顫、手摀嘴
-      const u = f / (n - 1), sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+      const u = f / (n - 1) * .72, sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };   // 只算到遮著掙扎完（放下＝倒著播）
       const w = u < .22 ? sm(u / .22) : u < .72 ? 1 : 1 - sm((u - .72) / .28);
       const base = mode ? motion('breathe', 0, 16, sit, mode) : { ph: 0, br: .2, tilt: 0, nod: 0, turn: 0, gest: 0 };
       const T = tier || 'stranger', shake = u > .22 && u < .72 ? Math.sin((u - .22) * 38) : 0;
@@ -563,7 +562,9 @@
   }
 
   // ---------------------------------------------------------------- droom 人偶＋worker
-  let F = null, loading = null, worker = null, seq = 0;
+  let F = null, loading = null, worker = null, workers = [], seq = 0;
+  // 2026-11-21：一格要 1～2 秒 → 開好幾個 worker 一起算（核心數 −1，最多 4 個），算好的格子存進 IndexedDB，下次打開直接拿
+  const POOL = Math.max(1, Math.min(4, ((navigator.hardwareConcurrency || 2) - 1)));
   const waiters = new Map();
   function loadDroom() {
     if (F) return Promise.resolve(F);
@@ -574,8 +575,13 @@
       try {
         const code = `const F=(${F.factorySource})();const motion=${motion};const deform=${deform};const shade=${shade};const clothAt=${clothAt};const veil=${veil};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
 onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},j.cv);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
-        worker = new Worker(URL.createObjectURL(new Blob([code], { type: 'text/javascript' })));
-        worker.onmessage = (e) => { const w = waiters.get(e.data.id); if (w) { waiters.delete(e.data.id); w(e.data); } };
+        const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+        for (let i = 0; i < POOL; i++) {
+          const w = new Worker(url); w.busy = 0;
+          w.onmessage = (e) => { w.busy--; const cb = waiters.get(e.data.id); if (cb) { waiters.delete(e.data.id); cb(e.data); } };
+          workers.push(w);
+        }
+        worker = workers[0];
       } catch { worker = null; }
       return F;
     });
@@ -583,12 +589,60 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   }
   const mainCache = {};
   function renderFrame(doll, pose, f) {
-    if (worker) {
-      const id = ++seq;
-      return new Promise((res) => { waiters.set(id, res); worker.postMessage({ id, doll, pose, f, n: nOf(pose), cv: cvOf(doll) }); });
+    if (workers.length) {
+      const id = ++seq, w = workers.reduce((a, b) => (b.busy < a.busy ? b : a));
+      w.busy++;
+      return new Promise((res) => { waiters.set(id, res); w.postMessage({ id, doll, pose, f, n: nOf(pose), cv: cvOf(doll) }); });
     }
     const r = drawFrame(F, mainCache, doll, pose, f, nOf(pose), SCALE, cvOf(doll));
     return Promise.resolve({ w: r.width, h: r.height, px: r.pixels });
+  }
+
+  // ---------------------------------------------------------------- 算好的格子存在手機裡（IndexedDB，PNG）
+  //   鑰匙＝程式版本（動作／變形／畫法的原始碼雜湊＋人偶檔）＋身形＋第幾格；程式一改就自動作廢（開頁時清掉舊版本的）。
+  const CODE_HASH = (() => { const t = DROOM_URL + SCALE + String(motion) + String(deform) + String(drawFrame) + String(shade) + String(veil) + String(clothAt); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36); })();
+  let dbP = null;
+  function db() {
+    if (!dbP) dbP = new Promise((res) => {
+      try {
+        const rq = indexedDB.open('chat-shadow-frames', 1);
+        rq.onupgradeneeded = () => rq.result.createObjectStore('f');
+        rq.onsuccess = () => { const d = rq.result; res(d); setTimeout(() => prune(d), 8000); };
+        rq.onerror = () => res(null);
+      } catch { res(null); }
+    });
+    return dbP;
+  }
+  function prune(d) {   // 舊版本的格子、30 天沒用的都刪掉
+    try {
+      const st = d.transaction('f', 'readwrite').objectStore('f'), old = Date.now() - 30 * 864e5;
+      st.openCursor().onsuccess = (e) => { const c = e.target.result; if (!c) return; if (!String(c.key).startsWith(CODE_HASH + '|') || !(c.value && c.value.at > old)) c.delete(); c.continue(); };
+    } catch { /* ignore */ }
+  }
+  const fkey = (job, pose, f) => `${CODE_HASH}|${job.key}|${pose}|${f}`;
+  async function cacheGet(k) {
+    const d = await db(); if (!d) return null;
+    const v = await new Promise((res) => { try { const rq = d.transaction('f').objectStore('f').get(k); rq.onsuccess = () => res(rq.result || null); rq.onerror = () => res(null); } catch { res(null); } });
+    if (!v || !v.blob) return null;
+    try {
+      const bm = await createImageBitmap(v.blob), c = document.createElement('canvas'); c.width = bm.width; c.height = bm.height;
+      const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(bm, 0, 0); bm.close && bm.close();
+      return x.getImageData(0, 0, c.width, c.height);
+    } catch { return null; }
+  }
+  async function cachePut(k, img) {
+    const d = await db(); if (!d) return;
+    try {
+      const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; c.getContext('2d').putImageData(img, 0, 0);
+      const blob = await new Promise((res) => c.toBlob(res, 'image/png')); if (!blob) return;
+      d.transaction('f', 'readwrite').objectStore('f').put({ blob, at: Date.now() }, k);
+    } catch { /* 存不下就算了 */ }
+  }
+  /** 把某一組（例如剛被摸的部位）插隊到最前面先算。 */
+  function bump(job, pose) {
+    if (!job.todo) return;
+    const mine = job.todo.filter(([p]) => p === pose);
+    job.todo = mine.concat(job.todo.filter(([p]) => p !== pose));
   }
 
   // ---------------------------------------------------------------- 畫面
@@ -651,22 +705,31 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       // 脫衣對話（使用者）：平常顯示立繪，黑影只在她答應脫的時候出來播動畫 → 只預載下一件的脫衣動畫
       if (st < 3) { const a = ANIMS[st]; job.anim = a; job.sets[a] = []; for (let f = 0; f < nOf(a); f++) todo.push([a, f]); }
     } else {
+      // 順序（使用者：摸她沒動作）：先第一格呼吸（人先出來）→ 被摸的反應（站著才摸得到）→ 其他呼吸 → 說話
       todo.push(['breathe', 0]);
+      if (cvOf(doll) === CV) for (const r of REACTS) { job.sets[r] = []; for (let f = 0; f < NA_OF[r]; f++) todo.push([r, f]); }
       for (let f = 1; f < N; f++) todo.push(['breathe', f]);
       for (let f = 0; f < N; f++) todo.push(['talk', f]);
-      if (cvOf(doll) === CV) for (const r of REACTS) { job.sets[r] = []; for (let f = 0; f < NA_OF[r]; f++) todo.push([r, f]); }   // 站著才摸得到
       if (doll._mode === 'touch') { job.sets.peak = []; for (let f = 0; f < NA_OF.peak; f++) todo.push(['peak', f]); }   // 忽然仰頭（偶爾播）
     }
-    (async () => {
-      for (const [pose, f] of todo) {
+    job.todo = todo;
+    const runner = async () => {
+      while (!job.dead && job.todo.length) {
+        const [pose, f] = job.todo.shift(), k = fkey(job, pose, f);
+        let img = await cacheGet(k);
         if (job.dead) return;
-        const r = await renderFrame(doll, pose, f);
-        if (job.dead) return;
-        if (r.err) { console.warn('chat_shadow', r.err); return; }
-        job.sets[pose][f] = new ImageData(new Uint8ClampedArray(r.px), r.w, r.h);
+        if (!img) {
+          const r = await renderFrame(doll, pose, f);
+          if (job.dead) return;
+          if (r.err) { console.warn('chat_shadow', r.err); job.todo = []; return; }
+          img = new ImageData(new Uint8ClampedArray(r.px), r.w, r.h);
+          void cachePut(k, img);
+        }
+        job.sets[pose][f] = img;
         if (isReady(job) && !job.sentReady) { job.sentReady = true; sync(); }
       }
-    })();
+    };
+    for (let i = 0; i < Math.max(1, workers.length); i++) void runner();   // 每個 worker 一條（第一格呼吸一定先拿走）
     return false;
   }
 
@@ -776,14 +839,15 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       raf = requestAnimationFrame(tick);
       return;
     }
-    if (reactPlay) {   // 被摸的反應：播完回到呼吸／說話
+    if (reactPlay) {   // 被摸的反應：播完回到呼吸／說話；還沒算好（已經插隊先算）最多等 4 秒
       const set = cur.sets[reactPlay.kind];
-      if (!full(set, nOf(reactPlay.kind))) reactPlay = null;
+      if (!full(set, nOf(reactPlay.kind))) { if (t - reactPlay.wait > 4000) reactPlay = null; }
       else {
         if (!reactPlay.t0) reactPlay.t0 = t;
-        const i = beatFrame(reactPlay.kind, t - reactPlay.t0);
-        if (i >= nOf(reactPlay.kind)) { reactPlay = null; mode = ''; }
-        else { if (canvas.dataset.f !== reactPlay.kind + i) draw(set[i], reactPlay.kind + i); raf = requestAnimationFrame(tick); return; }
+        let el = t - reactPlay.t0, k = 0;
+        while (k < REACT_SEQ.length && el >= REACT_MS[k]) el -= REACT_MS[k++];
+        if (k >= REACT_SEQ.length) { reactPlay = null; mode = ''; }
+        else { const i = REACT_SEQ[k]; if (canvas.dataset.f !== reactPlay.kind + i) draw(set[i], reactPlay.kind + i); raf = requestAnimationFrame(tick); return; }
       }
     }
     // 妻子摸陰唇：每 8～16 秒忽然仰頭一次（說話時不播）
@@ -917,8 +981,12 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       const solid = xi >= 0 && yi >= 0 && xi < f.width && yi < f.height && f.data[(yi * f.width + xi) * 4 + 3] > 0;
       if (!solid) { document.getElementById('portrait-backdrop')?.click(); return; }
       const zone = zoneAt(x, y);
-      // 真的摸到（已解鎖、送出去了）才有反應
-      if (zone && window.RoomTouch?.zone(zone) && cur && full(cur.sets['r_' + zone], NA_OF['r_' + zone])) { reactPlay = { kind: 'r_' + zone, t0: 0 }; play(); }
+      // 摸到就有反應（使用者：摸她沒動作）；還沒解鎖的地方一樣會反抗／遮，只是不算動作、她不說話
+      if (zone) {
+        window.RoomTouch?.zone(zone);
+        const k = 'r_' + zone;
+        if (cur && cur.sets[k]) { if (!full(cur.sets[k], nOf(k))) bump(cur, k); reactPlay = { kind: k, t0: 0, wait: performance.now() }; play(); }
+      }
     });
   }
 
