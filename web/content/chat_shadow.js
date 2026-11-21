@@ -650,6 +650,12 @@
     const GRAY = { 1: [168, 168, 180], 2: [124, 124, 138] }, K = outer ? { 1: 1, 2: 1 } : { 1: .72, 2: .82 }, OUT = { 1: [118, 116, 130, 200], 2: [96, 94, 110, 220] };
     for (let i = 0; i < out.length; i += 4) {
       const c = clothAt(layer, i); if (!c) continue;
+      // 2026-11-21 使用者：胸罩不要半透明，做成黑色 → 內衣那層裡的胸罩（布 250／214、滾邊 255,0,0）不透明黑；丁字褲照舊
+      if (!outer) {
+        const r0 = layer[i], g0 = layer[i + 1], b0 = layer[i + 2];
+        const braCloth = (r0 === 250 && g0 === 250 && b0 === 252) || (r0 === 214 && g0 === 216 && b0 === 228), braTrim = r0 === 255 && g0 === 0 && b0 === 0;
+        if (braCloth || braTrim) { const q = braTrim ? [60, 55, 74] : [22, 19, 28]; out[i] = q[0]; out[i + 1] = q[1]; out[i + 2] = q[2]; out[i + 3] = 245; continue; }
+      }
       const g = GRAY[c], k = K[c];
       if (out[i + 3]) {
         // 衣服底下不透出乳暈、乳頭（只透出身體輪廓）
