@@ -705,9 +705,33 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     } else if (img.style.bottom) { img.style.bottom = ''; img.style.height = ''; img.style.maxHeight = ''; }
   }
   /** 量對話框上緣，把黑影往上／下移到腳底剛好在對話框上面 2 px（畫布縮放會跟著高度變，量三次收斂）。 */
+  // 2026-11-21 使用者：打字時鍵盤彈出，黑影不要縮小——照原本的大小、位置，只是被鍵盤蓋住。
+  //   鍵盤出來（body.kb-open，或畫面高度突然矮了 80px 以上）那一刻把黑影的上緣、高度釘成像素；鍵盤收起來才放開、照對話框重新對齊。
+  //   畫面本身會變矮的手機（adjustResize）：鍵盤一出來黑影就已經被擠小了 → 用鍵盤出來之前最後一次對齊好的位置（lastRect）。
+  let fullH = 0, kbPin = null, lastRect = null;
+  function keyboardUp() {
+    const h = window.innerHeight, ae = document.activeElement;
+    if (!kbPin) fullH = Math.max(fullH, h);
+    const typing = !!ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
+    return document.body.classList.contains('kb-open') || (typing && fullH > 0 && h < fullH - 80);
+  }
+  window.addEventListener('orientationchange', () => { fullH = 0; });
+  function pinForKeyboard() {
+    if (!wrap) return false;
+    const up = !wrap.hidden && keyboardUp();
+    if (up && !kbPin) {
+      const r = lastRect || wrap.getBoundingClientRect();
+      if (r.height > 0) { kbPin = { top: r.top, h: r.height }; Object.assign(wrap.style, { top: r.top + 'px', height: r.height + 'px', bottom: 'auto' }); }
+    } else if (!up && kbPin) {
+      kbPin = null; wrap.style.top = ''; wrap.style.height = ''; wrap.style.bottom = '';
+      fullH = window.innerHeight;
+    }
+    return !!kbPin;
+  }
   function placeFeet() {
     placePortrait();
     if (!wrap || wrap.hidden || canvas._feet == null) return;
+    if (pinForKeyboard()) return;   // 鍵盤出來：釘住不動
     const box = document.getElementById('talk-box');
     const T = box ? box.getBoundingClientRect().top : 0;
     if (!T || T <= 0) return;
@@ -720,6 +744,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       const b = parseFloat(getComputedStyle(wrap).bottom) || 0;
       wrap.style.bottom = (b + d) + 'px';
     }
+    const lr = wrap.getBoundingClientRect(); if (lr.height > 0) lastRect = { top: lr.top, height: lr.height };
   }
 
   // ---------------------------------------------------------------- 脫衣（使用者：按下脫衣、她脫了 → 黑影表演脫衣動畫）

@@ -543,14 +543,21 @@ body.room-home #talk-box {
 }
 /* 她在想／還沒字／猥褻動作圖在畫面上 → 對話框先藏起來（syncTalkBoxVis） */
 body.room-home #portrait-sheet.talk-hide #talk-box { visibility: hidden; opacity: 0; pointer-events: none; }
-body.room-home #talk-box { transition: opacity .15s ease-out; }
+body.room-home #talk-box { transition: opacity .15s ease-out, background-color .2s ease-out; }
+/* 2026-11-21 使用者：摸調戲（局部圖在畫面上）時對話框半透明、照樣顯示，不被圖蓋掉 */
+body.room-home #portrait-sheet.flash-on #talk-box { background: rgba(10,16,40,.5); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
 body.room-home #portrait-img {
   height: min(78svh, 720px);
   bottom: 0;   /* 腳貼畫面底，下半身被對話框蓋住 */
 }
+/* 2026-11-21 使用者：摸的局部圖（乳房、臀部…）再上面一點，不要壓到對話框——底邊在對話框上緣上面 8px，太高就縮（不蓋到上面的輸入列） */
 body.room-home #action-flash-img {
-  bottom: 0;
+  bottom: calc(var(--talk-bottom) + var(--talk-box-h) + 8px);
+  height: min(calc(0.8 * var(--portrait-w)), calc(100svh - var(--talk-bottom) - var(--talk-box-h) - 8px - max(84px, calc(env(safe-area-inset-top) + 78px))));
+  width: auto;
+  aspect-ratio: 1;
 }
+body.room-home.kb-open #action-flash-img { bottom: calc(var(--talk-bottom) + var(--kb, 0px) + var(--talk-box-h) + 8px); }
 body.room-home .talk-acts {
   bottom: calc(var(--talk-bottom) + var(--talk-box-h) + 2px);
   z-index: 72;

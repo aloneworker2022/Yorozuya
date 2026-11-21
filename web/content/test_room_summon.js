@@ -6985,7 +6985,9 @@ function syncTalkBoxVis() {
   const meta = $("portrait-meta");
   const empty = !meta || !String(meta.textContent || "").trim();
   const flash = !!($("action-flash-img") && !$("action-flash-img").hidden);
-  sheet.classList.toggle("talk-hide", typing || empty || flash);
+  // 2026-11-21 使用者：摸調戲時對話框半透明、照樣顯示（局部圖移到對話框上面，不會疊在一起）→ 局部圖不再把對話框藏起來
+  sheet.classList.toggle("talk-hide", typing || empty);
+  sheet.classList.toggle("flash-on", flash);
 }
 (function watchTalkBoxVis() {
   if (typeof MutationObserver !== "function" || typeof document === "undefined") return;
