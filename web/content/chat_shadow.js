@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=15', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=16', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
@@ -852,7 +852,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     }
     if (st === 0) { doll.cloth = 'tee'; doll.underBra = true; }
     else if (st === 1) doll.cloth = 'bra';
-    if (st <= 1) { doll.braSupport = true; doll.gap = 'close'; delete doll.splay; }   // 穿胸罩：托高＋往中間集中（使用者：胸罩集中托高，乳溝超明顯，尤其巨乳）
+    if (st <= 1) { doll.braSupport = true; doll.gap = 'close'; doll.splay = 0; }   // splay 0：擠在一起時乳頭朝正前方（不然往外轉 20°，乳暈跑出罩杯外側＝穿模）   // 穿胸罩：托高＋往中間集中（使用者：胸罩集中托高，乳溝超明顯，尤其巨乳）
     if (st <= 2) doll.pants = 'tie_thong';   // 綁帶丁字褲（使用者：要像內褲、脫的時候解開兩側的帶子）
     return doll;
   }

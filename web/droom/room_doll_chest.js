@@ -987,11 +987,11 @@
         // 罩杯本體：正面每 ST 一格往乳房打射線，打到乳房、而且在上緣線以下 → 貼一小塊布
         sh.cloth = 1;
         const bot = {};
-        for (let x = xi; Math.abs(x) <= Math.abs(n[0]) + r * 1.45; x += s * ST) {
+        for (let x = xi; Math.abs(x) <= Math.abs(n[0]) + r * 1.9; x += s * ST) {   // 外側多包一點（乳房側面也包住，不穿模）
           for (let z = lineZ(x); z > n[2] - r * 2.6 - 3; z -= ST) {
             const q = front(x, z, isB);
             if (!q || torsoD(sh, q[0], q[1], q[2], isB) > .3) continue;
-            sh.ell(BODY, [x, q[1] + .32, z], [.58, .5, .58]);
+            sh.ell(BODY, [x, q[1] + .32, z], [.62, .55, .62]);
             const k = Math.round(x / ST); bot[k] = Math.min(bot[k] ?? 1e9, z); zLo = Math.min(zLo, z); zTop = Math.max(zTop, z);
           }
         }
