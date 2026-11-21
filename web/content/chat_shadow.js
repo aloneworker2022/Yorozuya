@@ -69,10 +69,12 @@
       // 笑：bend＝上半身從腰往前彎（度，負＝往後仰）；jolt 一抖一抖（笑的時候肩膀一上一下）
       const sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }, wa = sm(f / 3), L = f >= 4 ? f - 4 : -1;
       const hop = L < 0 ? 0 : [.38, -.12, .3, -.1, .36, -.14][L];
+      // 2026-11-21 使用者：笑的時候胸部會跟著抖——身體一上一下，乳房慢半拍反著晃（根部不動、下半顆晃最多）
+      const bounce = L < 0 ? 0 : [-.85, .75, -.7, .6, -.8, .65][L];
       if (pose === 'laugh_bend') return { ph: 0, br: .5 + (L >= 0 ? .3 * (L % 2) : 0), tilt: 3 * wa + (L >= 0 ? 2 * Math.sin(L * 2.1) : 0), nod: 14 * wa + (L >= 0 ? 4 * (L % 2) : 0), turn: 0, gest: 0,
-        ang: { kind: 'cross', w: wa }, bend: 24 * wa + (L >= 0 ? 3 * (L % 2) : 0), jolt: hop };
+        ang: { kind: 'cross', w: wa, bounce }, bend: 24 * wa + (L >= 0 ? 3 * (L % 2) : 0), jolt: hop };
       return { ph: 0, br: .5 + (L >= 0 ? .3 * (L % 2) : 0), tilt: 5 * wa + (L >= 0 ? 2 * Math.sin(L * 1.7) : 0), nod: -18 * wa - (L >= 0 ? 4 * (L % 2) : 0), turn: 6 * wa, gest: 0,
-        ang: { kind: 'mouth', w: wa }, bend: -6 * wa, jolt: hop };
+        ang: { kind: 'mouth', w: wa, bounce }, bend: -6 * wa, jolt: hop };
     }
     if (pose === 'ang_akimbo' || pose === 'ang_cross') {
       // 生氣說話：叉腰（f0–3 左手也叉到腰上、f4「哼」身體往上一抖、f5 落下，乳房慢半拍上下晃、越晃越小；f12–19 叉腰講話循環）
@@ -449,13 +451,19 @@
           return zb;
         };
         const rest = BR[1].r > 4.1;   // D 以上：胸部放在手臂上
-        const lift = rest ? (.6 + 1.2 * big) * w : 0, ARM = 1.35;
+        // 2026-11-21 使用者：大於 C 抱胸，乳房明顯被托高（在手臂上），手臂大概在胸部下緣的位置 → 托高 1.4～3 格（照罩杯），手臂中心落在原本的下緣附近
+        const lift = rest ? (1.4 + 1.6 * big) * w : 0, ARM = 1.35;
         const zA = Math.min(bottom(BR[0]), bottom(BR[1])) + lift - ARM - .05;   // 前臂上緣剛好頂著托高後的下緣
         const torsoP = bodyP.filter(p => p.part !== 'breast');
         const torsoY = (x, z) => { for (let y = 22; y > -10; y -= .25) { for (const p of torsoP) if (H.primDist(p, x, y, z) < 0) return y; } return 4; };
         if (A.armL) { hands.armL = lerp(A.armL.w0, [BR[1].c[0] * .95 + 1.2, torsoY(BR[1].c[0], zA) + ARM + .2, zA], w); poles.armL = [-1, -.1, -.55]; }
         if (A.armR) { hands.armR = lerp(A.armR.w0, [BR[0].c[0] * .95 - 1.2, torsoY(BR[0].c[0], zA - .6) + ARM + 1.3, zA - .6], w); poles.armR = [1, -.1, -.55]; }   // 另一隻在外面、低一點（看得出交叉）
-        SOFT = { [-1]: [0, .25 * lift, lift], [1]: [0, .25 * lift, lift] };   // 托：下緣被手臂往上推、肉往上往前擠，根部不動（使用者：乳房很柔軟，根部不會動）
+        SOFT = { [-1]: [0, .35 * lift, lift], [1]: [0, .35 * lift, lift] };   // 托：下緣被手臂往上推、肉往上往前擠，根部不動（使用者：乳房很柔軟，根部不會動）
+      }
+      if (m.ang.kind !== 'akimbo' && m.ang.bounce) {   // 笑：乳房跟著一抖一抖（疊在托高上）
+        const bz = m.ang.bounce * (.5 + 1.3 * big);
+        SOFT = SOFT || { [-1]: [0, 0, 0], [1]: [0, 0, 0] };
+        for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0], SOFT[sd][1], SOFT[sd][2] + bz];
       }
       modePlan = { hands, poles, push: { [-1]: [0, 0, 0], [1]: [0, 0, 0] }, round: { [-1]: 0, [1]: 0 }, handDir: {} };
     }
