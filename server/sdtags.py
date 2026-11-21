@@ -74,8 +74,8 @@ BREAST_SHAPE = {
     "水滴型": "teardrop breasts",
     "木瓜型": "teardrop breasts, perky breasts",
     "鐘型": "hanging breasts",
-    "外擴型": "wide-set breasts",   # 2026-11-21 使用者：外擴可以、八字不行
-    "外擴／八字": "wide-set breasts",   # 舊存檔（載入時會改成外擴型）
+    "外擴型": "wide-set breasts",   # 舊存檔（載入時改成自然圓潤＋外擴；外擴另外由 look.breast_splay 加 SPLAY_TAG）
+    "外擴／八字": "wide-set breasts",   # 舊存檔（同上）
     "母乳型沉重下垂": "sagging breasts, hanging breasts",
     "極密著深溝": "close-set breasts, deep cleavage",
 }
@@ -1084,6 +1084,9 @@ def _table_get(table: dict, raw: str) -> str:
     return table.get(raw, "")
 
 
+SPLAY_TAG = "wide-set breasts"   # look.breast_splay＝外擴
+
+
 def compose_bust_en(look: dict, unknown: list[str]) -> str:
     """新制 cup + breast_shape;舊存檔只剩 bust 合寫字串。"""
     bits: list[str] = []
@@ -1101,6 +1104,9 @@ def compose_bust_en(look: dict, unknown: list[str]) -> str:
             bits.append(tag)
         else:
             unknown.append(f"breast_shape: {shape}")
+    # 2026-11-21 使用者：外擴是另一個維度（例如木瓜型＋外擴），不是乳型
+    if str(look.get("breast_splay") or "").strip():
+        bits.append(SPLAY_TAG)
     if bits:
         # 去重保序
         seen: set[str] = set()
@@ -1138,6 +1144,9 @@ def compose_bust_en(look: dict, unknown: list[str]) -> str:
             bits.append(tag)
         else:
             unknown.append(f"breast_shape: {shape}")
+    # 2026-11-21 使用者：外擴是另一個維度（例如木瓜型＋外擴），不是乳型
+    if str(look.get("breast_splay") or "").strip():
+        bits.append(SPLAY_TAG)
     if bits:
         seen: set[str] = set()
         out: list[str] = []

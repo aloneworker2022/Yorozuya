@@ -135,7 +135,7 @@ function applyParams() {
   L.body = L.build;
   L.cup = ($("p-cup")?.value || "").trim();
   L.breast_shape = ($("p-breast-shape")?.value || "").trim();
-  L.bust = [L.cup, L.breast_shape].filter(Boolean).join("、");
+  L.bust = [L.cup, L.breast_shape, L.breast_splay].filter(Boolean).join("、");   // 外擴另一個維度（2026-11-21）
   L.face = ($("p-face")?.value || "").trim();
   L.eyes = ($("p-eyes")?.value || "").trim();
   L.eye_color = ($("p-eye-color")?.value || "").trim();

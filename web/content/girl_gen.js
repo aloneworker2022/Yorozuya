@@ -166,7 +166,6 @@ export const BREAST_FIT = {
   "挺俏上挺":        [O, W, W, O, L, L, X, X, X],
   "半球型":          [X, O, W, W, W, O, L, L, X],
   "自然圓潤":        [X, O, W, W, O, O, L, X, X],
-  "外擴型":          [X, O, O, O, O, O, O, O, O],   // 2026-11-21 使用者：外擴可以、八字不行（原「外擴／八字」）
   "水滴型":          [X, X, O, W, W, W, O, O, O],
   "極密著深溝":      [X, X, L, O, W, W, W, W, W],
   "木瓜型":          [X, X, X, O, O, W, W, W, O],
@@ -174,15 +173,29 @@ export const BREAST_FIT = {
   "母乳型沉重下垂":  [X, X, X, X, L, O, O, W, W],
 };
 
-/** 2026-11-21 使用者：外擴可以、八字不行，魅魔參數不要八字 → 舊存檔的「外擴／八字」改成「外擴型」（look.breast_shape、look.bust）。有改回 true。 */
+/** 外擴（2026-11-21 使用者：外擴不是乳型，是另一個維度——例如木瓜型＋外擴、母乳型＋外擴；八字不行）：
+ *  look.breast_splay＝"外擴" 或 ""。C 罩杯以上約 40%；平坦／微隆、極密著深溝、半球型不會外擴。 */
+export const SPLAY_TEXT = "外擴";
+export const SPLAY_P = 0.4;
+const SPLAY_NO_SHAPE = new Set(["平坦／微隆", "極密著深溝", "半球型"]);
+export function splayAllowed(cup, shape) {
+  const letter = String((cup && (cup.cup || cup.text || cup.name)) || cup || "").trim().charAt(0).toUpperCase();
+  if (!"CDEFGHI".includes(letter) || !letter) return false;
+  return !SPLAY_NO_SHAPE.has(String((shape && (shape.text || shape.name)) || shape || "").trim());
+}
+export function rollSplay(cup, shape, rnd = Math.random) { return splayAllowed(cup, shape) && rnd() < SPLAY_P ? SPLAY_TEXT : ""; }
+/** look.bust（舊欄位、很多地方直接拿來當胸部描述）＝罩杯、乳型、外擴。 */
+export function bustText(look) { return [look?.cup, look?.breast_shape, look?.breast_splay].filter(Boolean).join("、"); }
+
+/** 舊存檔：乳型寫成「外擴／八字」或「外擴型」→ 乳型改自然圓潤、另外記外擴（look.breast_splay），look.bust 重寫。有改回 true。 */
 export function fixBreastShapeText(look) {
   if (!look || typeof look !== "object") return false;
-  let hit = false;
-  for (const k of ["breast_shape", "bust"]) {
-    const v = look[k];
-    if (typeof v === "string" && /外擴[／\/]八字/.test(v)) { look[k] = v.replace(/外擴[／\/]八字/g, "外擴型"); hit = true; }
-  }
-  return hit;
+  const sh = String(look.breast_shape || "");
+  if (!/外擴/.test(sh) && !/外擴[／\/]八字|外擴型/.test(String(look.bust || ""))) return false;
+  if (/外擴/.test(sh)) look.breast_shape = "自然圓潤";
+  look.breast_splay = SPLAY_TEXT;
+  look.bust = look.cup ? bustText(look) : String(look.bust || "").replace(/外擴[／\/]八字|外擴型/g, "自然圓潤、外擴");
+  return true;
 }
 
 /** 這個罩杯配這個乳型的權重（表外的乳型或認不出罩杯 → 1，不擋）。 */
@@ -292,14 +305,16 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
   const sleepOutfits = sleepSrc.length ? pickN(sleepSrc, SLEEP_OUTFIT_SIZE) : [];
   const cupText = txt(cup);
   const shapeText = txt(breastShape);
+  const splayText = rollSplay(cup, shapeText);
   const look = {
     age: ri(Math.max(18, ageRange.min || 18), Math.max(18, ageRange.max || 33)),
     height_cm: ri(150, 172),
     build: txt(build),
     cup: cupText,
     breast_shape: shapeText,
+    breast_splay: splayText,   // 外擴（另一個維度，2026-11-21）
     // 舊欄位:卡牌綁定／舊 UI 仍讀 look.bust
-    bust: [cupText, shapeText].filter(Boolean).join("、"),
+    bust: [cupText, shapeText, splayText].filter(Boolean).join("、"),
     eyes: txt(eyes),
     areola: txt(areola),
     nipple: txt(nipple),

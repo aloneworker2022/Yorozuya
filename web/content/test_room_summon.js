@@ -1,5 +1,5 @@
 /* 試煉房抽妹子：人設跟 /testword 同一套。抽到後背景補半身立繪。不寫遊戲名冊。 */
-import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES, fixBreastShapeText } from "./girl_gen.js?v=8";
+import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES, fixBreastShapeText } from "./girl_gen.js?v=9";
 import {
   ensureBody,
   clampBody,
@@ -12648,7 +12648,7 @@ async function letHerLeave(opts = {}) {
 
 function normalizeGirlTags(who) {
   if (!who) return;
-  fixBreastShapeText(who.look);   // 2026-11-21 使用者：魅魔參數不要八字（外擴／八字 → 外擴型）
+  fixBreastShapeText(who.look);   // 2026-11-21 使用者：魅魔參數不要八字；外擴是另一個維度（舊的外擴／八字、外擴型 → 自然圓潤＋look.breast_splay 外擴）
   if (!Array.isArray(who.kinks)) {
     const fromPers = (who.personality || []).filter((n) => KINK_SET.has(n));
     const fromArch = KINK_SET.has(who.archetype) ? [who.archetype] : [];

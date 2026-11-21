@@ -100,7 +100,7 @@ function readForm() {
   if (Number.isFinite(h) && h > 0) look.height_cm = Math.round(h);
   look.build = $("build").value.trim();
   look.cup = $("cup").value.trim();
-  if (look.cup) look.bust = [look.cup, look.breast_shape].filter(Boolean).join("、");
+  if (look.cup) look.bust = [look.cup, look.breast_shape, look.breast_splay].filter(Boolean).join("、");   // 外擴另一個維度（2026-11-21）
   look.feature = $("feature").value.trim();
   setWorn(girl, $("outfit").value.trim());
 }

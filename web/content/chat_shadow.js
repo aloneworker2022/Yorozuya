@@ -49,7 +49,7 @@
   const CV_SIT_LOW = { w: 116, h: 76, ax: 56, ay: 72, tMax: 70, tMin: -70 };   // 一般聊天坐著（妻子摸自己）：手不會舉過頭 → 上面不留空，人顯示得比較大
   const cvOf = (doll) => (doll && doll._body === 'mermaid' ? (doll._mode ? CV_SIT_LOW : CV_SIT) : CV);
 
-  // look.breast_shape → 模型乳型（照 droom-chest-model 備忘錄 MEMO-2026-11-18、使用者確認的表）；外擴型（2026-11-21 使用者：外擴可以、八字不行）＝自然圓潤＋從根部慢慢往外彎（room_doll_chest.js splay:'wide'：越往前、越下面越往外，乳暈、下乳明顯往外），不用模型裡取消的八字 shape wide
+  // look.breast_shape → 模型乳型（照 droom-chest-model 備忘錄 MEMO-2026-11-18、使用者確認的表）；外擴（2026-11-21 使用者：另一個維度 look.breast_splay，見 dollOf；舊存檔的乳型「外擴型」也照這樣）＝自然圓潤＋從根部慢慢往外彎（room_doll_chest.js splay:'wide'：越往前、越下面越往外，乳暈、下乳明顯往外），不用模型裡取消的八字 shape wide
   const SHAPE_OF = [[/母乳|沉重/, { shape: 'heavy' }], [/木瓜/, { shape: 'pendulous' }], [/鐘/, { shape: 'bell' }], [/水滴/, { shape: 'teardrop' }],
     [/深溝|極密/, { shape: 'round', gap: 'close' }], [/外擴/, { shape: 'round', splay: 'wide' }], [/半球/, { shape: 'round', braSupport: true }], [/挺俏|上挺/, { shape: 'perky' }],
     [/饅頭/, { shape: 'dome' }], [/平坦|微隆/, { shape: 'flat' }]];
@@ -797,6 +797,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   function dollOf(s, st, undressing, mode) {
     const doll = F.lookToDoll(s.look || null, { outfit: s.outfit, undressStage: st, belly: s.belly });
     Object.assign(doll, shapeOf(s.look?.breast_shape));
+    if (/外擴/.test(String(s.look?.breast_splay || ''))) doll.splay = 'wide';   // 外擴是另一個維度（2026-11-21 使用者：例如木瓜型＋外擴、母乳型＋外擴）
     doll.areola = areolaOf(s.look?.areola);
     // 穿著（使用者：一開始是 droom 那套白色 T 恤＋胸罩＋丁字褲；穿胸罩乳房變挺）：跟脫衣進度 undress.stage 走——
     //   0 白色 T 恤（裡面穿胸罩）＋丁字褲、1 胸罩＋丁字褲、2 只剩丁字褲、3 全裸。不畫她衣櫃裡的衣服（裙子也不畫）。

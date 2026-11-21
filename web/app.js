@@ -1272,7 +1272,7 @@ function initState(j, offline) {
   for (const s of state.succubi) {
     migrateAffectionScale(s);
     if (repairGirl(s)) migrated = true;   // 房間 11 階為準＋退役系統舊欄位清掉
-    if (fixBreastShapeText(s.look)) migrated = true;   // 2026-11-21 使用者：魅魔參數不要八字（外擴／八字 → 外擴型）
+    if (fixBreastShapeText(s.look)) migrated = true;   // 2026-11-21 使用者：魅魔參數不要八字；外擴是另一個維度（舊的外擴／八字、外擴型 → 自然圓潤＋look.breast_splay 外擴）
     if (!s.backstory) Object.assign(s, makeBackstory());
     else if (!s.schedule) s.schedule = makeSchedule(s.job);   // 有故事沒作息 → 補作息
     pruneJournal(s);

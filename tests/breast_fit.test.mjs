@@ -39,15 +39,28 @@ for (let i = 0; i < 3000; i++) {
   const g = G.generateGirl({ luck: i % 2 ? 100 : 0 });
   assert.ok(g, "生成失敗");
   assert.ok(G.breastFit(g.look.cup, g.look.breast_shape) > 0, `不合：${g.look.cup}／${g.look.breast_shape}`);
-  assert.equal(g.look.bust, `${g.look.cup}、${g.look.breast_shape}`);
+  assert.equal(g.look.bust, [g.look.cup, g.look.breast_shape, g.look.breast_splay].filter(Boolean).join("、"));
+  if (g.look.breast_splay) assert.ok(G.splayAllowed(g.look.cup, g.look.breast_shape), `不該外擴：${g.look.bust}`);
 }
-// 2026-11-21 使用者：外擴可以、八字不行 → 池子沒有八字；舊存檔的「外擴／八字」改成「外擴型」
-assert.ok(!A.breast_shape.some((s) => s.text.includes("八字")), "乳型池子不要八字");
+// 2026-11-21 使用者：外擴可以、八字不行；外擴不是乳型，是另一個維度（look.breast_splay）
+assert.ok(!A.breast_shape.some((s) => /八字|外擴/.test(s.text)), "乳型池子不要外擴／八字");
 {
-  const look = { breast_shape: "外擴／八字", bust: "E 罩杯、外擴／八字" };
-  assert.equal(G.fixBreastShapeText(look), true);
-  assert.deepEqual(look, { breast_shape: "外擴型", bust: "E 罩杯、外擴型" });
-  assert.equal(G.fixBreastShapeText(look), false);
-  assert.equal(G.fixBreastShapeText({ breast_shape: "水滴型" }), false);
+  const old1 = { cup: "E 罩杯", breast_shape: "外擴／八字", bust: "E 罩杯、外擴／八字" };
+  assert.equal(G.fixBreastShapeText(old1), true);
+  assert.deepEqual(old1, { cup: "E 罩杯", breast_shape: "自然圓潤", breast_splay: "外擴", bust: "E 罩杯、自然圓潤、外擴" });
+  assert.equal(G.fixBreastShapeText(old1), false);
+  const old2 = { cup: "F 罩杯", breast_shape: "外擴型", bust: "F 罩杯、外擴型" };
+  assert.equal(G.fixBreastShapeText(old2), true);
+  assert.equal(old2.bust, "F 罩杯、自然圓潤、外擴");
+  assert.equal(G.fixBreastShapeText({ cup: "E 罩杯", breast_shape: "木瓜型", breast_splay: "外擴", bust: "E 罩杯、木瓜型、外擴" }), false);
+  assert.equal(G.splayAllowed("B 罩杯", "木瓜型"), false);
+  assert.equal(G.splayAllowed("E 罩杯", "半球型"), false);
+  assert.equal(G.splayAllowed("E 罩杯", "極密著深溝"), false);
+  assert.equal(G.splayAllowed("C 罩杯", "平坦／微隆"), false);
+  assert.equal(G.splayAllowed("F 罩杯", "母乳型沉重下垂"), true);
+  // 能外擴的組合，大約 40% 外擴
+  let n = 0, k = 0;
+  for (let i = 0; i < 4000; i++) { const g = G.generateGirl({ luck: i % 100 }); if (G.splayAllowed(g.look.cup, g.look.breast_shape)) { n++; if (g.look.breast_splay) k++; } }
+  assert.ok(n > 500 && Math.abs(k / n - .4) < .05, `外擴比例 ${k}/${n}`);
 }
 console.log("ok - breast_fit");
