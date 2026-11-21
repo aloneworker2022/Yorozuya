@@ -418,10 +418,26 @@
         if (A.armL && A.armR) { const r = A.armR.w0; hands.armL = lerp(A.armL.w0, [-r[0], r[1], r[2]], w); poles.armL = [-1, -.4, .15]; }
         BX = { [-1]: [0, 0, m.ang.bounce * (.5 + 1.3 * big)], [1]: [0, 0, m.ang.bounce * (.5 + 1.3 * big)] };
       } else if (BR[0] && BR[1]) {
-        const lift = (.5 + 1.1 * big) * w, zA = Math.min(BR[0].bot, BR[1].bot) + lift - .9;   // 手臂上緣頂著乳房托高後的下緣
-        if (A.armL) { hands.armL = lerp(A.armL.w0, [BR[1].c[0] * .95 + 1.2, frontY(BR[1].c[0], zA) + 1.5, zA], w); poles.armL = [-1, -.1, -.55]; }
-        if (A.armR) { hands.armR = lerp(A.armR.w0, [BR[0].c[0] * .95 - 1.2, frontY(BR[0].c[0], zA + .8) + 2.5, zA + .8], w); poles.armR = [1, -.1, -.55]; }
-        BX = { [-1]: [0, .3 * lift, lift], [1]: [0, .3 * lift, lift] };
+        // 2026-11-21 使用者：大於 C 的抱胸不是把胸壓扁，是手臂把胸撐起來、胸部放在手臂上——
+        //   前臂在乳房（托高之後的）下緣下面、貼著身體（不擋在乳房前面），乳房整顆往上托、形狀不壓扁；C 以下只是手交叉在胸下
+        const breastP = sh.prims.filter(p => p.part === 'breast' && !p.cloth);
+        const bottom = (b) => {   // 這顆乳房真正的最低點（從中心往下掃）
+          let zb = b.c[2];
+          for (let z = b.c[2]; z > b.c[2] - 3 * b.r; z -= .2) {
+            let hit = false;
+            for (let y = b.c[1] - b.r; y <= b.c[1] + b.r * 1.6 && !hit; y += .4) for (const p of breastP) if (H.primDist(p, b.c[0], y, z) < 0) { hit = true; break; }
+            if (hit) zb = z; else if (z < b.c[2] - b.r * .4) break;
+          }
+          return zb;
+        };
+        const rest = BR[1].r > 4.1;   // D 以上：胸部放在手臂上
+        const lift = rest ? (.6 + 1.2 * big) * w : 0, ARM = 1.35;
+        const zA = Math.min(bottom(BR[0]), bottom(BR[1])) + lift - ARM - .05;   // 前臂上緣剛好頂著托高後的下緣
+        const torsoP = bodyP.filter(p => p.part !== 'breast');
+        const torsoY = (x, z) => { for (let y = 22; y > -10; y -= .25) { for (const p of torsoP) if (H.primDist(p, x, y, z) < 0) return y; } return 4; };
+        if (A.armL) { hands.armL = lerp(A.armL.w0, [BR[1].c[0] * .95 + 1.2, torsoY(BR[1].c[0], zA) + ARM + .2, zA], w); poles.armL = [-1, -.1, -.55]; }
+        if (A.armR) { hands.armR = lerp(A.armR.w0, [BR[0].c[0] * .95 - 1.2, torsoY(BR[0].c[0], zA - .6) + ARM + 1.3, zA - .6], w); poles.armR = [1, -.1, -.55]; }   // 另一隻在外面、低一點（看得出交叉）
+        BX = { [-1]: [0, .25 * lift, lift], [1]: [0, .25 * lift, lift] };
       }
       modePlan = { hands, poles, push: { [-1]: [0, 0, 0], [1]: [0, 0, 0] }, round: { [-1]: 0, [1]: 0 }, handDir: {} };
     }
