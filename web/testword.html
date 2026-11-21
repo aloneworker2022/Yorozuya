@@ -1515,7 +1515,7 @@ function cdSheet(g) {
     g.job ? `職業：${g.job}` : null,
     L.career_outfit ? `生涯服裝（陌生預設）：${L.career_outfit}` : null,
     worn ? `現在穿：${worn}` : null,
-    g.stage === "girlfriend" ? "衣服：女友——可露胸型／乳溝（水滴、八字），不寫乳頭" : null,
+    g.stage === "girlfriend" ? "衣服：女友——可露胸型／乳溝（水滴、外擴），不寫乳頭" : null,
     g.stage === "wife" ? "衣服：妻子——情色服裝（露膚／情趣），非預設全裸；乳暈乳頭僅強制裸時" : null,
     (!g.stage || g.stage === "stranger" || g.stage === "friend") ? "衣服：陌生／朋友——穿好，只寫罩杯體積" : null,
     ward.length ? `個人衣櫃：${ward.map((w, i) => `${i + 1}.${w}`).join("　")}` : null,

@@ -37,9 +37,9 @@
   const CV_SIT_LOW = { w: 116, h: 76, ax: 56, ay: 72, tMax: 70, tMin: -70 };   // 一般聊天坐著（妻子摸自己）：手不會舉過頭 → 上面不留空，人顯示得比較大
   const cvOf = (doll) => (doll && doll._body === 'mermaid' ? (doll._mode ? CV_SIT_LOW : CV_SIT) : CV);
 
-  // look.breast_shape → 模型乳型（照 droom-chest-model 備忘錄 MEMO-2026-11-18、使用者確認的表）；外擴／八字使用者取消 → 先用自然圓潤
+  // look.breast_shape → 模型乳型（照 droom-chest-model 備忘錄 MEMO-2026-11-18、使用者確認的表）；外擴型（2026-11-21 使用者：外擴可以、八字不行）＝自然圓潤＋乳頭往外撇 24°（模型 splay wide），不用模型的八字 wide
   const SHAPE_OF = [[/母乳|沉重/, { shape: 'heavy' }], [/木瓜/, { shape: 'pendulous' }], [/鐘/, { shape: 'bell' }], [/水滴/, { shape: 'teardrop' }],
-    [/深溝|極密/, { shape: 'round', gap: 'close' }], [/半球/, { shape: 'round', braSupport: true }], [/挺俏|上挺/, { shape: 'perky' }],
+    [/深溝|極密/, { shape: 'round', gap: 'close' }], [/外擴/, { shape: 'round', splay: 'wide' }], [/半球/, { shape: 'round', braSupport: true }], [/挺俏|上挺/, { shape: 'perky' }],
     [/饅頭/, { shape: 'dome' }], [/平坦|微隆/, { shape: 'flat' }]];
   function shapeOf(t) { t = String(t || ''); for (const [re, v] of SHAPE_OF) if (re.test(t)) return v; return { shape: 'round' }; }
   function areolaOf(t) {

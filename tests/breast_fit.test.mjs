@@ -41,4 +41,13 @@ for (let i = 0; i < 3000; i++) {
   assert.ok(G.breastFit(g.look.cup, g.look.breast_shape) > 0, `不合：${g.look.cup}／${g.look.breast_shape}`);
   assert.equal(g.look.bust, `${g.look.cup}、${g.look.breast_shape}`);
 }
+// 2026-11-21 使用者：外擴可以、八字不行 → 池子沒有八字；舊存檔的「外擴／八字」改成「外擴型」
+assert.ok(!A.breast_shape.some((s) => s.text.includes("八字")), "乳型池子不要八字");
+{
+  const look = { breast_shape: "外擴／八字", bust: "E 罩杯、外擴／八字" };
+  assert.equal(G.fixBreastShapeText(look), true);
+  assert.deepEqual(look, { breast_shape: "外擴型", bust: "E 罩杯、外擴型" });
+  assert.equal(G.fixBreastShapeText(look), false);
+  assert.equal(G.fixBreastShapeText({ breast_shape: "水滴型" }), false);
+}
 console.log("ok - breast_fit");

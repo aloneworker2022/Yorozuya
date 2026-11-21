@@ -166,13 +166,24 @@ export const BREAST_FIT = {
   "挺俏上挺":        [O, W, W, O, L, L, X, X, X],
   "半球型":          [X, O, W, W, W, O, L, L, X],
   "自然圓潤":        [X, O, W, W, O, O, L, X, X],
-  "外擴／八字":      [X, O, O, O, O, O, O, O, O],
+  "外擴型":          [X, O, O, O, O, O, O, O, O],   // 2026-11-21 使用者：外擴可以、八字不行（原「外擴／八字」）
   "水滴型":          [X, X, O, W, W, W, O, O, O],
   "極密著深溝":      [X, X, L, O, W, W, W, W, W],
   "木瓜型":          [X, X, X, O, O, W, W, W, O],
   "鐘型":            [X, X, X, L, O, O, W, W, W],
   "母乳型沉重下垂":  [X, X, X, X, L, O, O, W, W],
 };
+
+/** 2026-11-21 使用者：外擴可以、八字不行，魅魔參數不要八字 → 舊存檔的「外擴／八字」改成「外擴型」（look.breast_shape、look.bust）。有改回 true。 */
+export function fixBreastShapeText(look) {
+  if (!look || typeof look !== "object") return false;
+  let hit = false;
+  for (const k of ["breast_shape", "bust"]) {
+    const v = look[k];
+    if (typeof v === "string" && /外擴[／\/]八字/.test(v)) { look[k] = v.replace(/外擴[／\/]八字/g, "外擴型"); hit = true; }
+  }
+  return hit;
+}
 
 /** 這個罩杯配這個乳型的權重（表外的乳型或認不出罩杯 → 1，不擋）。 */
 export function breastFit(cup, shape) {

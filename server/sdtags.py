@@ -74,7 +74,8 @@ BREAST_SHAPE = {
     "水滴型": "teardrop breasts",
     "木瓜型": "teardrop breasts, perky breasts",
     "鐘型": "hanging breasts",
-    "外擴／八字": "wide-set breasts, sideboob",
+    "外擴型": "wide-set breasts",   # 2026-11-21 使用者：外擴可以、八字不行
+    "外擴／八字": "wide-set breasts",   # 舊存檔（載入時會改成外擴型）
     "母乳型沉重下垂": "sagging breasts, hanging breasts",
     "極密著深溝": "close-set breasts, deep cleavage",
 }
