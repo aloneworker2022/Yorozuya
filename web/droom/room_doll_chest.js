@@ -522,8 +522,19 @@
       const dx = doll.gap === 'apart' ? (.9 + r * .12) : 0;
       if (dx) { each(q => [q[0] + s * dx, q[1], q[2]]); root[0] += s * dx; }
       // 外擴：繞著根部的垂直軸往外轉（乳頭、乳暈跟著轉）
-      const deg = doll.splay == null ? (close ? BUST_SPLAY_CLOSE : BUST_SPLAY) : doll.splay === 'wide' ? BUST_SPLAY_WIDE : +doll.splay, th = deg * Math.PI / 180, c = Math.cos(th), sn = Math.sin(th);
+      // 2026-11-21 外擴型（使用者：從乳根部慢慢、微微開始往外，到乳暈、下乳明顯往外）：不是整顆轉，是彎——
+      //   先照一般的微微朝外轉，再照「離根部多遠（往前）」越遠越往外推（t^1.8），加上「越下面越往外」（u^1.6，下乳往外、兩顆底部分開）；根部、上胸幾乎不動
+      const wide = doll.splay === 'wide';
+      const deg = doll.splay == null || wide ? (close ? BUST_SPLAY_CLOSE : BUST_SPLAY) : +doll.splay, th = deg * Math.PI / 180, c = Math.cos(th), sn = Math.sin(th);
       if (th) each(q => { const X = q[0] - root[0], Y = q[1] - root[1]; return [root[0] + X * c + s * Y * sn, root[1] - s * X * sn + Y * c, q[2]]; });
+      if (wide) {
+        let ymax = root[1] + 1, zmin = root[2] - 1;
+        const look = (q) => { if (q[1] > ymax) ymax = q[1]; if (q[2] < zmin) zmin = q[2]; };
+        for (let i = kn0; i < prims.length; i++) { const p = prims[i]; if (p.k === 0) look(p.c); else if (p.k === 1) { look(p.a); look(coneB(p)); } }
+        const Ly = ymax - root[1], Lz = root[2] - zmin, cl = (v) => Math.max(0, Math.min(1, v));
+        each(q => { const t = cl((q[1] - root[1]) / Ly), u = cl((root[2] - q[2]) / Lz), d = r * (.3 * t ** 1.8 + .36 * u ** 1.6);
+          return [q[0] + s * d, q[1] - d * .18, q[2]]; });
+      }
       if (close) {   // 轉開之後再整顆往中間推，推到兩顆在中線上互相壓進去一點點（碰到的那一段＝乳溝）
         let o = null; for (let i = kn0; i < prims.length; i++) if (prims[i].k === 0 && !prims[i].nip) { o = prims[i]; break; }
         if (o) { const inner = Math.abs(o.c[0]) - o.r[0], sh2 = -r * .035 - inner; each(q => [q[0] + s * sh2, q[1], q[2]]); root[0] += s * sh2; }
