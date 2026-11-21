@@ -1012,7 +1012,7 @@
     }
     // 2026-11-19 o.shirt（聊天黑影的白襯衫）：下襬長到大腿根、V 字領（第一顆扣子沒扣）、尖領片、正中門襟＋扣子；其他照 T 恤
     function tee(sh, P, doll, tor, o = {}) {
-      const S = tor.S, top = o.shirt ? S + 1.2 : S + .3, hem = o.shirt ? tor.C - 3 : tor.C + 5.5, K = o.shirt ? 32 : 44, nz = Math.max(8, Math.round((top - hem) / (o.shirt ? 1.15 : .8))), RC = o.shirt ? 1.0 : .75, RR = o.shirt ? .8 : .55;   // T 恤照 droom 原本（跟 sheets 的樣本一樣）；襯衫織粗一點
+      const S = tor.S, top = o.shirt ? S + 1.2 : S + .3, hem = o.shirt ? tor.C - 3 : tor.C + 5.5, K = o.shirt ? 32 : 44, nz = Math.max(8, Math.round((top - hem) / (o.shirt ? 1.15 : .8))), RC = o.shirt ? 1.0 : .62, RR = o.shirt ? .8 : .52;   // 2026-11-21 使用者：肩膀很腫 → T 恤的布管做細一點（.75／.55 → .62／.52；再細層和層之間會有縫、一條條）   // T 恤照 droom 原本（跟 sheets 的樣本一樣）；襯衫織粗一點
       const vBot = S - 10;   // 襯衫：V 字領的底（最上面兩顆沒扣，看得到胸罩和乳溝）
       // 2026-11-21 使用者：T 恤應該是 V 領，不會包到脖子 → 領口開在脖子根部（脖子那一圈挖掉）、前面 V 字開到 S−5.5
       const vBotT = S - 5.5, NECK_W = 3.4;
@@ -1030,7 +1030,7 @@
           }
           // 2026-11-21 使用者：T 恤應該有微微的腰身（原本兩側從胸部最寬處直直落到下襬，像箱子）——
           //   鬆份：腰以上 .45、腰附近 .75（不貼身）；胸下垂墜只在正面中間最強、往兩側漸弱，兩側照身體收出腰身
-          const zW = tor.zW != null ? tor.zW : (tor.C + tor.S) / 2, ease = o.shirt ? .45 : .45 + .3 * Math.max(0, 1 - Math.abs(z - zW) / 7);
+          const zW = tor.zW != null ? tor.zW : (tor.C + tor.S) / 2, ease = o.shirt ? .45 : (z > S - 3 ? .08 : .3) + .3 * Math.max(0, 1 - Math.abs(z - zW) / 7);   // 肩膀貼身（.15）、其他 .3、腰附近多 .3
           let d = best + ease;
           if (!o.shirt && dy > .3 && Math.abs(z - tor.zB) < tor.cupr * 1.1) d += .45 * dy;   // 胸前多留一點鬆份：不跟著乳頭的形狀做之後，乳暈附近的皮膚不會穿出布
           const prev = G[j - 1] && G[j - 1][k];   // 胸前：過了乳尖以後布往下垂（不貼回肚子）
@@ -1095,10 +1095,11 @@
         sh.cloth = 2; sh.cone(BODY, wc, e.map((v, i) => wc[i] + (wr[i] - v) * .07), 2.1 * wA + .65, 2.1 * wA + .65); tag(2); sh.cloth = 1;
       }
       for (const [s0, e] of o.shirt ? [] : sh._arms || []) {
-        const m = s0.map((v, i) => v + (e[i] - v) * .45), up = [s0[0] * .75, s0[1], s0[2] + 1.6];
+        // 2026-11-21 使用者：肩膀很腫、像有墊肩 → 袖山貼著肩膀（原本從肩上 1.6 格、半徑粗一大圈開始），袖子只比手臂寬一點
+        const m = s0.map((v, i) => v + (e[i] - v) * .45), up = [s0[0] * .9, s0[1], s0[2] - .3];
         const tag = () => { sh.prims[sh.prims.length - 1].sleeve = 1; };   // 聊天黑影：袖子跟上臂走
-        sh.cone(BODY, up, s0, 3.2 * wA + .5, 3.3 * wA + .6); tag(); sh.cone(BODY, s0, m, 3.3 * wA + .6, 2.9 * wA + .7); tag();
-        sh.cloth = 2; sh.cone(BODY, m, m.map((v, i) => v + (e[i] - s0[i]) * .04), 3.0 * wA + .75, 3.0 * wA + .75); tag(); sh.cloth = 1;
+        sh.cone(BODY, up, s0, 2.5 * wA, 2.8 * wA + .12); tag(); sh.cone(BODY, s0, m, 2.8 * wA + .15, 2.45 * wA + .3); tag();
+        sh.cloth = 2; sh.cone(BODY, m, m.map((v, i) => v + (e[i] - s0[i]) * .04), 2.55 * wA + .38, 2.55 * wA + .38); tag(); sh.cloth = 1;
       }
       // 下襬、圓領滾邊
       sh.cloth = 2;
