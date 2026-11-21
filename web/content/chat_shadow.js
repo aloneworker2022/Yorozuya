@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=10', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=11', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
@@ -643,8 +643,9 @@
     return 0;
   }
   /** 衣服（使用者：灰色、微微透明，黑影模式）：身體那層上面，內衣、外衣各疊一層灰；看得到底下的身體輪廓，T 恤底下隱約看到胸罩。 */
-  function veil(out, layer) {
-    const GRAY = { 1: [168, 168, 180], 2: [124, 124, 138] }, K = { 1: .72, 2: .82 }, OUT = { 1: [118, 116, 130, 200], 2: [96, 94, 110, 220] };
+  function veil(out, layer, outer) {
+    // 2026-11-21 使用者：T 恤不要這麼透明 → 外衣 90% 不透明（裡面的胸罩、乳房輪廓只隱約看得到）；內衣照舊微微透明
+    const GRAY = { 1: [168, 168, 180], 2: [124, 124, 138] }, K = outer ? { 1: .9, 2: .93 } : { 1: .72, 2: .82 }, OUT = { 1: [118, 116, 130, 200], 2: [96, 94, 110, 220] };
     for (let i = 0; i < out.length; i += 4) {
       const c = clothAt(layer, i); if (!c) continue;
       const g = GRAY[c], k = K[c];
@@ -679,7 +680,7 @@
       }
     }
     if (hasU) veil(r.pixels, run(p => !p.cloth || p.under).pixels);
-    if (hasO) veil(r.pixels, run(p => !p.cloth || !p.under).pixels);
+    if (hasO) veil(r.pixels, run(p => !p.cloth || !p.under).pixels, true);
     return r;
   }
 

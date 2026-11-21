@@ -1026,9 +1026,19 @@
             const A = H[i], B = H[(i + 1) % H.length], ex = B[0] - A[0], ey = B[1] - A[1], den = dx * ey - dy * ex; if (Math.abs(den) < 1e-9) continue;
             const ax = A[0], ay = A[1] - yc, u = (ax * ey - ay * ex) / den, v = (ax * dy - ay * dx) / den; if (u > 0 && v >= -1e-6 && v <= 1 + 1e-6) best = Math.max(best, u);
           }
-          let d = best + .45;
-          const prev = G[j - 1] && G[j - 1][k];   // 胸前：過了乳尖以後布直直往下垂（不貼回肚子）
-          if (prev && dy > .15 && z < tor.zB + tor.cupr * .3) d = Math.max(d, (prev[0] * dx + (prev[1] - yc) * dy) - (o.shirt ? .45 : 0));   // 襯衫合身：過了胸下慢慢收回腰身，不是直筒
+          // 2026-11-21 使用者：T 恤應該有微微的腰身（原本兩側從胸部最寬處直直落到下襬，像箱子）——
+          //   鬆份：腰以上 .45、腰附近 .75（不貼身）；胸下垂墜只在正面中間最強、往兩側漸弱，兩側照身體收出腰身
+          const zW = tor.zW != null ? tor.zW : (tor.C + tor.S) / 2, ease = o.shirt ? .45 : .45 + .3 * Math.max(0, 1 - Math.abs(z - zW) / 7);
+          let d = best + ease;
+          const prev = G[j - 1] && G[j - 1][k];   // 胸前：過了乳尖以後布往下垂（不貼回肚子）
+          if (prev && z < tor.zB + tor.cupr * .3) {
+            const pd = (prev[0] * dx + (prev[1] - yc) * dy) - (o.shirt ? .45 : 0);   // 襯衫合身：過了胸下慢慢收回腰身，不是直筒
+            if (o.shirt) { if (dy > .15) d = Math.max(d, pd); }
+            else {   // T 恤：每往下一層，布最多只往裡收一點點——正面中間幾乎直直垂（.08）、兩側和背後慢慢收（.16）＝微微的腰身
+              const u = Math.max(0, Math.min(1, (dy - .35) / .55)), wF = u * u * (3 - 2 * u);
+              d = Math.max(d, pd - (.16 - .08 * wF));
+            }
+          }
           row.push([dx * d, yc + dy * d, z]);
         }
         if (o.shirt && z > vBot) for (let k = 0; k < K; k++) { const q = row[k]; if (q && Math.cos(2 * Math.PI * k / K) > .2 && Math.abs(q[0]) < (z - vBot) * .62) row[k] = null; }   // V 字領開口
