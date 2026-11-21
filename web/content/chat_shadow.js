@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=11', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=12', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
@@ -644,16 +644,17 @@
   }
   /** 衣服（使用者：灰色、微微透明，黑影模式）：身體那層上面，內衣、外衣各疊一層灰；看得到底下的身體輪廓，T 恤底下隱約看到胸罩。 */
   function veil(out, layer, outer) {
-    // 2026-11-21 使用者：T 恤不要這麼透明 → 外衣 90% 不透明（裡面的胸罩、乳房輪廓只隱約看得到）；內衣照舊微微透明
-    const GRAY = { 1: [168, 168, 180], 2: [124, 124, 138] }, K = outer ? { 1: .9, 2: .93 } : { 1: .72, 2: .82 }, OUT = { 1: [118, 116, 130, 200], 2: [96, 94, 110, 220] };
+    // 2026-11-21 使用者：T 恤不要這麼透明（90% 還是太透）→ 外衣完全不透明（胸型改用布離身體多遠的陰影表現，見 drawFrame）；內衣照舊微微透明
+    const GRAY = { 1: [168, 168, 180], 2: [124, 124, 138] }, K = outer ? { 1: 1, 2: 1 } : { 1: .72, 2: .82 }, OUT = { 1: [118, 116, 130, 200], 2: [96, 94, 110, 220] };
     for (let i = 0; i < out.length; i += 4) {
       const c = clothAt(layer, i); if (!c) continue;
       const g = GRAY[c], k = K[c];
       if (out[i + 3]) {
         // 衣服底下不透出乳暈、乳頭（只透出身體輪廓）
         if ((out[i] === 72 && out[i + 1] === 58 && out[i + 2] === 84) || (out[i] === 88 && out[i + 1] === 72 && out[i + 2] === 100)) { out[i] = 51; out[i + 1] = 45; out[i + 2] = 64; }
-        for (let j = 0; j < 3; j++) out[i + j] = out[i + j] * (1 - k) + g[j] * k; out[i + 3] = Math.max(out[i + 3], 220);
-      } else { const q = OUT[c]; out[i] = q[0]; out[i + 1] = q[1]; out[i + 2] = q[2]; out[i + 3] = q[3]; }   // 身體外面的布（袖口、褲頭兩側、胯下細繩）：深一點的半透明灰，淺色背景上才不會像白線
+        for (let j = 0; j < 3; j++) out[i + j] = out[i + j] * (1 - k) + g[j] * k; out[i + 3] = outer ? 236 : 220;   // 透明度一律一樣（乳暈原本是不透明的，不統一的話蓋上衣服還看得到一圈）
+      } else if (outer) { out[i] = g[0]; out[i + 1] = g[1]; out[i + 2] = g[2]; out[i + 3] = 255; }   // 外衣（T 恤）垂空、後面沒有身體的地方：一樣是不透明的布
+      else { const q = OUT[c]; out[i] = q[0]; out[i + 1] = q[1]; out[i + 2] = q[2]; out[i + 3] = q[3]; }   // 身體外面的布（袖口、褲頭兩側、胯下細繩）：深一點的半透明灰，淺色背景上才不會像白線
     }
   }
 
@@ -666,7 +667,7 @@
     const m = motion(pose, f, n, body === 'mermaid', doll._mode || null, doll._tier || null);
     // 分三次畫：只有身體 → 身體＋內衣（胸罩、丁字褲）→ 身體＋外衣（T 恤），再一層層疊灰色上去
     // 先用全部零件變形（脫 T 恤時手要照 T 恤的下襬走——只畫身體那一層也要看得到 T 恤），再篩這一層要畫的
-    const run = (keep) => F.render(doll, body, 0, 0, { scale, cv, shape, deform: (sh, P, H) => { deform(sh, P, H, m); sh.prims = sh.prims.filter(keep); } });
+    const run = (keep, bare) => F.render(doll, body, 0, 0, { scale, cv, shape, deform: (sh, P, H) => { deform(sh, P, H, m); sh.prims = sh.prims.filter(keep); if (bare && sh.areolaStamps) sh.areolaStamps.length = 0; } });   // bare：衣服那幾層不畫乳暈印子（印子會蓋在衣服上面）
     const hasU = base.sh.prims.some(p => p.cloth && p.under), hasO = base.sh.prims.some(p => p.cloth && !p.under);
     const r = run(p => !p.cloth);
     shade(r.pixels);
@@ -679,8 +680,44 @@
         px[j] = px[j] * .66; px[j + 1] = px[j + 1] * .66; px[j + 2] = px[j + 2] * .66; px[j + 3] = Math.min(255, px[j + 3] + 30);
       }
     }
-    if (hasU) veil(r.pixels, run(p => !p.cloth || p.under).pixels);
-    if (hasO) veil(r.pixels, run(p => !p.cloth || !p.under).pixels, true);
+    // 衣服那幾層不畫皮膚上的標記（乳房輪廓弧線等 mat 2／摺線、乳暈印子、乳頭：浮在皮膚表面或直接印上去，會穿出衣服、在衣服上留一圈；T 恤做形狀時也不跟著乳頭凸起）
+    if (hasU) veil(r.pixels, run(p => (!p.cloth || p.under) && p.mat !== 2 && !p.crease && !p.nip, true).pixels);
+    if (hasO) {
+      const o = run(p => (!p.cloth || !p.under) && p.mat !== 2 && !p.crease && !p.nip, true), px = r.pixels, od = o.depth;
+      // T 恤上被底下的東西（乳暈、胸罩邊）穿出來的小洞：上下左右 7 格人偶單位內都碰得到布 → 也當成布（外衣是不透明的）
+      { const Wo = o.width, Ho = o.height, op = o.pixels, R0 = Math.max(6, Math.round(7 * scale)), isC = (x, y) => x >= 0 && y >= 0 && x < Wo && y < Ho && clothAt(op, (y * Wo + x) * 4) === 1;
+        const fill = [];
+        for (let y = 0; y < Ho; y++) for (let x = 0; x < Wo; x++) {
+          const j = (y * Wo + x) * 4; if (clothAt(op, j)) continue;   // 那一層空著（什麼都沒畫到）的也算洞
+          let l = 0, rr = 0, u2 = 0, dn = 0;
+          for (let t = 1; t <= R0 && !(l && rr && u2 && dn); t++) { if (!l && isC(x - t, y)) l = 1; if (!rr && isC(x + t, y)) rr = 1; if (!u2 && isC(x, y - t)) u2 = 1; if (!dn && isC(x, y + t)) dn = 1; }
+          if (l && rr && u2 && dn) fill.push(j);
+        }
+        for (const j of fill) { op[j] = 250; op[j + 1] = 250; op[j + 2] = 252; op[j + 3] = 255; } }
+      veil(px, o.pixels, true);
+      // 外衣不透明，胸型靠 T 恤自己的形狀打光（光從上面來）：布面往下、往後斜（乳房下面垂下來那一片）暗一點，往上斜（上胸）亮一點。
+      //   深度＝(y＋z)/32 → 往下一列：每往下 1 格人偶單位，布往前多少 s＝32·Δ深度·scale＋1（直立的面＝0）。先平均一下去掉雜訊。
+      const Wd = o.width, Hd = o.height, n = Wd * Hd, sv = new Float32Array(n), wt = new Float32Array(n), op = o.pixels;
+      for (let y = 1; y < Hd - 1; y++) for (let x = 0; x < Wd; x++) {
+        const i = y * Wd + x; if (!clothAt(op, i * 4) || !clothAt(op, (i - Wd) * 4) || !clothAt(op, (i + Wd) * 4)) continue;
+        const sl = 32 * (od[i + Wd] - od[i - Wd]) / 2 * scale + 1; if (!(Math.abs(sl) < 6)) continue;
+        sv[i] = sl; wt[i] = 1;
+      }
+      const R = Math.max(1, Math.round(scale)), blur = (src, dst, horiz) => {
+        for (let y = 0; y < Hd; y++) for (let x = 0; x < Wd; x++) {
+          let a2 = 0; const lo = horiz ? Math.max(0, x - R) : Math.max(0, y - R), hi = horiz ? Math.min(Wd - 1, x + R) : Math.min(Hd - 1, y + R);
+          for (let t = lo; t <= hi; t++) a2 += src[horiz ? y * Wd + t : t * Wd + x];
+          dst[y * Wd + x] = a2;
+        }
+      };
+      const t1 = new Float32Array(n), s2 = new Float32Array(n), w1 = new Float32Array(n), w2 = new Float32Array(n);
+      blur(sv, t1, true); blur(t1, s2, false); blur(wt, w1, true); blur(w1, w2, false);
+      for (let i = 0; i < n; i++) {
+        const j = i * 4; if (!clothAt(op, j) || !px[j + 3] || !w2[i]) continue;
+        const sl = s2[i] / w2[i], k = sl < 0 ? 1 - .22 * Math.min(1, -sl / .7) : 1 + .05 * Math.min(1, sl / 1.5);
+        px[j] = Math.min(255, px[j] * k); px[j + 1] = Math.min(255, px[j + 1] * k); px[j + 2] = Math.min(255, px[j + 2] * k);
+      }
+    }
     return r;
   }
 

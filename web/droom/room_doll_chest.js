@@ -1012,12 +1012,14 @@
     }
     // 2026-11-19 o.shirt（聊天黑影的白襯衫）：下襬長到大腿根、V 字領（第一顆扣子沒扣）、尖領片、正中門襟＋扣子；其他照 T 恤
     function tee(sh, P, doll, tor, o = {}) {
-      const S = tor.S, top = S + 1.2, hem = o.shirt ? tor.C - 3 : tor.C + 5.5, K = o.shirt ? 32 : 44, nz = Math.max(8, Math.round((top - hem) / (o.shirt ? 1.15 : .8))), RC = o.shirt ? 1.0 : .75, RR = o.shirt ? .8 : .55;   // T 恤照 droom 原本（跟 sheets 的樣本一樣）；襯衫織粗一點
+      const S = tor.S, top = o.shirt ? S + 1.2 : S + .3, hem = o.shirt ? tor.C - 3 : tor.C + 5.5, K = o.shirt ? 32 : 44, nz = Math.max(8, Math.round((top - hem) / (o.shirt ? 1.15 : .8))), RC = o.shirt ? 1.0 : .75, RR = o.shirt ? .8 : .55;   // T 恤照 droom 原本（跟 sheets 的樣本一樣）；襯衫織粗一點
       const vBot = S - 10;   // 襯衫：V 字領的底（最上面兩顆沒扣，看得到胸罩和乳溝）
+      // 2026-11-21 使用者：T 恤應該是 V 領，不會包到脖子 → 領口開在脖子根部（脖子那一圈挖掉）、前面 V 字開到 S−5.5
+      const vBotT = S - 5.5, NECK_W = 3.4;
       const Zs = [], G = [];   // G[j][k]＝第 j 層、第 k 角的布面點
       for (let j = 0; j <= nz; j++) {
         const z = top - (top - hem) * j / nz, yc = tor.yl(z) + .8, raw = [];
-        for (let k = 0; k < K; k++) { const t = 2 * Math.PI * k / K, dir = [-Math.sin(t), -Math.cos(t), 0], q = rayHit(sh, [-dir[0] * 22, yc - dir[1] * 22, z], dir, null, 44, .12); if (q) raw.push([q[0], q[1]]); }
+        for (let k = 0; k < K; k++) { const t = 2 * Math.PI * k / K, dir = [-Math.sin(t), -Math.cos(t), 0], q = rayHit(sh, [-dir[0] * 22, yc - dir[1] * 22, z], dir, o.shirt ? null : (p) => !p.nip, 44, .12); if (q) raw.push([q[0], q[1]]); }
         if (raw.length < 3) { Zs.push(z); G.push(null); continue; }
         const H = hull2(raw), row = [];   // 凸包：乳溝、腋下都不陷進去
         for (let k = 0; k < K; k++) {
@@ -1030,6 +1032,7 @@
           //   鬆份：腰以上 .45、腰附近 .75（不貼身）；胸下垂墜只在正面中間最強、往兩側漸弱，兩側照身體收出腰身
           const zW = tor.zW != null ? tor.zW : (tor.C + tor.S) / 2, ease = o.shirt ? .45 : .45 + .3 * Math.max(0, 1 - Math.abs(z - zW) / 7);
           let d = best + ease;
+          if (!o.shirt && dy > .3 && Math.abs(z - tor.zB) < tor.cupr * 1.1) d += .45 * dy;   // 胸前多留一點鬆份：不跟著乳頭的形狀做之後，乳暈附近的皮膚不會穿出布
           const prev = G[j - 1] && G[j - 1][k];   // 胸前：過了乳尖以後布往下垂（不貼回肚子）
           if (prev && z < tor.zB + tor.cupr * .3) {
             const pd = (prev[0] * dx + (prev[1] - yc) * dy) - (o.shirt ? .45 : 0);   // 襯衫合身：過了胸下慢慢收回腰身，不是直筒
@@ -1042,6 +1045,11 @@
           row.push([dx * d, yc + dy * d, z]);
         }
         if (o.shirt && z > vBot) for (let k = 0; k < K; k++) { const q = row[k]; if (q && Math.cos(2 * Math.PI * k / K) > .2 && Math.abs(q[0]) < (z - vBot) * .62) row[k] = null; }   // V 字領開口
+        if (!o.shirt) for (let k = 0; k < K; k++) {   // T 恤 V 領：脖子根部一圈挖掉＋前面 V 字
+          const q = row[k]; if (!q) continue;
+          const fr = Math.cos(2 * Math.PI * k / K);
+          if ((z > S - 1.2 && Math.abs(q[0]) < NECK_W) || (fr > .15 && z > vBotT && Math.abs(q[0]) < (z - vBotT) * .78 + .6)) row[k] = null;
+        }
         if (o.shirt) for (let k = 0; k < K; k++) if (row[k] && z < hem + 2.5 * Math.abs(Math.sin(2 * Math.PI * k / K))) row[k] = null;   // 襯衫下襬：前後長、兩側短（圓弧下襬）
         Zs.push(z); G.push(row);
       }
@@ -1096,7 +1104,20 @@
       sh.cloth = 2;
       const last = o.shirt ? Array.from({ length: K }, (_, k) => { let q = null; for (const r of G) if (r && r[k]) q = r[k]; return q; }) : G.filter(Boolean).pop(), first = G.find(Boolean);
       if (last && last.every(Boolean)) sh.chain(BODY, last.concat([last[0]]).map(q => [q[0], q[1], q[2] + .1]), last.map(() => o.shirt ? RC + .15 : .7).concat([o.shirt ? RC + .15 : .7]));   // 襯衫的滾邊要比加粗的布再粗一點才看得到
-      if (first && !o.shirt) { const nk = first.filter(q => q && Math.abs(q[0]) < 4.5); if (nk.length > 1) sh.chain(BODY, nk, nk.map(() => .5)); }
+      if (first && !o.shirt) {   // V 領滾邊：兩邊 V 字的布邊（每一層開口旁第一個點）＋後領
+        for (const sd of [-1, 1]) {
+          const edge = [];
+          for (const row of G) {
+            if (!row) continue;
+            let best = null;
+            for (let k = 0; k < K; k++) { const q = row[k]; if (q && Math.sign(q[0]) === sd && Math.cos(2 * Math.PI * k / K) > .15 && row.some(r => !r) && (!best || Math.abs(q[0]) < Math.abs(best[0]))) best = q; }
+            if (best && best[2] > vBotT - .9) edge.push([best[0], best[1] + .25, best[2]]);
+          }
+          if (edge.length > 1) sh.chain(BODY, edge, edge.map(() => .55));
+        }
+        const back = first.filter((q, k) => q && Math.cos(2 * Math.PI * k / K) < -.1 && Math.abs(q[0]) < NECK_W + 1.6);
+        if (back.length > 1) sh.chain(BODY, back, back.map(() => .5));
+      }
       sh.cloth = 0;
     }
     function dress(sh, P, doll, tor) {
