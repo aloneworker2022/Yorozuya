@@ -1608,6 +1608,9 @@
       stare: { frames: 2, fps: .9 }, twirl: { frames: 3, fps: 2.4 },
       lie_phone: { frames: 2, fps: .5, canvas: 'wide' }, prone_kick: { frames: 4, fps: 3, canvas: 'wide' },
       sleep_curl: { frames: 2, fps: .35, canvas: 'wide' }, sit_curl: { frames: 2, fps: .45 },
+      // 書桌前（2026-11-01，content/room_doll.js；2026-11-21 搬來給房間黑影）
+      sit_work: { frames: 4, fps: 2.6 }, sit_scribble: { frames: 4, fps: 7 }, sit_think: { frames: 3, fps: .9, pingpong: true },
+      sit_phone: { frames: 2, fps: .8 }, sit_stretch: { frames: 3, fps: 1.2, pingpong: true, canvas: 'tall' },
       squat_down: { frames: 16, fps: 8 },   // 2026-11-01 站著→蹲下→站起來（使用者：站著然後蹲下這個動作）
       sit_m: { frames: 1, fps: 0, canvas: 'floor' }, mermaid: { frames: 1, fps: 0, canvas: 'floor' }, sit_v: { frames: 1, fps: 0, canvas: 'floor' },   // mermaid：2026-11-19 聊天黑影脫衣的美人魚坐姿；   // 2026-10-31：坐地 M 字腿／V 字腿（先靜態）
       ass_up: { frames: 1, fps: 0, canvas: 'floor' },   // 2026-11-03 趴跪翹臀（胸貼地、膝跪地、臀翹高；先靜態樣品）
@@ -2157,6 +2160,49 @@
         if (doll.skirt) sh.ell(BODY, [0, 4, P.hipz - 4], [9.2 * F(b, 'hip') * 1.05, 9, 7]);
         hair(sh, P, doll, tor);
         sh.xf = null; sh.floor = false;
+        return { sh, P };
+      }
+      if (pose === 'sit_work' || pose === 'sit_scribble' || pose === 'sit_think' || pose === 'sit_phone' || pose === 'sit_stretch') {
+        // 2026-11-21 從 content/room_doll.js 搬來（房間黑影改用這個人偶，使用者：套用新的模型做全部的動態）
+        // 坐在書桌前（椅面高 seat、桌面 desk＝seat＋7.5、桌子在她前面 +y）。腿都一樣，上半身看動作。
+        const seat = opts.seat ?? 35, hipz = seat + 3.8, hip_y = -5.5, desk = seat + 7.5;
+        const lean = { sit_work: .16, sit_scribble: f % 2 ? .27 : .23, sit_think: [.09, .11, .13][f] || .11,
+          sit_phone: f ? .1 : .08, sit_stretch: -.06 }[pose];
+        const tor = torso(sh, P, doll, hip_y, hipz - P.hipz, lean);
+        const kz = P.ankle + Ls, ky = hip_y + Math.sqrt(Math.max(1, Lt * Lt - (hipz - kz) ** 2));
+        for (const s of [-1, 1]) leg(sh, P, s, [s * hip_x, hip_y, hipz], [s * kx(), ky, kz], [s * 3.0, ky - 1.0, P.ankle], [s * .15, .98, 0]);
+        const sj = s => [s * 8.3 * F(b, 'sh'), tor.yl(tor.S) - 1, tor.S - SHJ_DZ];   // 肩膀跟著前傾
+        const elbowOut = waist_out + 2.8 * F(b, 'arm');
+        const headY = tor.yl(tor.zc) + .3, chinZ = P.chin + (hipz - P.hipz);
+        const pen = w => sh.ell(BODY, [w[0] + .5, w[1] - .8, w[2] + 2.2], [.45, .45, 2.4]);
+        if (pose === 'sit_work' || pose === 'sit_scribble') {
+          // 寫字：左手按著紙、右手握筆來回寫；振筆疾書＝更前傾、筆劃更大更快、手肘跟著甩
+          const big = pose === 'sit_scribble';
+          const stroke = big ? [[-1, -.6, 0], [3.2, .9, .2], [6.4, 0, 0], [2.6, -.9, 1.4]][f] : [[.4, 0, 0], [2.6, .8, .3], [4.8, 0, 0], [2.4, -.8, 1.2]][f];
+          arm(sh, P, sj(-1), [-(elbowOut + .6), hip_y + 9, tor.zW + 1], [-5.2, hip_y + 21, desk + 1]);
+          const w = [stroke[0], hip_y + 21.5 + stroke[1], desk + 1.4 + stroke[2]];
+          arm(sh, P, sj(1), [elbowOut + .6 + stroke[0] * (big ? .8 : .6), hip_y + 9 + (big ? stroke[1] : 0), tor.zW + 1 + stroke[2]], w);
+          pen(w);
+        } else if (pose === 'sit_think') {
+          // 撐著頭：右手肘撐在桌上、手掌托著下巴；左手拿筆在桌上點
+          arm(sh, P, sj(1), [elbowOut + .4, hip_y + 15, desk + 1.6], [5.2, headY + 2.4, chinZ + 1.8]);
+          const tap = [0, .9, .3][f] || 0;
+          const w = [-3.2, hip_y + 21, desk + 1.2 + tap];
+          arm(sh, P, sj(-1), [-(elbowOut + .4), hip_y + 9, tor.zW + 1.2], w);
+          pen(w);
+        } else if (pose === 'sit_phone') {
+          // 手肘撐在桌上、兩手拿手機在臉前面，拇指滑
+          const up = f ? .6 : 0, ph = [0, headY + 9.5, chinZ + 4 + up];
+          for (const s of [-1, 1]) arm(sh, P, sj(s), [s * (elbowOut - .2), hip_y + 15, desk + 1.6], [s * 2.8, ph[1] - 1.4, ph[2] - 3]);
+          phone(ph);
+        } else {
+          // 伸懶腰：兩手往上伸直、身體微微往後仰（pingpong：舉起→伸到底→放下一點）
+          const lift = [0, 2.6, 5][f] || 0;
+          for (const s of [-1, 1]) arm(sh, P, sj(s), [s * (9.4 * F(b, 'sh') + 1.2), tor.yl(tor.S) - 1.5, tor.S + 11 + lift * .5], [s * (4.6 + lift * .3), tor.yl(tor.S) - .5, tor.S + 25 + lift]);
+        }
+        if (doll.skirt) { const hip_r = 9.2 * F(b, 'hip'); sh.ell(BODY, [0, hip_y + 4.5, hipz + 2.4], [hip_r * 1.1, doll.skirt === 'short' ? 9.5 : 12.5, 3.6]); }
+        if (front) definition(sh, P, tor);
+        hair(sh, P, doll, tor);
         return { sh, P };
       }
       if (pose === 'sit_curl') {               // 蜷在椅子上滑手機：腳收上椅面、膝蓋往兩側
