@@ -968,7 +968,71 @@
     const torsoD = (sh, x, y, z, f) => { let best = 1e3; for (const p of torsoList(sh)) if (!f || f(p)) { const d = primDist(p, x, y, z); if (d < best) best = d; } return best; };
     // 2026-11-19 加速：離表面遠就跨大步（距離 ×0.7），近了才回到原本的小步
     const rayHit = (sh, o, dir, f, max = 30, st = .1) => { for (let t = 0; t < max;) { const q = [o[0] + dir[0] * t, o[1] + dir[1] * t, o[2] + dir[2] * t], d = torsoD(sh, q[0], q[1], q[2], f); if (d < 0) return q; t += Math.max(st, d * .7); } return null; };
+    // 2026-11-21 使用者：胸罩不太對，要像胸罩的形狀 → 重做（只有聊天黑影用這個檔）：
+    //   罩杯＝沿乳房表面鋪一層（從正面打射線貼在乳房上），上緣從胸前中間低處斜斜往外上拉到肩帶、下緣是包住乳房底的 U 形鋼圈；
+    //   中間雞心一小塊、下圍帶一圈、肩帶從罩杯外上角往上越過肩膀到背後。舊的做法留在 braOld。
     function bra(sh, P, doll, tor) {
+      const b = P.b, r = tor.cupr, cs = F(b, 'chest') ** .5, isB = p => p.bust && !p.nip;
+      const nips = sh.prims.filter(p => p.nip === 2 && p.k === 0 && !p.limb).map(p => [p.c[0] + p.off[0], p.c[1] + p.off[1], p.c[2] + p.off[2]]);
+      const front = (x, z, f) => rayHit(sh, [x, 30, z], [0, -1, 0], f, 50, .1);
+      const ST = .5;
+      let zLo = 1e3, zTop = -1e3;
+      const cupInfo = {};
+      for (const s of [-1, 1]) {
+        const n = nips.find(q => Math.sign(q[0]) === s) || [s * (3.2 + r * .3) * cs, tor.yl(tor.zB) + 3.3 * cs + r, tor.zB];
+        // 罩杯上緣：內側（雞心頂，靠中間、乳頭下面一點）→ 外側（肩帶接點，乳頭外上方）微微往下凹的斜線；過了外側往下收到側邊
+        const xi = s * .55, zi = n[2] + r * .05, xo = n[0] + s * r * .7, zo = n[2] + r * 1.0;
+        const lineZ = (x) => { const ax = Math.abs(x), ai = Math.abs(xi), ao = Math.abs(xo); if (ax <= ai) return zi; if (ax <= ao) { const u = (ax - ai) / (ao - ai); return zi + (zo - zi) * Math.pow(u, 1.15) + r * .25 * Math.sin(Math.PI * u); } return zo - (ax - ao) * 2.2; };   // 上緣往上微微鼓（包住乳頭上方）
+        cupInfo[s] = { n, xi, zi, xo, zo, lineZ };
+        // 罩杯本體：正面每 ST 一格往乳房打射線，打到乳房、而且在上緣線以下 → 貼一小塊布
+        sh.cloth = 1;
+        const bot = {};
+        for (let x = xi; Math.abs(x) <= Math.abs(n[0]) + r * 1.45; x += s * ST) {
+          for (let z = lineZ(x); z > n[2] - r * 2.6 - 3; z -= ST) {
+            const q = front(x, z, isB);
+            if (!q || torsoD(sh, q[0], q[1], q[2], isB) > .3) continue;
+            sh.ell(BODY, [x, q[1] + .32, z], [.58, .5, .58]);
+            const k = Math.round(x / ST); bot[k] = Math.min(bot[k] ?? 1e9, z); zLo = Math.min(zLo, z); zTop = Math.max(zTop, z);
+          }
+        }
+        cupInfo[s].bot = bot;
+      }
+      if (zLo > 1e2) { sh.cloth = 0; return; }
+      sh.cloth = 2;
+      for (const s of [-1, 1]) {
+        const C = cupInfo[s];
+        // 上緣滾邊：沿上緣線
+        const edge = [];
+        for (let x = C.xi; Math.abs(x) <= Math.abs(C.n[0]) + r * 1.45; x += s * ST * .7) { const z = C.lineZ(x); const q = front(x, z, isB); if (q) edge.push([x, q[1] + .5, z]); }
+        if (edge.length > 1) sh.chain(BODY, edge, edge.map(() => .36));
+        // 下緣（鋼圈）：每一欄罩杯最低那一點，連成 U 形
+        const ks = Object.keys(C.bot).map(Number).sort((a, b2) => (a - b2) * s), wire = [];
+        for (const k of ks) { const x = k * ST, z = C.bot[k]; const q = front(x, z + .1, isB); if (q) wire.push([x, q[1] + .45, z - .05]); }
+        if (wire.length > 1) sh.chain(BODY, wire, wire.map(() => .4));
+      }
+      // 雞心：兩個罩杯中間、下圍帶上面一小塊（貼在胸口）
+      const gTop = Math.min(cupInfo[-1].zi, cupInfo[1].zi), gBot = zLo + .3;
+      sh.cloth = 1;
+      for (let z = gTop; z >= gBot; z -= ST) for (let x = -.8; x <= .81; x += ST) {
+        const hw = .55 + (gTop - z) / Math.max(1, gTop - gBot) * .5; if (Math.abs(x) > hw) continue;
+        const q = front(x, z, null); if (q) sh.ell(BODY, [x, q[1] + .3, z], [.55, .45, .55]);
+      }
+      // 下圍帶（一整圈）
+      sh.cloth = 2;
+      const ringAt = (z, pad) => { const R = []; for (let a = 0; a <= 360; a += 10) { const t = a * Math.PI / 180, dir = [-Math.sin(t), -Math.cos(t), 0], yc = tor.yl(z) - 1, q = rayHit(sh, [-dir[0] * 20, yc - dir[1] * 20, z], dir); if (q) R.push([q[0] - dir[0] * pad, q[1] - dir[1] * pad, z]); } return R; };
+      const bz = zLo - .5; for (const dz of [0, .5, 1.0]) { const R = ringAt(bz + dz, .3); if (R.length > 2) sh.chain(BODY, R, R.map(() => .42)); }
+      // 肩帶：罩杯外上角 → 越過肩膀 → 背後下圍帶
+      for (const s of [-1, 1]) {
+        const C = cupInfo[s], x = C.xo, pts = [];
+        for (let z = C.zo - .3; z < tor.S; z += .8) { const q = rayHit(sh, [x, 25, z], [0, -1, 0]); if (q) pts.push([x, q[1] + .4, z]); }
+        const yt = tor.yl(tor.S) - 1, tq = rayHit(sh, [x, yt, tor.S + 2.5], [0, 0, -1]); if (tq) pts.push([x, yt, tq[2] + .3]);
+        for (let z = tor.S - .5; z > bz + .6; z -= .8) { const q = rayHit(sh, [x, -25, z], [0, 1, 0]); if (q) pts.push([x, q[1] - .4, z]); }
+        const bk = rayHit(sh, [x, -25, bz + .6], [0, 1, 0]); if (bk) pts.push([x, bk[1] - .3, bz + .6]);
+        if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .45));
+      }
+      sh.cloth = 0;
+    }
+    function braOld(sh, P, doll, tor) {
       const b = P.b, r = tor.cupr, cs = F(b, 'chest') ** .5, isB = p => p.bust && !p.nip;
       const nips = sh.prims.filter(p => p.nip === 2 && p.k === 0 && !p.limb).map(p => [p.c[0] + p.off[0], p.c[1] + p.off[1], p.c[2] + p.off[2]]);
       let zLo = 1e3, zTop = -1e3;
