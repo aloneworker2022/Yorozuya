@@ -405,7 +405,7 @@ function girlAngryNow(who) {
   if ((Number(who._angryUntil) || 0) > Date.now()) return true;
   try { const m = getMoodCarry(who); return !!(m && m.type === "angry" && (Number(m.level) || 0) >= 15); } catch { return false; }
 }
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl) } : null);
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now() } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
@@ -10122,6 +10122,8 @@ async function deliverUserTalk(text, opts = {}) {
       if (!naming && !petHandled) {
         turnMark = await judgeTurn(raw);
         applyMark(turnMark);
+        // 2026-11-21 使用者：開心時說話會笑（聊天黑影笑彎腰／摀嘴仰頭笑）——你這句被判成有趣、喜歡 → 她回這句時是開心的
+        if (girl && (turnMark === "有趣" || turnMark === "喜歡")) girl._happyUntil = Date.now() + 8000;
       }
       // 想念：重逢後第一句被接住 → 額外感情（一次）
       if (MISS_YOU_ON && girl && !missFresh) {

@@ -10,7 +10,7 @@
 (function () {
   'use strict';
   const DROOM_URL = new URL('../droom/room_doll_chest.js?v=10', (document.currentScript && document.currentScript.src) || location.href).href;
-  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13 }, FPS = { breathe: 4, talk: 7 };
+  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
   const BEAT = {
@@ -25,10 +25,14 @@
   // 生氣說話（2026-11-21 使用者：生氣時說話會叉腰或雙手抱胸；叉腰身體抖一下、胸部晃一下；抱胸胸部在手臂上面）：
   //   進場那幾格播一次（叉腰：手到腰 4 格＋「哼」抖一下、乳房慢半拍晃 8 格；抱胸：手交叉到乳房下面 5 格），
   //   接著循環講話那 8 格；講完 1.2 秒手放下（進場的手部那幾格倒著播）
-  const ANGS = ['ang_akimbo', 'ang_cross'];
+  // 開心笑（2026-11-21 使用者）：笑彎腰（抱胸、彎腰低頭，笑得一抖一抖）、摀嘴仰頭笑（一手遮嘴、頭往後仰）：進場 4 格 → 笑的循環 6 格 → 放下
+  const ANGS = ['ang_akimbo', 'ang_cross', 'laugh_bend', 'laugh_back'];
+  const EMO_OF = { angry: ['ang_akimbo', 'ang_cross'], happy: ['laugh_bend', 'laugh_back'] };
   const ANG = {
     ang_akimbo: { enter: 12, loop: [12, 19], exit: [3, 2, 1, 0], ms: (i) => (i < 4 ? 75 : i === 4 ? 60 : i < 12 ? 75 : 150) },
     ang_cross: { enter: 5, loop: [5, 12], exit: [4, 3, 2, 1, 0], ms: (i) => (i < 5 ? 85 : 155) },
+    laugh_bend: { enter: 4, loop: [4, 9], exit: [3, 2, 1, 0], ms: (i) => (i < 4 ? 80 : 105) },
+    laugh_back: { enter: 4, loop: [4, 9], exit: [3, 2, 1, 0], ms: (i) => (i < 4 ? 80 : 105) },
   };
   const beatCum = {};
   /** 播了 ms 毫秒，該是第幾格（超過最後一格回 n）。 */
@@ -61,6 +65,15 @@
   /** 第 f 格的動作量（worker 裡也用，不能用外面的變數）。pose：breathe／talk／脫衣動畫 shirt／bra／panties；sit＝坐著（不比劃）。 */
   function motion(pose, f, n, sit, mode, tier) {
     const ph = 2 * Math.PI * f / n;
+    if (pose === 'laugh_bend' || pose === 'laugh_back') {
+      // 笑：bend＝上半身從腰往前彎（度，負＝往後仰）；jolt 一抖一抖（笑的時候肩膀一上一下）
+      const sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }, wa = sm(f / 3), L = f >= 4 ? f - 4 : -1;
+      const hop = L < 0 ? 0 : [.38, -.12, .3, -.1, .36, -.14][L];
+      if (pose === 'laugh_bend') return { ph: 0, br: .5 + (L >= 0 ? .3 * (L % 2) : 0), tilt: 3 * wa + (L >= 0 ? 2 * Math.sin(L * 2.1) : 0), nod: 14 * wa + (L >= 0 ? 4 * (L % 2) : 0), turn: 0, gest: 0,
+        ang: { kind: 'cross', w: wa }, bend: 24 * wa + (L >= 0 ? 3 * (L % 2) : 0), jolt: hop };
+      return { ph: 0, br: .5 + (L >= 0 ? .3 * (L % 2) : 0), tilt: 5 * wa + (L >= 0 ? 2 * Math.sin(L * 1.7) : 0), nod: -18 * wa - (L >= 0 ? 4 * (L % 2) : 0), turn: 6 * wa, gest: 0,
+        ang: { kind: 'mouth', w: wa }, bend: -6 * wa, jolt: hop };
+    }
     if (pose === 'ang_akimbo' || pose === 'ang_cross') {
       // 生氣說話：叉腰（f0–3 左手也叉到腰上、f4「哼」身體往上一抖、f5 落下，乳房慢半拍上下晃、越晃越小；f12–19 叉腰講話循環）
       //   抱胸（f0–4 兩手交叉到乳房下面、把乳房托起來壓在手臂上；f5–12 抱胸講話循環，頭轉開、下巴微抬）
@@ -414,7 +427,12 @@
       const big = BR[1] ? Math.max(.3, Math.min(1, (BR[1].r - 3.4) / 2.6)) : .5, w = m.ang.w;
       const A = { armL: armPts('armL'), armR: armPts('armR') };
       const hands = {}, poles = {};
-      if (m.ang.kind === 'akimbo') {
+      if (m.ang.kind === 'mouth') {   // 摀嘴笑：左手手背遮在嘴前（跟著頭仰）
+        const HP = sh.prims.filter(p => p.part === 'head' && !p.cloth && p.mat === 0), hc = HP.length ? mean(HP.map(W)) : [0, 2, S + 8];
+        const Jm = m.jolt || 0, mo = [-.4, (HP.length ? Math.max(...HP.map(p => W(p)[1] + p.br * .6)) : hc[1] + 4) + 1.4, hc[2] - 2.4];
+        const mq = headX ? app(headX, [mo[0], mo[1] - .7 * Jm, mo[2] + hl + 1.6 * Jm]) : mo;
+        if (A.armL) { hands.armL = lerp(A.armL.w0, mq, w); poles.armL = [-.25, .35, -1]; }   // 手肘往下垂、前臂從胸前斜上來（不要橫過臉）
+      } else if (m.ang.kind === 'akimbo') {
         if (A.armL && A.armR) { const r = A.armR.w0; hands.armL = lerp(A.armL.w0, [-r[0], r[1], r[2]], w); poles.armL = [-1, -.4, .15]; }
         SOFT = { [-1]: [0, 0, m.ang.bounce * (.5 + 1.3 * big)], [1]: [0, 0, m.ang.bounce * (.5 + 1.3 * big)] };   // 晃：根部不動、下半顆晃得最多
       } else if (BR[0] && BR[1]) {
@@ -582,6 +600,16 @@
       let e = [0, 0, 0];
       if (sr) { const t = Math.max(0, Math.min(1, (sr.root[2] - st.q[2]) / sr.L)), w = t * t * (3 - 2 * t); e = [sr.o[0] * w, sr.o[1] * w, sr.o[2] * w]; }
       st.q = [st.q[0] + sd * .3 * br + d[0] + e[0], st.q[1] + .45 * br + d[1] + .25 * k + e[1], st.q[2] + lift * .75 + d[2] + e[2]];
+    }
+    // 彎腰／往後仰（m.bend 度，正＝往前彎）：腰以上整個上半身（含手、頭、頭髮、衣服、乳房）繞腰轉；從腰往上 7 格內漸增，腿不動
+    if (m.bend) {
+      const piv = [0, 0, zW - 1], wOf = (z) => sm((z - (zW - 4)) / 7), T = (w) => H.about(H.rotX(-m.bend * w), piv);
+      for (const p of sh.prims) {
+        if (p.part === 'legs') continue;
+        const w = wOf(p.bc[2] + p.off[2]); if (w <= 0) continue;
+        const X = T(w); p.xf = p.xf ? H.compose(X, p.xf) : X;
+      }
+      for (const st of sh.areolaStamps || []) { const w = wOf(st.q[2]); if (w > 0) st.q = app(T(w), st.q); }
     }
   }
 
@@ -756,31 +784,37 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     try { return typeof window.RoomLookProvider === 'function' ? window.RoomLookProvider() : null; } catch { return null; }
   }
 
-  /** 換人／換身形 → 重算兩組動畫；第一格到了才顯示。 */
-  function prepare(s) {
-    if (!F) { loadDroom().then(sync).catch(e => console.warn('chat_shadow', e)); return false; }
-    const doll = F.lookToDoll(s.look || null, { outfit: s.outfit, undressStage: s.undressStage, belly: s.belly });
+  /** 身形＋衣著＋姿勢 → droom 人偶（聊天和 testword 測試台共用）。st：脫衣進度 0～3；undressing：脫衣對話（美人魚坐姿）；
+   *  mode：脫光後的姿勢（cover／fondle／touch），沒給就照關係（妻子以下 cover、妻子 wifePick）。 */
+  function dollOf(s, st, undressing, mode) {
+    const doll = F.lookToDoll(s.look || null, { outfit: s.outfit, undressStage: st, belly: s.belly });
     Object.assign(doll, shapeOf(s.look?.breast_shape));
     doll.areola = areolaOf(s.look?.areola);
     // 穿著（使用者：一開始是 droom 那套白色 T 恤＋胸罩＋丁字褲；穿胸罩乳房變挺）：跟脫衣進度 undress.stage 走——
     //   0 白色 T 恤（裡面穿胸罩）＋丁字褲、1 胸罩＋丁字褲、2 只剩丁字褲、3 全裸。不畫她衣櫃裡的衣服（裙子也不畫）。
-    // 脫衣對話中（使用者）：美人魚坐姿；脫衣進度釘在 pinStage，脫衣動畫播完才換到下一階
-    const undressing = pinStage != null;
-    const st = Math.max(0, Math.min(3, Number(undressing ? pinStage : s.undressStage) || 0));
     doll.skirt = '';
     if (undressing) doll._body = 'mermaid';
     // 一般聊天、脫光以後（使用者）：妻子以下害羞——一手遮胸（壓得胸部更挺更圓）、一手遮下體、側臉看旁邊；
     //   妻子以上主動——站著兩手托著乳房揉，或坐下來摸陰唇、抬頭（每次打開聊天隨機一種）
     if (!undressing) doll._tier = s.tier || (s.wife ? 'wife' : 'stranger');   // 被摸的反應照關係帶
     if (!undressing && st >= 3) {
-      if (!s.wife) doll._mode = 'cover';
-      else if (wifePick === 'touch') { doll._mode = 'touch'; doll._body = 'mermaid'; }
-      else doll._mode = 'fondle';
+      const md = mode || (!s.wife ? 'cover' : wifePick === 'touch' ? 'touch' : 'fondle');
+      if (md !== 'none') { doll._mode = md; if (md === 'touch') doll._body = 'mermaid'; }
     }
     if (st === 0) { doll.cloth = 'tee'; doll.underBra = true; }
     else if (st === 1) doll.cloth = 'bra';
     if (st <= 1) doll.braSupport = true;
     if (st <= 2) doll.pants = 'tie_thong';   // 綁帶丁字褲（使用者：要像內褲、脫的時候解開兩側的帶子）
+    return doll;
+  }
+
+  /** 換人／換身形 → 重算兩組動畫；第一格到了才顯示。 */
+  function prepare(s) {
+    if (!F) { loadDroom().then(sync).catch(e => console.warn('chat_shadow', e)); return false; }
+    // 脫衣對話中（使用者）：美人魚坐姿；脫衣進度釘在 pinStage，脫衣動畫播完才換到下一階
+    const undressing = pinStage != null;
+    const st = Math.max(0, Math.min(3, Number(undressing ? pinStage : s.undressStage) || 0));
+    const doll = dollOf(s, st, undressing, null);
     const key = JSON.stringify(doll);
     if (cur && cur.key === key) return isReady(cur);
     if (cur) cur.dead = true;
@@ -1102,19 +1136,28 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     });
   }
 
-  /** 她的字一個一個出來 → 說話動作；停下來 0.9 秒後回到呼吸。 */
+  // 生氣／開心也看她說的話（2026-11-21 使用者：話裡有「哼」「討厭」「生氣」「變態」這類字也算生氣）；「不生氣」「別生氣」不算
+  const ANGRY_RE = /哼|討厭|讨厌|(?<![不沒没別别])生氣|(?<![不沒没別别])生气|變態|变态|色狼|走開|滾開|閉嘴|氣死|可惡|混蛋|笨蛋/;
+  const HAPPY_RE = /哈哈|呵呵|嘻嘻|嘿嘿|噗哧|噗嗤|笑死|好好笑|開心|开心|太好了/;
+  let talkMood = null;   // 這句開口時 summon 給的情緒（angry／happy／null）
+  /** 她的字一個一個出來 → 說話動作；停下來 0.9 秒後回到呼吸。開口那一刻看 summon 的情緒；之後每出一個字看話裡有沒有生氣／笑的字。 */
   function talking() {
     const now = performance.now(), fresh = now > talkUntil;
     talkUntil = now + 900;
-    if (fresh) maybeAngry(now);   // 她開口那一刻看是不是在生氣
+    const who = (document.getElementById('portrait-name')?.textContent || '').trim();
+    if (!who || who === '你' || who === '旁白') return;
+    if (fresh) { const sp = spec(); talkMood = sp && sp.angry ? 'angry' : sp && sp.happy ? 'happy' : null; }
+    if (angPlay) return;
+    const text = document.getElementById('portrait-meta')?.textContent || '';
+    const kind = talkMood === 'angry' || ANGRY_RE.test(text) ? 'angry' : talkMood === 'happy' || HAPPY_RE.test(text) ? 'happy' : null;
+    if (kind) maybeEmote(now, kind);
   }
-  /** 她在生氣（summon 的 RoomLookProvider().angry）就用叉腰／抱胸講話；還沒算好就插隊先算，這次先照一般說話。 */
-  function maybeAngry(now) {
+  /** 生氣＝叉腰／抱胸，開心＝笑彎腰／摀嘴仰頭笑（同一種情緒 30 秒內用同一個）；還沒算好就插隊先算，這次照一般說話。 */
+  function maybeEmote(now, kind) {
     if (angPlay || !cur || !cur.sets.ang_akimbo) return;
-    const s = spec(); if (!s || !s.angry) return;
-    if (!angPick || now - angPick.at > 30000) angPick = { kind: ANGS[Math.random() < .5 ? 0 : 1], at: now };
+    if (!angPick || angPick.kind !== kind || now - angPick.at > 30000) { const L = EMO_OF[kind]; angPick = { kind, pose: L[Math.random() < .5 ? 0 : 1], at: now }; }
     angPick.at = now;
-    const k = angPick.kind;
+    const k = angPick.pose;
     if (!full(cur.sets[k], nOf(k))) { bump(cur, k); return; }
     angPlay = { kind: k, at: 0 }; play();
   }
@@ -1142,5 +1185,49 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
-  window.ChatShadow = { sync, undress, shapeOf, areolaOf, motion, deform, shade, ready: (k) => !!(cur && full(cur.sets[k], nOf(k))), P: () => cur && cur.P };
+  // ---------------------------------------------------------------- testword 測試台（2026-11-21 使用者：黑影人動作測試，選體型、參數、衣著、動作，按播放）
+  /** 這個動作怎麼播：[[第幾格, 停多久 ms], …]。 */
+  function playSeq(pose) {
+    const n = nOf(pose);
+    if (pose === 'breathe' || pose === 'talk') return Array.from({ length: n }, (_, i) => [i, 1000 / FPS[pose]]);
+    if (REACTS.includes(pose)) return REACT_SEQ.map((i, k) => [i, REACT_MS[k]]);
+    if (ANG[pose]) {
+      const A = ANG[pose], out = [];
+      for (let i = 0; i < A.enter; i++) out.push([i, A.ms(i)]);
+      for (let r = 0; r < 3; r++) for (let i = A.loop[0]; i <= A.loop[1]; i++) out.push([i, A.ms(i)]);
+      for (const i of A.exit) out.push([i, A.ms(i)]);
+      return out;
+    }
+    if (BEAT[pose]) return Array.from({ length: n }, (_, i) => [i, BEAT[pose](i / (n - 1))]);
+    return Array.from({ length: n }, (_, i) => [i, 150]);
+  }
+  /** spec：{look, undressStage, wife, tier, mode}；pose：動作。算好全部格子（有存過的直接拿）→ {frames, seq, doll}。 */
+  async function testRender(spec, pose, onProgress) {
+    await loadDroom();
+    const UND = { shirt: 0, bra: 1, panties: 2 };
+    let st = Math.max(0, Math.min(3, Number(spec.undressStage) || 0)), undressing = false, mode = spec.mode || null;
+    if (pose in UND) { st = UND[pose]; undressing = true; }
+    if (pose === 'peak') { st = 3; mode = 'touch'; }
+    const doll = dollOf(spec, st, undressing, mode), job = { key: JSON.stringify(doll) }, n = nOf(pose), frames = [];
+    let next = 0, done = 0;
+    const worker1 = async () => {
+      while (next < n) {
+        const f = next++, k = fkey(job, pose, f);
+        let img = await cacheGet(k);
+        if (!img) {
+          const r = await renderFrame(doll, pose, f);
+          if (r.err) throw new Error(r.err);
+          img = new ImageData(new Uint8ClampedArray(r.px), r.w, r.h);
+          void cachePut(k, img);
+        }
+        frames[f] = img;
+        if (onProgress) onProgress(++done, n);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.max(1, workers.length) }, worker1));
+    return { frames, seq: playSeq(pose), doll };
+  }
+
+  window.ChatShadow = { sync, undress, shapeOf, areolaOf, motion, deform, shade, ready: (k) => !!(cur && full(cur.sets[k], nOf(k))), P: () => cur && cur.P,
+    test: { render: testRender, poses: () => ['breathe', 'talk', ...REACTS, ...ANGS, ...ANIMS, 'peak'] } };
 })();
