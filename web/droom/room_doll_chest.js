@@ -562,7 +562,7 @@
         let y = null; for (let k = 0; k < 160; k++) { const yy = 14 - k * .1; if (dL(0, yy, z, -1) < 0 && dL(0, yy, z, 1) < 0) { y = yy; break; } }
         if (y !== null && bodyDist(sh, 0, y + .25, z) > -.35) pts.push([0, y + .3, z]);   // 乳溝是 V 形的谷，線要浮在谷底上面一點才看得到
       }
-      if (pts.length >= 3) { const c0 = sh.crease; sh.crease = 1; for (let i = 0; i + 1 < pts.length; i++) sh.cone(MARK, pts[i], pts[i + 1], .28, .28); sh.crease = c0; }
+      if (pts.length >= 3) { const c0 = sh.crease; sh.crease = 3; /* 2026-11-21：乳溝縫用乳房輪廓線的顏色（聊天黑影看得到；摺線色在黑影裡會被換成身體色） */ for (let i = 0; i + 1 < pts.length; i++) sh.cone(MARK, pts[i], pts[i + 1], .28, .28); sh.crease = c0; }
     }
     // 2026-11-16 試作：小罩杯的階梯（使用者）——A 平坦＝平的；A 饅頭＝微微腫起，跟 B 平坦差不多大；B 饅頭更明顯
     // 凸出量要扣掉「胸口在乳房那個位置本來就比正中間往後縮」的幾格，不然正側面看不到隆起
@@ -981,8 +981,8 @@
       for (const s of [-1, 1]) {
         const n = nips.find(q => Math.sign(q[0]) === s) || [s * (3.2 + r * .3) * cs, tor.yl(tor.zB) + 3.3 * cs + r, tor.zB];
         // 罩杯上緣：內側（雞心頂，靠中間、乳頭下面一點）→ 外側（肩帶接點，乳頭外上方）微微往下凹的斜線；過了外側往下收到側邊
-        const xi = s * .55, zi = n[2] + r * .05, xo = n[0] + s * r * .7, zo = n[2] + r * 1.0;
-        const lineZ = (x) => { const ax = Math.abs(x), ai = Math.abs(xi), ao = Math.abs(xo); if (ax <= ai) return zi; if (ax <= ao) { const u = (ax - ai) / (ao - ai); return zi + (zo - zi) * Math.pow(u, 1.15) + r * .25 * Math.sin(Math.PI * u); } return zo - (ax - ao) * 2.2; };   // 上緣往上微微鼓（包住乳頭上方）
+        const xi = s * .55, zi = n[2] - r * .3, xo = n[0] + s * r * .7, zo = n[2] + r * .65;   // 2026-11-21 使用者：包少一點（半罩杯：剛好蓋過乳頭）
+        const lineZ = (x) => { const ax = Math.abs(x), ai = Math.abs(xi), ao = Math.abs(xo); if (ax <= ai) return zi; if (ax <= ao) { const u = (ax - ai) / (ao - ai); return zi + (zo - zi) * Math.pow(u, 1.15) + r * .2 * Math.sin(Math.PI * u); } return zo - (ax - ao) * 2.2; };   // 上緣往上微微鼓（包住乳頭上方）
         cupInfo[s] = { n, xi, zi, xo, zo, lineZ };
         // 罩杯本體：正面每 ST 一格往乳房打射線，打到乳房、而且在上緣線以下 → 貼一小塊布
         sh.cloth = 1;
@@ -1009,6 +1009,25 @@
         const ks = Object.keys(C.bot).map(Number).sort((a, b2) => (a - b2) * s), wire = [];
         for (const k of ks) { const x = k * ST, z = C.bot[k]; const q = front(x, z + .1, isB); if (q) wire.push([x, q[1] + .45, z - .05]); }
         if (wire.length > 1) sh.chain(BODY, wire, wire.map(() => .4));
+      }
+      // 2026-11-21 使用者：胸罩集中托高 → 乳溝超明顯、上胸線條明顯：乳房往中間擠由 doll.gap＝'close' 做（聊天黑影穿胸罩時設），
+      //   乳溝縫（bustCleave）改用乳房輪廓線的顏色、上乳輪廓線在 chat_shadow.js 加粗
+      //   另外補畫：從雞心往上的乳溝線（罩杯越大越長）＋從乳溝頂往外上彎到乳房頂的內側上乳弧（跟外側的輪廓線接起來）；零件標 braLine，脫胸罩時跟著不見
+      {
+        const c0 = sh.crease, k0 = sh.cloth, i0 = sh.prims.length; sh.crease = 3; sh.cloth = 0;
+        const big = Math.max(0, Math.min(1, (r - 3.2) / 3));
+        if (big > .05) {
+          const zc0 = Math.min(cupInfo[-1].zi, cupInfo[1].zi) + .3, zc1 = zc0 + r * (.35 + .55 * big);
+          const cl = []; for (let z = zc0; z <= zc1 + .01; z += .4) cl.push([0, z]);
+          marks(sh, cl, .3, .13 + .07 * big);
+          for (const s of [-1, 1]) {
+            const C = cupInfo[s], A = [s * .1, zc1], B = [C.n[0] * .7, C.n[2] + r * (.85 + .15 * big)], Q = [s * .3, zc1 + (B[1] - zc1) * .85], arc = [];
+            for (let t = 0; t <= 1.001; t += .1) { const u = 1 - t; arc.push([u * u * A[0] + 2 * u * t * Q[0] + t * t * B[0], u * u * A[1] + 2 * u * t * Q[1] + t * t * B[1]]); }
+            marks(sh, arc.filter(q => frontSurfaceY(sh, q[0], q[1]) !== null), .3, .12 + .06 * big);
+          }
+        }
+        for (let i = i0; i < sh.prims.length; i++) sh.prims[i].braLine = 1;
+        sh.crease = c0; sh.cloth = k0;
       }
       // 雞心：兩個罩杯中間、下圍帶上面一小塊（貼在胸口）
       const gTop = Math.min(cupInfo[-1].zi, cupInfo[1].zi), gBot = zLo + .3;
@@ -2766,7 +2785,7 @@
               hit[idx] = 1; tt[idx] = t;
               let mm = dist[1] < dist[0] + .15 ? 2 : 1;
               if (dist[2] < .05 && dist[1] > .05) mm = 3;
-              mat[idx] = mm; bust[idx] = mm === 1 ? bb : mm === 3 && ck ? (ck === 2 ? 98 : 99) : 0; limb[idx] = mm === 1 ? lf : 0;
+              mat[idx] = mm; bust[idx] = mm === 1 ? bb : mm === 3 && ck ? (ck === 2 ? 98 : ck === 3 ? 97 : 99) : 0; limb[idx] = mm === 1 ? lf : 0;
               sockL[idx] = mm === 1 && sk > .12 ? (sk > .6 ? 3 : sk > .35 ? 2 : 1) : 0;
               break;
             }
@@ -2820,7 +2839,7 @@
         if (isHair) {
           const upHair = y > 0 && m[i - width] && mat[i - width] === 2;
           set(i, !upHair && y < sheenRow ? HAIR_HI_RGB : HAIR_RGB, HAIR_A);
-        } else if (isMark) set(i, bust[i] === 98 ? FAINT_RGB : bust[i] === 99 ? CREASE_RGB : MARK_RGB, BODY_A);
+        } else if (isMark) set(i, bust[i] === 98 ? FAINT_RGB : bust[i] === 97 ? BUST_RGB : bust[i] === 99 ? CREASE_RGB : MARK_RGB, BODY_A);   // 97：乳房線條（胸罩托出來的乳溝、上乳弧線；2026-11-21），跟乳房輪廓線同色
         else {
           const di = hit[i] ? tt[i] : -1e9;
           let near = false;
