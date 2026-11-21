@@ -337,7 +337,7 @@
       }
     }
     // 脫光後的動作（m.mode）：cover 一手遮胸、一手遮下體；fondle 兩手托著乳房揉；touch（坐著）右手摸陰唇
-    let modePlan = null, BX = null;   // BX：乳房（連同蓋在上面的衣服）整顆再加的位移，左右各一（生氣說話：晃、托高）
+    let modePlan = null, SOFT = null;   // SOFT：乳房軟變形（左右各一個位移；根部不動、越往下推越多，連同蓋在上面的衣服）——生氣說話的晃、抱胸托高
     if (!anim && m.mode) {
       const W = (p) => [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
       const mean = (L) => { const c = [0, 0, 0]; for (const q of L) for (let i = 0; i < 3; i++) c[i] += q[i] / L.length; return c; };
@@ -416,7 +416,7 @@
       const hands = {}, poles = {};
       if (m.ang.kind === 'akimbo') {
         if (A.armL && A.armR) { const r = A.armR.w0; hands.armL = lerp(A.armL.w0, [-r[0], r[1], r[2]], w); poles.armL = [-1, -.4, .15]; }
-        BX = { [-1]: [0, 0, m.ang.bounce * (.5 + 1.3 * big)], [1]: [0, 0, m.ang.bounce * (.5 + 1.3 * big)] };
+        SOFT = { [-1]: [0, 0, m.ang.bounce * (.5 + 1.3 * big)], [1]: [0, 0, m.ang.bounce * (.5 + 1.3 * big)] };   // 晃：根部不動、下半顆晃得最多
       } else if (BR[0] && BR[1]) {
         // 2026-11-21 使用者：大於 C 的抱胸不是把胸壓扁，是手臂把胸撐起來、胸部放在手臂上——
         //   前臂在乳房（托高之後的）下緣下面、貼著身體（不擋在乳房前面），乳房整顆往上托、形狀不壓扁；C 以下只是手交叉在胸下
@@ -437,7 +437,7 @@
         const torsoY = (x, z) => { for (let y = 22; y > -10; y -= .25) { for (const p of torsoP) if (H.primDist(p, x, y, z) < 0) return y; } return 4; };
         if (A.armL) { hands.armL = lerp(A.armL.w0, [BR[1].c[0] * .95 + 1.2, torsoY(BR[1].c[0], zA) + ARM + .2, zA], w); poles.armL = [-1, -.1, -.55]; }
         if (A.armR) { hands.armR = lerp(A.armR.w0, [BR[0].c[0] * .95 - 1.2, torsoY(BR[0].c[0], zA - .6) + ARM + 1.3, zA - .6], w); poles.armR = [1, -.1, -.55]; }   // 另一隻在外面、低一點（看得出交叉）
-        BX = { [-1]: [0, .25 * lift, lift], [1]: [0, .25 * lift, lift] };
+        SOFT = { [-1]: [0, .25 * lift, lift], [1]: [0, .25 * lift, lift] };   // 托：下緣被手臂往上推、肉往上往前擠，根部不動（使用者：乳房很柔軟，根部不會動）
       }
       modePlan = { hands, poles, push: { [-1]: [0, 0, 0], [1]: [0, 0, 0] }, round: { [-1]: 0, [1]: 0 }, handDir: {} };
     }
@@ -523,7 +523,7 @@
         goneMove = () => [dir[0] * 16 * k, dir[1] * 16 * k, dir[2] * 16 * k];
       }
     }
-    const acts = new Map();
+    const acts = new Map(), overBreast = new Map();
     for (const p of sh.prims) {
       let a;
       const q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
@@ -545,11 +545,8 @@
         for (const b of body) { const lb = Math.hypot(q[0] - b.bc[0] - b.off[0], q[1] - b.bc[1] - b.off[1], q[2] - b.bc[2] - b.off[2]) - b.br; if (lb >= bd) continue; const d = H.primDist(b, q[0], q[1], q[2]); if (d < bd) { bd = d; best = b; } }
         const X = best && armX[best.part];
         a = !best ? null : X && best === X.upper ? armAct(best.part, true) : (best.part === 'armL' || best.part === 'armR') ? field(q).concat([null]) : act(best, q);
-        if (BX && a && best && best.part === 'breast') { const e = BX[Math.sign(best.bc[0] + best.off[0]) || 1]; a = [a[0] + e[0], a[1] + e[1], a[2] + e[2], a[3]]; }   // 蓋在乳房上的衣服跟著乳房晃／托高
-      } else {
-        a = act(p, q);
-        if (BX && a && p.part === 'breast') { const e = BX[Math.sign(q[0]) || 1]; a = [a[0] + e[0], a[1] + e[1], a[2] + e[2], a[3]]; }
-      }
+        if (SOFT && best && best.part === 'breast') overBreast.set(p, Math.sign(best.bc[0] + best.off[0]) || 1);   // 蓋在乳房上的衣服跟著乳房一起軟變形
+      } else a = act(p, q);
       if (a) acts.set(p, a);
     }
     if (modePlan) for (const p of sh.prims) {   // 被手壓著／托著的乳房：往上往中間擠、更挺更圓（乳房零件和乳暈一起動）
@@ -562,9 +559,28 @@
       p.off = [p.off[0] + a[0], p.off[1] + a[1], p.off[2] + a[2]];
       if (a[3]) p.xf = p.xf ? H.compose(a[3], p.xf) : a[3];
     }
+    // 乳房軟變形（同 droom 揉乳房的 kw：零件的每一點照「從根部往下多遠」推，根部 0、下緣全推；在 primDist 裡反推回去算距離）
+    const softRoot = {};
+    if (SOFT) for (const sd of [-1, 1]) {
+      const L = sh.prims.filter(p => p.part === 'breast' && !p.cloth && !p.xf && (Math.sign(p.bc[0] + p.off[0]) || 1) === sd);
+      if (!L.length) continue;
+      let top = -1e9, bot = 1e9, cx = 0, cy = 0;
+      for (const p of L) {
+        const z = p.bc[2] + p.off[2], h = p.k === 0 && p.r ? p.r[2] : p.br * .6;
+        top = Math.max(top, z + h); bot = Math.min(bot, z - h); cx += (p.bc[0] + p.off[0]) / L.length; cy += (p.bc[1] + p.off[1]) / L.length;
+      }
+      const o = SOFT[sd], g = Math.hypot(o[0], o[1], o[2]);
+      if (top - bot < 1 || g < .01) continue;
+      softRoot[sd] = { root: [cx, cy, top], L: top - bot, o };
+      const put = (p) => { p.kw = { root: [cx - p.off[0], cy - p.off[1], top - p.off[2]], f: [0, 0, -1], L: top - bot, o }; p.br += g; };
+      for (const p of L) put(p);
+      for (const [p, s2] of overBreast) if (s2 === sd && !p.xf) put(p);
+    }
     for (const st of sh.areolaStamps || []) {
       const sd = Math.sign(st.q[0]) || 1, d = modePlan ? modePlan.push[sd] : [0, 0, 0], k = modePlan ? modePlan.round[sd] : 0;
-      const e = BX ? BX[sd] : [0, 0, 0];
+      const sr = softRoot[sd];   // 乳暈印子：照同一個軟變形往前推（kw 是反推，這裡正推）
+      let e = [0, 0, 0];
+      if (sr) { const t = Math.max(0, Math.min(1, (sr.root[2] - st.q[2]) / sr.L)), w = t * t * (3 - 2 * t); e = [sr.o[0] * w, sr.o[1] * w, sr.o[2] * w]; }
       st.q = [st.q[0] + sd * .3 * br + d[0] + e[0], st.q[1] + .45 * br + d[1] + .25 * k + e[1], st.q[2] + lift * .75 + d[2] + e[2]];
     }
   }
