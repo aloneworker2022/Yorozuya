@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=17', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=18', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
@@ -66,6 +66,7 @@
   //   top：tee T 恤／crop 短版／over 寬鬆 oversize／cami 細肩帶／long 長袖／shirt 襯衫；bottom：short 短裙／long 長裙／pencil 窄裙／pleat 百褶裙／pants 長褲／shorts 短褲；dress：洋裝（上衣到腰接裙子）。
   //   情趣裝、睡衣的特殊件（絲襪、吊襪帶、馬甲、睡袍、圍裙、旗袍、薄紗）還沒做，先用最接近的。認不出來＝白 T。
   const T = (top, bottom, dress) => ({ top, bottom: bottom || null, dress: !!dress });
+  const X = (o) => ({ bottom: null, dress: false, ...o, dress: !!o.dress, noBra: o.noBra instanceof RegExp ? 'test' : !!o.noBra, noPants: o.noPants instanceof RegExp ? 'test' : !!o.noPants, _re: o });
   const WEAR_OF = [
     [/白色 ?T ?恤配胸罩/, T('tee')],
     [/簡約日系/, T('tee', 'long')], [/甜美洋裝/, T('tee', 'short', 1)], [/街頭 ?oversize/i, T('over', 'shorts')], [/知性 ?OL|成熟知性套裝/i, T('shirt', 'pencil')],
@@ -76,7 +77,11 @@
     // 睡衣
     [/睡衣套裝|格紋睡衣/, T('long', 'pants')], [/男友襯衫/, T('shirt')], [/吊帶短褲睡衣/, T('cami', 'shorts')], [/睡裙/, T('long', 'long', 1)], [/背心配睡褲/, T('crop', 'pants')],
     // 情趣裝（特殊件還沒做）
-    [/胸罩配吊襪帶|只遮重點/, null], [/情趣連身衣|束腰|馬甲/, T('cami')], [/白襯衫/, T('shirt')], [/睡袍/, T('shirt')], [/圍裙/, T('cami')], [/濕身白 ?T/, T('tee')], [/旗袍/, T('cami', 'pencil', 1)],
+    // 情趣裝（第二階段：絲襪、吊襪帶、馬甲、睡袍、圍裙、旗袍、薄紗）；noBra／noPants＝真空（不穿胸罩／內褲）
+    [/胸罩配吊襪帶/, X({ top: null, extras: ['garter', 'stockings'] })], [/情趣連身衣/, X({ top: 'teddy', noBra: 1 })], [/半透明白襯衫|不扣鈕/, X({ top: 'openShirt', fab: 7, noBra: 1 })],
+    [/束腰/, X({ top: 'corset', noBra: 1 })], [/睡袍/, X({ top: 'robe', noBra: /真空/, noPants: /真空/ })], [/圍裙/, X({ top: null, extras: ['apron', 'collar', 'ears'], noBra: 1 })],
+    [/濕身白 ?T/, X({ top: 'tee', fab: 7, noBra: 1 })], [/馬甲/, X({ top: 'corsetFull', extras: ['stockings', 'garter'], noBra: 1 })], [/旗袍/, X({ top: 'qipao', bottom: 'qipao', dress: 1 })],
+    [/薄紗|只遮重點/, X({ top: 'cami', bottom: 'long', dress: 1, fab: 7, botFab: 7 })],
     // 自己取的名字：關鍵字
     [/洋裝|連身裙/, T('tee', 'short', 1)], [/長裙/, T('tee', 'long')], [/百褶/, T('shirt', 'pleat')], [/窄裙|鉛筆裙|套裝/, T('shirt', 'pencil')], [/短裙|裙/, T('tee', 'short')],
     [/短褲|熱褲/, T('tee', 'shorts')], [/褲/, T('tee', 'pants')], [/襯衫/, T('shirt')], [/細肩帶|吊帶|背心/, T('cami')], [/帽 ?T|衛衣|外套|oversize/i, T('over')], [/長袖/, T('long')],
@@ -85,7 +90,13 @@
   function wearOf(text) {
     const t = String(text || '');
     if (!t) return undefined;
-    for (const [re, w] of WEAR_OF) if (re.test(t)) { if (!w) return null; const top = w.top, bot = w.bottom; return { top, bottom: bot, dress: w.dress }; }
+    for (const [re, w] of WEAR_OF) if (re.test(t)) {
+      if (!w) return null;
+      const o = { top: w.top, bottom: w.bottom, dress: w.dress };
+      for (const k of ['fab', 'botFab', 'extras']) if (w[k] != null) o[k] = w[k];
+      for (const k of ['noBra', 'noPants']) if (w[k]) o[k] = w[k] === 'test' ? w._re[k].test(t) : true;   // 正規式：文字裡有才算（例：睡袍「真空」）
+      return o;
+    }
     return undefined;
   }
 
@@ -672,6 +683,7 @@
     if ((r === 250 && g === 250 && b === 252) || (r === 214 && g === 216 && b === 228) || (r === 0 && g === 255 && b === 255) || (r === 0 && g === 170 && b === 170) || (r === 255 && g === 128 && b === 0)) return 1;
     if ((r === 255 && g === 0 && b === 0) || (r === 0 && g === 255 && b === 0)) return 2;
     if (r === 0 && g === 0 && (b === 255 || b === 160)) return 3;   // 下身（裙子、褲子）的布：深一點的灰
+    if (r === 128 && g === 0 && b === 0) return 1;   // 絲襪
     return 0;
   }
   /** 衣服（使用者：灰色、微微透明，黑影模式）：身體那層上面，內衣、外衣各疊一層灰；看得到底下的身體輪廓，T 恤底下隱約看到胸罩。 */
@@ -680,6 +692,13 @@
     const GRAY = { 1: [168, 168, 180], 2: [124, 124, 138], 3: [132, 131, 146] }, K = outer ? { 1: 1, 2: 1, 3: 1 } : { 1: .72, 2: .82, 3: .72 }, OUT = { 1: [118, 116, 130, 200], 2: [96, 94, 110, 220], 3: [100, 98, 114, 210] };
     for (let i = 0; i < out.length; i += 4) {
       const c = clothAt(layer, i); if (!c) continue;
+      // 2026-11-21 第二階段的布（外衣那層，照標記色）：黑色情趣布（255,128,0）不透明黑；絲襪（128,0,0）半透明深色；薄紗／濕身（0,255,255／0,170,170）半透明白、看得到乳暈
+      if (outer) {
+        const r0 = layer[i], g0 = layer[i + 1], b0 = layer[i + 2];
+        if (r0 === 255 && g0 === 128 && b0 === 0) { out[i] = 26; out[i + 1] = 22; out[i + 2] = 32; out[i + 3] = 245; continue; }
+        if (r0 === 128 && g0 === 0 && b0 === 0) { if (out[i + 3]) { for (let j = 0; j < 3; j++) out[i + j] = out[i + j] * .4 + [28, 24, 36][j] * .6; out[i + 3] = 236; } else { out[i] = 40; out[i + 1] = 36; out[i + 2] = 52; out[i + 3] = 190; } continue; }
+        if (g0 === b0 && r0 === 0 && (g0 === 255 || g0 === 170)) { if (out[i + 3]) { for (let j = 0; j < 3; j++) out[i + j] = out[i + j] * .55 + [206, 206, 216][j] * .45; out[i + 3] = 230; } else { out[i] = 206; out[i + 1] = 206; out[i + 2] = 216; out[i + 3] = 110; } continue; }
+      }
       // 2026-11-21 使用者：胸罩不要半透明，做成黑色 → 內衣那層裡的胸罩（布 250／214、滾邊 255,0,0）不透明黑；丁字褲照舊
       if (!outer) {
         const r0 = layer[i], g0 = layer[i + 1], b0 = layer[i + 2];
@@ -728,10 +747,10 @@
         for (let y = 0; y < Ho; y++) for (let x = 0; x < Wo; x++) {
           const j = (y * Wo + x) * 4; if (clothAt(op, j)) continue;   // 那一層空著（什麼都沒畫到）的也算洞
           let l = 0, rr = 0, u2 = 0, dn = 0;
-          for (let t = 1; t <= R0 && !(l && rr && u2 && dn); t++) { if (!l && isC(x - t, y)) l = 1; if (!rr && isC(x + t, y)) rr = 1; if (!u2 && isC(x, y - t)) u2 = 1; if (!dn && isC(x, y + t)) dn = 1; }
-          if (l && rr && u2 && dn) fill.push(j);
+          for (let t = 1; t <= R0 && !(l && rr && u2 && dn); t++) { if (!l && isC(x - t, y)) l = (y * Wo + x - t) * 4 + 1; if (!rr && isC(x + t, y)) rr = 1; if (!u2 && isC(x, y - t)) u2 = 1; if (!dn && isC(x, y + t)) dn = 1; }
+          if (l && rr && u2 && dn) fill.push([j, l - 1]);   // 用左邊那塊布的顏色補（黑馬甲上的洞補黑的）
         }
-        for (const j of fill) { op[j] = 250; op[j + 1] = 250; op[j + 2] = 252; op[j + 3] = 255; } }
+        for (const [j, from] of fill) { op[j] = op[from]; op[j + 1] = op[from + 1]; op[j + 2] = op[from + 2]; op[j + 3] = 255; } }
       veil(px, o.pixels, true);
       // 外衣不透明，胸型靠 T 恤自己的形狀打光（光從上面來）：布面往下、往後斜（乳房下面垂下來那一片）暗一點，往上斜（上胸）亮一點。
       //   深度＝(y＋z)/32 → 往下一列：每往下 1 格人偶單位，布往前多少 s＝32·Δ深度·scale＋1（直立的面＝0）。先平均一下去掉雜訊。
@@ -886,10 +905,16 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       const md = mode || (!s.wife ? 'cover' : wifePick === 'touch' ? 'touch' : 'fondle');
       if (md !== 'none') { doll._mode = md; if (md === 'touch') doll._body = 'mermaid'; }
     }
-    if (st === 0) { const w = wearOf(s.outfit); if (w) { doll.wear = w; doll.underBra = true; } else if (w === null) doll.cloth = 'bra'; else { doll.cloth = 'tee'; doll.underBra = true; } }   // 2026-11-21 使用者：畫她衣櫃裡的衣服（對照表 WEAR_OF）
+    let noBra = false;
+    if (st === 0) {   // 2026-11-21 使用者：畫她衣櫃裡的衣服（對照表 WEAR_OF）
+      const w = wearOf(s.outfit);
+      if (w) { doll.wear = w; noBra = !!w.noBra; if (!noBra) doll.underBra = true; if (w.noPants) doll.pants = ''; }
+      else if (w === null) doll.cloth = 'bra';
+      else { doll.cloth = 'tee'; doll.underBra = true; }
+    }
     else if (st === 1) doll.cloth = 'bra';
-    if (st <= 1) { doll.braSupport = true; doll.gap = 'close'; doll.splay = 0; }   // splay 0：擠在一起時乳頭朝正前方（不然往外轉 20°，乳暈跑出罩杯外側＝穿模）   // 穿胸罩：托高＋往中間集中（使用者：胸罩集中托高，乳溝超明顯，尤其巨乳）
-    if (st <= 2) doll.pants = 'tie_thong';   // 綁帶丁字褲（使用者：要像內褲、脫的時候解開兩側的帶子）
+    if (st <= 1 && !noBra) { doll.braSupport = true; doll.gap = 'close'; doll.splay = 0; }   // splay 0：擠在一起時乳頭朝正前方（不然往外轉 20°，乳暈跑出罩杯外側＝穿模）   // 穿胸罩：托高＋往中間集中（使用者：胸罩集中托高，乳溝超明顯，尤其巨乳）
+    if (st <= 2 && !(st === 0 && doll.wear && doll.wear.noPants)) doll.pants = 'tie_thong';   // 綁帶丁字褲（使用者：要像內褲、脫的時候解開兩側的帶子）
     return doll;
   }
 
