@@ -409,7 +409,9 @@ function girlAngryNow(who) {
 function fingerMood(who) {
   const idx = STAGE_INDEX[who?.stage || "stranger"] ?? 0;
   const st = arousalStage(who?.bodyState?.arousal || 0);
-  const lvl = st === "climax" || inSpasm(who) ? 2 : st === "aroused" || st === "wantFill" ? 1 : 0;
+  // 2026-11-22 使用者：有感／非常有感／高潮要跟她的感覺對上——性奮之外，痙攣、失神（≥75）也算最高那段，失神 ≥50 至少有感
+  let stun = 0; try { ensureStunFields(who); stun = effectiveStun(who, "") || 0; } catch { stun = 0; }
+  const lvl = st === "climax" || inSpasm(who) || stun >= 75 ? 2 : st === "aroused" || st === "wantFill" || stun >= 50 ? 1 : 0;
   return { fgWelcome: idx >= (STAGE_INDEX.passionate ?? 5), fgLevel: lvl };
 }
 window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl) } : null);
@@ -5140,7 +5142,7 @@ function showActionFlash(url, alt, opts = {}) {
           img.classList.remove("flash-out");
           actionFlashTimer = 0;
           const again = heldInsert;
-          if (again && sheetOpen() && girl?.bodyState?.organs?.vagina?.stuffed === "fingers") {
+          if (again && !fingerHandOn && sheetOpen() && girl?.bodyState?.organs?.vagina?.stuffed === "fingers") {
             showActionFlash(again.url, again.alt, { hold: true });
           }
         };
@@ -5180,6 +5182,7 @@ function insertHoldUrl(who) {
 /** 對話打開、手指還在體內：把插入圖留在立繪上面。 */
 function restoreInsertView(who = girl) {
   if (!who || !sheetOpen() || who.bodyState?.organs?.vagina?.stuffed !== "fingers") return;
+  if (fingerHandOn) return;
   const hold = insertHoldUrl(who);
   if (!hold) return;
   showActionFlash(hold.url, hold.alt, { hold: true });
@@ -5192,7 +5195,7 @@ function showTeasePortrait(who, shotKey, url, alt) {
   who.portraits[shotKey] = url;
   notePackShown(who, url);
   if (girl && girl.id === who.id && sheetOpen()) {
-    showActionFlash(url, alt, { hold: INSERT_HOLD_SHOTS.has(shotKey) });
+    showActionFlash(url, alt, { hold: INSERT_HOLD_SHOTS.has(shotKey) && !fingerHandOn });   // 手伸進去的時候圖也只閃一秒（2026-11-22 使用者）
   }
 }
 
@@ -7019,9 +7022,25 @@ function syncTalkBoxVis() {
   const empty = !meta || !String(meta.textContent || "").trim();
   const flash = !!($("action-flash-img") && !$("action-flash-img").hidden);
   // 2026-11-21 使用者：摸調戲時對話框半透明、照樣顯示（局部圖移到對話框上面，不會疊在一起）→ 局部圖不再把對話框藏起來
-  sheet.classList.toggle("talk-hide", typing || empty);
+  // 2026-11-22 使用者：手伸進去以後對話框不要一直在（會擋住）——字全部出來以後大概一秒就收起來，下一句再出來
+  if (fingerHandOn) {
+    const txt = String(meta?.textContent || "");
+    if (txt !== fingerBoxText) { fingerBoxText = txt; fingerBoxHidden = false; }   // 下一句（或字還在一個一個出來）：先顯示
+    clearTimeout(fingerBoxTimer);
+    if (!typing && !empty && !fingerBoxHidden) fingerBoxTimer = setTimeout(() => { fingerBoxHidden = true; syncTalkBoxVis(); }, 1000);
+  }
+  sheet.classList.toggle("talk-hide", typing || empty || (fingerHandOn && fingerBoxHidden));
   sheet.classList.toggle("flash-on", flash);
 }
+var fingerHandOn = false, fingerBoxHidden = false, fingerBoxTimer = 0, fingerBoxText = "";   // var：syncTalkBoxVis 可能比這行早被叫到
+// chat_shadow.js 手伸進去／收回來時通知（detail.on）
+document.addEventListener("chat-shadow-finger", (ev) => {
+  fingerHandOn = !!ev.detail?.on;
+  fingerBoxHidden = false; fingerBoxText = String($("portrait-meta")?.textContent || "");
+  clearTimeout(fingerBoxTimer);
+  if (fingerHandOn && heldInsert) clearActionFlash();   // 插入圖也只閃一秒，不留在畫面上
+  syncTalkBoxVis();
+});
 (function watchTalkBoxVis() {
   if (typeof MutationObserver !== "function" || typeof document === "undefined") return;
   const hook = () => {

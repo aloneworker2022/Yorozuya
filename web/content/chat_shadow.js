@@ -1209,11 +1209,13 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       raf = requestAnimationFrame(tick);
       return;
     }
-    if (FG.st === 'in' && FG.pose && full(cur.sets[FG.pose], nOf(FG.pose))) {   // 手在褲子裡：她的反應一直循環（蓋過呼吸、說話、被摸）
+    if (FG.st === 'in' && FG.pose && full(cur.sets[FG.pose], nOf(FG.pose))) FG.shown = FG.pose;   // 新的一段算好了才換（沒好之前照舊播上一段，不要掉回呼吸）
+    const fgK = FG.st === 'in' && FG.shown && cur.sets[FG.shown] && full(cur.sets[FG.shown], nOf(FG.shown)) ? FG.shown : '';
+    if (fgK) {   // 手在褲子裡：她的反應一直循環（蓋過呼吸、說話、被摸）
       reactPlay = null; angPlay = null;
       FG.clock += dt * FG_FPS;
-      const i = Math.floor(FG.clock) % nOf(FG.pose);
-      if (canvas.dataset.f !== FG.pose + i) draw(cur.sets[FG.pose][i], FG.pose + i);
+      const i = Math.floor(FG.clock) % nOf(fgK);
+      if (canvas.dataset.f !== fgK + i) draw(cur.sets[fgK][i], fgK + i);
       raf = requestAnimationFrame(tick);
       return;
     }
@@ -1429,7 +1431,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const [w0, h0] = FG.box0, [ox, oy] = FG.O;
     z.style.position = 'absolute'; z.style.width = (w0 * scale) + 'px'; z.style.height = (h0 * scale) + 'px';
     // 她腿軟往下沉（反應的 drop）：鏡頭跟著往下，陰唇還是停在對話框上面
-    const fi = fgFrame(), dr = fi >= 0 ? (motion(FG.pose, fi, nOf(FG.pose)).fg || {}).drop || 0 : 0;
+    const fi = fgFrame(), dr = fi >= 0 ? (motion(FG.shown, fi, nOf(FG.shown)).fg || {}).drop || 0 : 0;
     const k = Math.min(canvas.offsetWidth / canvas.width, canvas.offsetHeight / canvas.height) || 1;
     z.style.left = (ox - ox * scale) + 'px'; z.style.top = (oy - oy * scale - dr * SCALE * k) + 'px';
   }
@@ -1446,7 +1448,9 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     return true;
   }
   function fingerReset() {
-    FG.st = 'idle'; FG.p = 0; FG.t = 0; FG.geo = null; FG.pose = ''; FG.mode = 'idle';
+    if (FG.wasIn) document.dispatchEvent(new CustomEvent('chat-shadow-finger', { detail: { on: false } }));   // 手收回來了：對話框、插入圖照舊
+    FG.wasIn = false;
+    FG.st = 'idle'; FG.p = 0; FG.t = 0; FG.geo = null; FG.pose = ''; FG.shown = ''; FG.mode = 'idle';
     fgApply(1); fgOpts(false);
     if (FG.hand) { FG.hand.hidden = true; FG.hand.getContext('2d').clearRect(0, 0, FG.hand.width, FG.hand.height); }
     if (FG.loop) cancelAnimationFrame(FG.loop); FG.loop = 0;
@@ -1482,7 +1486,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (id === 'pull_out') { F && F.act('pull_out'); FG.st = 'out'; FG.t = 1; fgOpts(false); return; }
     if (!F || !F.act(id)) return;
     FG.mode = id === 'labia' ? 'rub' : 'dig'; FG.roundAt = performance.now(); fgOpts(false);
-    if (cur && cur.sets.r_groin && !(FG.pose && cur.sets[FG.pose] && full(cur.sets[FG.pose], nOf(FG.pose)))) { reactPlay = { kind: 'r_groin', t0: 0, wait: performance.now() }; play(); }
+    if (cur && cur.sets.r_groin && !FG.shown) { reactPlay = { kind: 'r_groin', t0: 0, wait: performance.now() }; play(); }
   }
   function fgRun() { if (!FG.loop) { FG.last = 0; FG.loop = requestAnimationFrame(fgTick); } }
   function fgTick(now) {
@@ -1496,7 +1500,13 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (FG.st === 'approach') { FG.p = Math.min(1, FG.p + dt / FG_APPROACH); if (FG.p >= 1) FG.st = 'check'; }
     else if (FG.st === 'back') { FG.p = Math.max(0, FG.p - dt / FG_BACK); if (FG.p <= 0) { fingerReset(); return; } }
     else if (FG.st === 'check') {
-      if (F && F.can()) { FG.st = 'reach'; FG.t = 0; }
+      if (F && F.can()) {
+        FG.st = 'reach'; FG.t = 0; FG.wasIn = true;
+        document.dispatchEvent(new CustomEvent('chat-shadow-finger', { detail: { on: true } }));   // summon：對話框字出完一秒收起來、插入圖只閃一秒
+        // 三段反應都先算（現在這段最先）：她的感覺一變就能馬上換
+        const ty = fgPoseOf(sp).slice(3, 4), now0 = fgPoseOf(sp);
+        for (const k of ['fg_' + ty + '2', 'fg_' + ty + '1', 'fg_' + ty + '0', now0]) { ensureSet(cur, k); bump(cur, k); }
+      }
       else {   // 不能玩弄：她反抗（跟摸下體一樣的反應、罵你），鏡頭退回
         window.RoomTouch?.zone('groin');
         if (cur && cur.sets.r_groin) { if (!full(cur.sets.r_groin, nOf('r_groin'))) bump(cur, 'r_groin'); reactPlay = { kind: 'r_groin', t0: 0, wait: performance.now() }; play(); }
@@ -1516,7 +1526,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     FG.loop = requestAnimationFrame(fgTick);
   }
   /** 她現在畫的是反應的哪一格（手那一層要跟著她腿軟往下）。 */
-  function fgFrame() { return FG.st === 'in' && FG.pose && cur && full(cur.sets[FG.pose], nOf(FG.pose)) ? Math.floor(FG.clock) % nOf(FG.pose) : -1; }
+  function fgFrame() { return FG.st === 'in' && FG.shown && cur && cur.sets[FG.shown] && full(cur.sets[FG.shown], nOf(FG.shown)) ? Math.floor(FG.clock) % nOf(FG.shown) : -1; }
   const FG_GRIP = { r0: [.08, .2], r2: [.15], w0: [.18], w1: [.18] };   // 她抓玩家前臂的地方（跟 deform 一樣）：那裡她的手蓋在上面
   /** 玩家的手（像素風，比她的身體深一點的暖灰、深色描邊）。整條手臂沿一條路走：畫面右下（畫面外）→ 褲頭右上方 → 從褲頭往下伸進去 → 陰唇。
    *  過了褲頭的那一段藏在布裡（淡淡的鼓起來）；全裸＝指尖過了陰唇就看不到（進去了）。摸陰唇＝指尖在陰唇上上下摸；扣子宮＝整根伸到最裡面、一下一下往裡扣。 */
@@ -1526,7 +1536,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     H.style.left = canvas.offsetLeft + 'px'; H.style.top = canvas.offsetTop + 'px'; H.style.width = canvas.offsetWidth + 'px'; H.style.height = canvas.offsetHeight + 'px';
     const c2 = H.getContext('2d'); c2.clearRect(0, 0, H.width, H.height);
     H.hidden = !showHand; if (!showHand) return;
-    const fi = fgFrame(), mf = fi >= 0 ? motion(FG.pose, fi, nOf(FG.pose)) : null, drop = mf && mf.fg ? mf.fg.drop : 0;
+    const fi = fgFrame(), mf = fi >= 0 ? motion(FG.shown, fi, nOf(FG.shown)) : null, drop = mf && mf.fg ? mf.fg.drop : 0;
     const A = g.arm, nude = g.band == null, sh0 = (q) => [q[0], q[1] - drop];
     const E = sh0(A.E), M = sh0(A.M), L = sh0(A.L), A0 = A.A0, Lz = g.gz - drop;
     const Q = [A0, M, E, L], seg = [], cum = [0];
@@ -1554,7 +1564,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     disc(dTip - FL > dLip ? layers[1] : layers[0], [b0[0] + nrmv[0] * 1.6, b0[1] + nrmv[1] * 1.6], 1.6);
     // 她的手抓在前臂上：那裡挖掉，讓她的手看起來蓋在上面
     // 她的手抓在前臂上：抓的地方附近，她那一格是皮膚（手）的像素就讓她的手蓋在上面
-    const grips = ((fi >= 0 && FG_GRIP[FG.pose.slice(3)]) || []).map((u) => fgPx(...sh0(A.at(u)))), fr = fi >= 0 ? cur.sets[FG.pose][fi] : null, GR = 5.5 * SCALE;
+    const grips = ((fi >= 0 && FG_GRIP[FG.shown.slice(3)]) || []).map((u) => fgPx(...sh0(A.at(u)))), fr = fi >= 0 ? cur.sets[FG.shown][fi] : null, GR = 5.5 * SCALE;
     const herHand = (x, y) => { if (!fr || !grips.some(([gx, gy]) => (x - gx) ** 2 + (y - gy) ** 2 < GR * GR)) return false; const j = (y * fr.width + x) * 4; if (!fr.data[j + 3]) return false; return fr.data[j] + fr.data[j + 1] + fr.data[j + 2] < 330; };
     const Wd = H.width, Hd = H.height, out = c2.createImageData(Wd, Hd), od = out.data;
     const srcs = layers.map((c) => c.getImageData(0, 0, Wd, Hd).data);
