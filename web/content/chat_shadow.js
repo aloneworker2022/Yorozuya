@@ -1063,6 +1063,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       for (let f = 0; f < N; f++) todo.push(['talk', f]);
       if (cvOf(doll) === CV && !doll._mode) for (const a of ANGS) { job.sets[a] = []; for (let f = 0; f < NA_OF[a]; f++) todo.push([a, f]); }   // 生氣說話（站著、還沒脫光）
       if (doll._mode === 'touch') { job.sets.peak = []; for (let f = 0; f < NA_OF.peak; f++) todo.push(['peak', f]); }   // 忽然仰頭（偶爾播）
+      if (cvOf(doll) === CV && doll._mode !== 'touch') for (const c of ['col_d', 'col_s']) { job.sets[c] = []; for (let f = 0; f < NA_OF[c]; f++) todo.push([c, f]); }   // 噴水後癱坐（2026-11-22）：先在背景算好（算過的存起來，下次直接拿），放開時才坐得下去
     }
     job.todo = todo; job.doll = doll; job.running = 0;
     runJob(job);
@@ -1228,10 +1229,19 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     }
     if (COL.st !== 'none' && FG.st === 'idle') {   // 癱坐：坐下去（一次）→ 癱坐循環 → 時間到站起來（坐下去倒著播）；蓋過呼吸、說話、被摸
       reactPlay = null; angPlay = null;
-      const nd = nOf('col_d');
-      if (COL.st === 'wait' && full(cur.sets.col_d, nd) && full(cur.sets.col_s, nOf('col_s'))) { COL.st = 'down'; COL.t0 = t; }
+      // 坐下去的格子一格一格算好就一格一格播（不用等全部算好；手機上全部算完要十幾秒，那段時間她會一直站著）；癱坐循環還沒好就停在坐下的最後一格
+      const nd = nOf('col_d'), D = cur.sets.col_d || [], Sx = cur.sets.col_s || [];
       let k = '', i = 0;
-      if (COL.st === 'down') { i = Math.floor((t - COL.t0) / 1000 * COL_FPS); if (i >= COL_IMPACT && !COL.impactAt) COL.impactAt = t; if (i >= nd) { COL.st = 'sit'; COL.t0 = t; COL.until = t + COL_SIT; } else k = 'col_d'; }
+      if (COL.st === 'wait' && D[0]) { COL.st = 'down'; COL.t0 = t; COL.fi = 0; }
+      if (COL.st === 'down') {
+        const want = Math.floor((t - COL.t0) / 1000 * COL_FPS);
+        while (COL.fi < Math.min(want, nd - 1) && D[COL.fi + 1]) COL.fi++;
+        if (COL.fi < Math.min(want, nd - 1)) COL.t0 = t - COL.fi * 1000 / COL_FPS;   // 下一格還沒算好：停在這一格等
+        if (COL.fi >= COL_IMPACT && !COL.impactAt) COL.impactAt = t;   // 屁股著地：忍不住又噴
+        if (COL.fi >= nd - 1 && want >= nd) COL.st = 'hold';
+        k = 'col_d'; i = COL.fi;
+      }
+      if (COL.st === 'hold') { if (full(Sx, nOf('col_s'))) { COL.st = 'sit'; COL.t0 = t; COL.until = t + COL_SIT; } else { k = 'col_d'; i = nd - 1; } }
       if (COL.st === 'sit') { if (t > COL.until) { COL.st = 'up'; COL.t0 = t; } else { k = 'col_s'; i = Math.floor((t - COL.t0) / 1000 * 6) % nOf('col_s'); } }
       if (COL.st === 'up') { i = nd - 1 - Math.floor((t - COL.t0) / 1000 * COL_FPS); if (i < 0) { colReset(); mode = ''; } else k = 'col_d'; }
       if (k && cur.sets[k] && cur.sets[k][i]) { COL.disp = { k, i }; if (canvas.dataset.f !== k + i) draw(cur.sets[k][i], k + i); }
@@ -1479,7 +1489,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const chestY = wr.top + O[1], groinY = wr.top + Gl[1];
     FG.box0 = [FG.zoom.offsetWidth, FG.zoom.offsetHeight];
     FG.O = O; FG.S = Math.max(1.15, Math.min(5, (top - 10 - chestY) / Math.max(4, groinY - chestY)));   // 陰唇停在對話框上緣上面一點點
-    FG.st = 'approach'; FG.p = 0; FG.t = 0; FG.mode = 'idle'; FG.choice = null; FG.pose = ''; FG.squirtAt = 0; FG.squirted = false;
+    FG.st = 'approach'; FG.p = 0; FG.t = 0; FG.mode = 'idle'; FG.choice = null; FG.pose = ''; FG.squirtAt = 0; FG.squirted = false; FG.colQ = false;
     fgRun();
     return true;
   }
@@ -1605,7 +1615,11 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const dt = FG.last ? Math.min(100, now - FG.last) : 16; FG.last = now;
     const sp = (!fgTick.spAt || now - fgTick.spAt > 300) ? (fgTick.sp = spec(), fgTick.spAt = now, fgTick.sp) : fgTick.sp;
     const F = window.RoomTouch && window.RoomTouch.finger;
-    if (FG.st === 'reach' || FG.st === 'in') { const k = fgPoseOf(sp); if (k !== FG.pose || !cur.sets[k]) { FG.pose = k; ensureSet(cur, k); bump(cur, k); } }
+    if (FG.st === 'reach' || FG.st === 'in') {
+      const k = fgPoseOf(sp); if (k !== FG.pose || !cur.sets[k]) { FG.pose = k; ensureSet(cur, k); bump(cur, k); }
+      // 到了最高那段：癱坐排到最前面先算（每次按著只排一次；順序：現在這段 → 噴水痙攣 → 坐下去 → 癱坐），噴了以後放開才坐得下去
+      if (k.slice(-1) === '2' && !FG.colQ) { FG.colQ = true; for (const c of ['col_s', 'col_d', 'fg_' + k.charAt(3) + 'x', k]) { ensureSet(cur, c); bump(cur, c); } }
+    }
     if (FG.st === 'approach') { FG.p = Math.min(1, FG.p + dt / FG_APPROACH); if (FG.p >= 1) { FG.st = 'reach'; FG.t = 0; } }
     else if (FG.st === 'back') { FG.p = Math.max(0, FG.p - dt / FG_BACK); if (FG.p <= 0) { const sq = FG.squirted; FG.squirted = false; fingerReset(); if (sq) colStart(); return; } }   // 噴過：手收回去以後癱坐
     else if (FG.st === 'reach') { FG.t = Math.min(1, FG.t + dt / FG_REACH); if (FG.t >= 1) { FG.st = 'in'; FG.mode = 'idle'; fgSwipe(true); } }
@@ -1617,7 +1631,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
         else FG.mode = 'idle';
       } else if (!want && !busy && now - FG.roundAt >= FG_ROUND) FG.mode = 'idle';
       // 這一輪做完她到了最高那段 → 噴一次（不是一直噴）
-      if (FG.squirtCheck && now >= FG.squirtCheck && !busy) { FG.squirtCheck = 0; const s2 = spec(); if (s2 && Number(s2.fgLevel) >= 2) { FG.squirtAt = now; if (!FG.squirted) { FG.squirted = true; ensureSet(cur, 'col_d'); ensureSet(cur, 'col_s'); } } }   // 噴過：放開以後會癱坐（先算好）
+      if (FG.squirtCheck && now >= FG.squirtCheck && !busy) { FG.squirtCheck = 0; const s2 = spec(); if (s2 && Number(s2.fgLevel) >= 2) { FG.squirtAt = now; if (!FG.squirted) { FG.squirted = true; for (const c of ['col_s', 'col_d']) { ensureSet(cur, c); bump(cur, c); } } } }   // 噴過：放開以後會癱坐——坐下去的格子馬上排到最前面算
       if (!fgTick.uiAt || now - fgTick.uiAt > 250) { fgTick.uiAt = now; fgSwipe(true); }
     } else if (FG.st === 'out') { FG.t = Math.max(0, FG.t - dt / FG_OUT); if (FG.t <= 0) FG.st = 'back'; }
     const zp = FG.st === 'approach' || FG.st === 'back' ? fgEase(FG.p) : 1;
