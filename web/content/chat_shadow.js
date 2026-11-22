@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=22', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=23', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
@@ -41,6 +41,9 @@
     if (!beatCum[kind]) { let t = 0; beatCum[kind] = Array.from({ length: n }, (_, i) => (t += BEAT[kind](i / (n - 1)))); }
     const c = beatCum[kind]; for (let i = 0; i < n; i++) if (ms < c[i]) return i; return n;
   }
+  // 脫衣動畫認哪幾片：胸罩＝內衣那層的布 1／2，或比基尼上面；內褲＝內衣那層的其他，或比基尼下面（worker 裡也用）
+  function braPiece(p) { return !!p.cloth && ((p.under && (p.cloth === 1 || p.cloth === 2)) || p.bik === 'top'); }
+  function pantyPiece(p) { return !!p.cloth && ((p.under && p.cloth !== 1 && p.cloth !== 2) || p.bik === 'bot'); }
   const ANIMS = ['shirt', 'bra', 'panties'];   // 脫衣動畫：undress.stage 0→1 脫 T 恤、1→2 脫胸罩、2→3 脫內褲
   const nOf = (pose) => NA_OF[pose] || N;
   const SCALE = 2, CV = { w: 84, h: 134, ax: 42, ay: 131, tMax: 40, tMin: -45 };   // 手抬起來也在框內；腳底固定在 ay
@@ -322,7 +325,7 @@
         // 脫胸罩（使用者給的節奏）：兩手慢慢伸到背後（頭轉開、害羞）→ 在背後摸索解扣（頓一拍）→ 扣子開了、胸罩鬆下來 →
         //   左手橫過來按住胸部、右手抓住兩個罩杯中間 → 很快地抽出來，胸罩從抓的地方對折、兩邊自然往下垂成一條 →
         //   放手丟在旁邊地上（落地頓一拍）→ 右手收回，左手繼續遮著。
-        const G = sh.prims.filter(p => p.cloth && p.under && (p.cloth === 1 || p.cloth === 2));
+        const G = sh.prims.filter(braPiece);
         if (G.length) {
           const Q = G.map(W), qc = mean(Q), zBand = Math.min(...Q.map(q => q[2])), yBack = Math.min(...Q.map(q => q[1]));
           const yFront = Math.max(...Q.map(q => q[1])), zCup = mean(Q.filter(q => q[1] > yFront - 3))[2];
@@ -353,7 +356,7 @@
           } };
         }
       } else {
-        const G = sh.prims.filter(p => p.cloth && p.under && p.pk);
+        const G = sh.prims.filter(p => pantyPiece(p) && p.pk);
         if (G.length) {
           const by = (pk, sd) => G.filter(p => p.pk === pk && (sd == null || p.pside === sd)).map(W);
           const bow = { [-1]: mean(by('bow', -1).length ? by('bow', -1) : [[-8, 0, C + 8]]), [1]: mean(by('bow', 1).length ? by('bow', 1) : [[8, 0, C + 8]]) };
@@ -574,7 +577,7 @@
     };
     const body = sh.prims.filter(p => p.mat === 0 && !p.cloth && !p.carve);
     // 脫衣動畫：要移走的那件（T 恤＝外衣；胸罩＝內衣的布 1／2；內褲＝內衣的其他（蕾絲、褲頭））
-    const isGone = !anim ? null : anim.kind === 'shirt' ? (p) => p.cloth && !p.under : anim.kind === 'bra' ? (p) => p.cloth && p.under && (p.cloth === 1 || p.cloth === 2) : (p) => p.cloth && p.under && p.cloth !== 1 && p.cloth !== 2;
+    const isGone = !anim ? null : anim.kind === 'shirt' ? (p) => p.cloth && !p.under : anim.kind === 'bra' ? braPiece : pantyPiece;
     let goneMove = null;
     if (anim) {
       const u = anim.u, G = sh.prims.filter(isGone);
@@ -791,7 +794,7 @@
       new Function('globalThis', 'module', src)(box, undefined);   // 兩個人偶檔都叫 RoomDoll → 另外裝，不蓋掉房間用的
       F = box.RoomDoll;
       try {
-        const code = `const F=(${F.factorySource})();const motion=${motion};const deform=${deform};const shade=${shade};const clothAt=${clothAt};const veil=${veil};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
+        const code = `const F=(${F.factorySource})();const motion=${motion};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const clothAt=${clothAt};const veil=${veil};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
 onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},j.cv);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
         const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
         for (let i = 0; i < POOL; i++) {
@@ -818,7 +821,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
 
   // ---------------------------------------------------------------- 算好的格子存在手機裡（IndexedDB，PNG）
   //   鑰匙＝程式版本（動作／變形／畫法的原始碼雜湊＋人偶檔）＋身形＋第幾格；程式一改就自動作廢（開頁時清掉舊版本的）。
-  const CODE_HASH = (() => { const t = DROOM_URL + SCALE + String(motion) + String(deform) + String(drawFrame) + String(shade) + String(veil) + String(clothAt); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36); })();
+  const CODE_HASH = (() => { const t = DROOM_URL + SCALE + String(motion) + String(braPiece) + String(pantyPiece) + String(deform) + String(drawFrame) + String(shade) + String(veil) + String(clothAt); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36); })();
   let dbP = null;
   function db() {
     if (!dbP) dbP = new Promise((res) => {
@@ -908,7 +911,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     }
     let noBra = false;
     const w0 = wearOf(s.outfit), bikini = !!(w0 && w0.top === 'bikini');   // 2026-11-22 使用者：比基尼脫掉就是全裸（沒有胸罩、內褲那兩階）
-    if (bikini && st >= 1) { noBra = true; doll.pants = ''; return doll; }
+    if (bikini && st >= 1) { doll.pants = ''; if (st <= 2) doll.wear = { top: null, bottom: 'bikini', dress: false }; return doll; }   // 上面解掉了、下面還在（脫的動畫中間那一階）
     if (st === 0) {   // 2026-11-21 使用者：畫她衣櫃裡的衣服（對照表 WEAR_OF）
       const w = wearOf(s.outfit);
       if (w) { doll.wear = w; noBra = !!w.noBra; if (!noBra) doll.underBra = true; if (w.noPants) doll.pants = ''; if (bikini) doll.bikiniSupport = true; }   // 比基尼：托高成水球、不集中、外擴照舊
@@ -932,11 +935,11 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (cur && cur.key === key) return isReady(cur);
     if (cur) cur.dead = true;
     if (canvas) canvas.dataset.f = '';   // 新的一組：格名跟上一組一樣（breathe0…）也要重畫
-    const job = cur = { key, sets: { breathe: [], talk: [] }, dead: false, P: F.proportions ? F.proportions(doll) : null, cv: cvOf(doll), stage: st };
+    const job = cur = { key, sets: { breathe: [], talk: [] }, dead: false, P: F.proportions ? F.proportions(doll) : null, cv: cvOf(doll), stage: st, bikini: !!(doll.wear && (doll.wear.top === 'bikini' || doll.wear.bottom === 'bikini')) };
     const todo = [];
     if (undressing) {
       // 脫衣對話（使用者）：平常顯示立繪，黑影只在她答應脫的時候出來播動畫 → 只預載下一件的脫衣動畫
-      if (st < 3) { const a = ANIMS[st]; job.anim = a; job.sets[a] = []; for (let f = 0; f < nOf(a); f++) todo.push([a, f]); }
+      if (st < 3) { const a = animOf(doll, st); job.anim = a; job.sets[a] = []; for (let f = 0; f < nOf(a); f++) todo.push([a, f]); }
     } else {
       // 順序（使用者：摸她沒動作）：先第一格呼吸（人先出來）→ 被摸的反應（站著才摸得到）→ 其他呼吸 → 說話
       todo.push(['breathe', 0]);
@@ -1055,10 +1058,23 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   let reactPlay = null;   // 被摸的反應 {kind, t0}
   let angPlay = null, angPick = null;   // 生氣說話 {kind, phase, i, at}；angPick：這次生氣用叉腰還是抱胸（30 秒內同一種）
   let pinStage = null, animPlay = null;   // pinStage：脫衣對話中畫的是哪一階；animPlay：{kind, to, t0, wait}
+  /** 這一階要預載哪一段脫衣動畫：一般照 ANIMS；比基尼 0＝解上面（胸罩那段）、1～2＝解下面（內褲那段）。 */
+  function animOf(doll, st) {
+    const w = doll.wear;
+    if (w && w.top === 'bikini') return 'bra';
+    if (w && w.bottom === 'bikini') return 'panties';
+    return ANIMS[st];
+  }
+  function animDone(a) {
+    animPlay = null; pinStage = a.to; sync();
+    if (a.then != null) { animPlay = { kind: 'panties', to: a.then, then: null, t0: 0, wait: performance.now() }; play(); }
+  }
   /** test_room_summon.js 在她決定脫一件時叫（from→to）。動畫還沒算好就等一下（最多 25 秒），算不出來就直接換。 */
   function undress(from, to) {
     if (pinStage == null || !cur || from >= 3) { if (pinStage != null) { pinStage = to; sync(); } return; }
-    animPlay = { kind: ANIMS[from], to, t0: 0, wait: performance.now() };
+    // 2026-11-22 使用者：脫比基尼跟脫胸罩一樣（手伸到背後解開）→ 上面先（胸罩那段），再接下面（解開兩側的結，跟丁字褲一樣）
+    const bik = !!(cur.bikini && from === 0 && to >= 3);
+    animPlay = { kind: bik ? 'bra' : ANIMS[from], to: bik ? 2 : to, then: bik ? to : null, t0: 0, wait: performance.now() };
     play();   // 立繪顯示中也要跑：動畫算好就切到黑影播
   }
 
@@ -1071,11 +1087,11 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       const set = cur.sets[animPlay.kind];
       if (!animPlay.t0) {
         if (full(set, nOf(animPlay.kind))) { animPlay.t0 = t; draw(set[0], animPlay.kind + 0); sync(); }   // 算好了：從立繪切到黑影開始播
-        else if (t - animPlay.wait > 25000) { const to = animPlay.to; animPlay = null; pinStage = to; sync(); }   // 等太久（還沒算好）：不播，直接換
+        else if (t - animPlay.wait > 25000) { animDone(animPlay); }   // 等太久（還沒算好）：不播，直接換
       }
       if (animPlay && animPlay.t0) {
         const i = beatFrame(animPlay.kind, t - animPlay.t0);
-        if (i >= nOf(animPlay.kind)) { const to = animPlay.to; animPlay = null; pinStage = to; sync(); }   // 播完：黑影淡出回到立繪，開始預載下一件
+        if (i >= nOf(animPlay.kind)) animDone(animPlay);   // 播完：黑影淡出回到立繪，開始預載下一件（比基尼：接著播脫下面）
         else if (canvas.dataset.f !== animPlay.kind + i) draw(set[i], animPlay.kind + i);
       }
       raf = requestAnimationFrame(tick);

@@ -1321,7 +1321,8 @@
     }
     // 2026-11-22 使用者：情趣內衣——三角比基尼（小三角剛好擋住乳頭）＋三角褲（前後兩片三角、兩側綁帶）。黑色不透明（布 8）。
     //   上：見 bikiniTopG（橫帶在乳房下面、三角往上包到乳頭上方）；沒有托高、不集中（乳房照原本的形狀）。
-    function bikiniTopG(sh, P, doll, tor) {
+    function bikiniTopG(sh, P, doll, tor) { const i0 = sh.prims.length; try { return bikiniTopRaw(sh, P, doll, tor); } finally { for (let i = i0; i < sh.prims.length; i++) sh.prims[i].bik = 'top'; } }   // bik：脫比基尼的動畫認得出哪幾片
+    function bikiniTopRaw(sh, P, doll, tor) {
       // 2026-11-22 使用者更正穿法：橫的那條綁在乳房下面（肋骨上），三角布從那條往上包住乳房、尖端過乳頭。
       //   乳房小：看得到中間那段橫帶；乳房大：橫帶藏在乳房下面看不到，只看到兩片往上的三角。
       //   正面看：三角底邊＝乳房下緣（比帶子低的話，布從下緣往裡包到帶子）或帶子（小胸），往上收到乳頭上方的尖端。
@@ -1340,13 +1341,18 @@
         const n = nips.find(q => Math.sign(q[0] - X0) === s); if (!n) continue;
         const ar = arOf(s), dn = Math.abs(n[0] - X0);
         let bot = n[2]; for (let z = n[2]; z > n[2] - r * 3; z -= .2) { if (breastFront(n[0], z)) bot = z; else break; }   // 乳頭正下方，乳房看得到的最低點
-        const zb = Math.min(zu, bot - .1), need = ar * 1.05 + .2;
-        const hb = Math.max(need * 1.1, Math.min(r * .56, dn - 1.2));
-        const q = Math.min(.9, Math.pow(need / hb, 1 / EXP));   // 乳頭在三角的哪個高度（從尖端算）才夠寬
-        const za = Math.min(n[2] + r * 1.1, Math.max(n[2] + ar + .5, (n[2] - q * zb) / (1 - q)));
-        const xa = n[0] - s * hb * .12;   // 尖端微微往中間偏（繞頸的繩往脖子拉）
-        const half = (u) => hb * Math.pow(Math.max(0, u), EXP), cxAt = (u) => xa + (n[0] - xa) * u;
-        const inTri = (x, z) => { if (z < zb || z > za) return false; const u = (za - z) / (za - zb); return Math.abs(x - cxAt(u)) <= half(u); };
+        // 2026-11-22 使用者：長邊沒那麼長，剛好蓋到乳頭 → 尖端只到乳暈上緣上面一點；乳頭那一段用一個剛好包住乳暈的圓撐開（布撐在乳暈上）
+        const zb = Math.min(zu, bot - .1), cov = ar * 1.0 + .15;
+        const hb = Math.max(cov * 1.1, Math.min(r * .56, dn - 1.2));
+        const za = n[2] + cov * 1.3 + .2;
+        const xa = n[0];
+        // 外形＝尖端、剛好包住乳暈的圓、底邊兩角這幾點的凸包：兩邊是直的斜邊（切過乳暈的圓），不會在乳暈那裡鼓一包
+        const pts = [[0, za], [hb, zb], [-hb, zb]]; for (let a = 0; a < 360; a += 10) pts.push([cov * Math.cos(a * Math.PI / 180), n[2] + cov * Math.sin(a * Math.PI / 180)]);
+        const rightHull = (() => { const R = pts.filter(q => q[0] >= -1e-6).sort((a, b) => a[1] - b[1]), H = [];   // 右半邊的外緣（x 對 z 的上凸包）
+          for (const q of R) { while (H.length >= 2) { const [o, a] = [H[H.length - 2], H[H.length - 1]]; if ((a[1] - o[1]) * (q[0] - o[0]) - (a[0] - o[0]) * (q[1] - o[1]) >= 0) H.pop(); else break; } H.push(q); } return H; })();
+        const cxAt = () => n[0];
+        const half = (z) => { if (z < zb || z > za) return 0; for (let i = 0; i + 1 < rightHull.length; i++) { const [a, b] = [rightHull[i], rightHull[i + 1]]; if (z >= a[1] && z <= b[1]) return a[0] + (b[0] - a[0]) * (z - a[1]) / Math.max(1e-6, b[1] - a[1]); } return 0; };
+        const inTri = (x, z) => z >= zb && z <= za && Math.abs(x - cxAt(z)) <= half(z);
         // 布貼在看得到的乳房上；乳房下緣以下只有在橫帶上面（小胸：肋骨上那一小段）才貼——大胸的布順著乳房圓圓的下緣包進去，不是一刀切平
         const at = (x, z) => breastFront(x, z) || (z >= zu - .2 ? front(x, z, null) : null), low = {};
         for (let z = zb; z <= za + 1e-6; z += ST) for (let x = n[0] - hb - .2; x <= n[0] + hb + .2; x += ST) {
@@ -1356,9 +1362,9 @@
           const k = Math.round(x / ST); if (low[k] == null || z < low[k]) low[k] = z;
         }
         const edge = [], put = (x, z) => { const p = at(x, z); if (p) edge.push([x, p[1] + .42, z]); };   // 邊緣滾一圈（細）：兩斜邊＋順著下緣
-        for (let u = 0; u <= 1.001; u += .06) put(cxAt(u) - half(u), za - (za - zb) * u);
+        for (let z = za; z >= zb - 1e-6; z -= .35) put(cxAt(z) - half(z), z);
         for (const k of Object.keys(low).map(Number).sort((a, b) => a - b)) put(k * ST, low[k]);
-        for (let u = 1; u >= -.001; u -= .06) put(cxAt(u) + half(u), za - (za - zb) * u);
+        for (let z = zb; z <= za + 1e-6; z += .35) put(cxAt(z) + half(z), z);
         if (edge.length > 1) sh.chain(BODY, edge, edge.map(() => .2));
         const ap = breastFront(xa, za) || front(xa, za, null);
         T[s] = { n, za, xa, apexY: ap ? ap[1] : n[1] };
@@ -1382,29 +1388,36 @@
       const C = tor.C, zc = C - 1.2, zf = C + 6.2, zk = zf + .15;   // 胯下、前片上緣、兩側綁帶的高度
       const f = p => !p.limb && p.mat === 0 && p.part !== 'legs' && !p.bust;   // 不貼到垂到前面來的乳房
       const surf = (x, z, back) => { const q = rayHit(sh, [X0 + x, back ? -25 : 25, z], [0, back ? 1 : -1, 0], f, 50, .1); return q ? q[1] : null; };
-      const ST = .4;
+      const ST = .4, i00 = sh.prims.length;
+      // 零件標 pk（跟綁帶丁字褲一樣，脫的動畫照這個拉開兩側的結、抓前片抽出來）：front 前片／edge 滾邊／back 後片／str 細帶／bow 蝴蝶結；pside 哪一邊
+      const tag = (from, pk, side = 0) => { for (let i = from; i < sh.prims.length; i++) if (!sh.prims[i].pk) { sh.prims[i].pk = pk; sh.prims[i].pside = side; } };
       sh.cloth = 8;
       // 前片：上緣寬（到髖骨內側）往下收成窄窄的胯下（像三角褲：兩邊直直斜下來）；後片包住一半屁股
       const hwF = (z) => { const u = Math.max(0, Math.min(1, (z - zc) / (zf - zc))); return 1.3 + 5.2 * Math.pow(u, 1.25); };
       const hwB = (z) => { const u = Math.max(0, Math.min(1, (z - zc) / (zf - zc))); return 1.3 + 5.6 * Math.pow(u, .9); };
       for (const [back, hw] of [[false, hwF], [true, hwB]]) {
-        const sg = back ? -1 : 1;
+        const sg = back ? -1 : 1; let j = sh.prims.length;
         for (let z = zc; z <= zf + 1e-6; z += ST) { const h = hw(z); for (let x = -h; x <= h + 1e-6; x += ST) { const y = surf(x, z, back); if (y !== null) sh.ell(BODY, [X0 + x, y + sg * .3, z], [.5, .45, .5]); } }
+        tag(j, back ? 'back' : 'front'); j = sh.prims.length;
         for (const sd of [-1, 1]) { const L = []; for (let z = zc; z <= zf + 1e-6; z += .5) { const x = sd * hw(z), y = surf(x, z, back); if (y !== null) L.push([X0 + x, y + sg * .42, z]); } if (L.length > 1) sh.chain(BODY, L, L.map(() => .2)); }
         const top = []; for (let x = -hw(zf); x <= hw(zf) + 1e-6; x += .5) { const y = surf(x, zf, back); if (y !== null) top.push([X0 + x, y + sg * .42, zf]); } if (top.length > 1) sh.chain(BODY, top, top.map(() => .22));
+        tag(j, back ? 'back' : 'edge');
       }
       // 胯下：前後片在底下接起來（從正下方往上打）
-      { const pts = []; for (let y = 3; y >= -3; y -= .6) { const q = rayHit(sh, [X0, y, zc - 8], [0, 0, 1], f, 12, .1); if (q) pts.push([X0, y, q[2] - .25]); } if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .6)); }
+      { const pts = []; for (let y = 3; y >= -3; y -= .6) { const q = rayHit(sh, [X0, y, zc - 8], [0, 0, 1], f, 12, .1); if (q) pts.push([X0, y, q[2] - .25]); } if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .6)); tag(i00, 'back'); }
       // 兩側綁帶：前片上角 → 繞過髖部 → 後片上角；髖部一個小蝴蝶結、兩條帶尾
       for (const sd of [-1, 1]) {
-        const pts = [], fy = surf(sd * hwF(zf), zf, false), by = surf(sd * hwB(zf), zf, true);
+        let j = sh.prims.length; const pts = [], fy = surf(sd * hwF(zf), zf, false), by = surf(sd * hwB(zf), zf, true);
         if (fy !== null) pts.push([X0 + sd * hwF(zf), fy + .4, zf]);
         for (let a = 40; a <= 140.01; a += 10) { const th = a * Math.PI / 180, dx = sd * Math.sin(th), dy = Math.cos(th), yc = tor.yl(zk) - 1, q = rayHit(sh, [X0 + dx * 22, yc + dy * 22, zk], [-dx, -dy, 0], f, 40, .1); if (q) pts.push([q[0] + dx * .3, q[1] + dy * .3, zk]); }
         if (by !== null) pts.push([X0 + sd * hwB(zf), by - .4, zf]);
         if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .22));
+        tag(j, 'str', sd); j = sh.prims.length;
         const side = pts[Math.floor(pts.length / 2)];
         if (side) { const k = [side[0] + sd * .4, side[1] + .3, side[2]]; sh.ell(BODY, k, [.45, .45, .45]); for (const up of [1, -1]) sh.ell(BODY, [k[0] + sd * .35, k[1] + .3, k[2] + up * .7], [.4, .35, .65]); sh.cone(BODY, k, [k[0] + sd * .7, k[1] + .3, k[2] - 2.6], .18, .16); sh.cone(BODY, k, [k[0] + sd * .15, k[1] + .4, k[2] - 2.3], .18, .16); }
+        tag(j, 'bow', sd);
       }
+      for (let i = i00; i < sh.prims.length; i++) sh.prims[i].bik = 'bot';
       sh.cloth = 0;
     }
     function stockingsG(sh, P, doll, tor, hidBand = false) {   // 大腿襪：照腿本身的零件放大一圈（任何體型、姿勢都包得住）——膝蓋以下全部、大腿從膝蓋往上 55%；上緣一圈黑色蕾絲口
