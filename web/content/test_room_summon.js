@@ -10487,7 +10487,6 @@ function touchZone(zone) {
 // 2026-11-22 使用者：手指插入改成按住黑影的陰唇——鏡頭慢慢靠近，停住後判斷可不可以玩弄；可以＝玩家的手從畫面右下伸過來、
 //   從褲子上方腰部伸進去（不是從下面）→ 插進去。插入手指／扣陰道／揉子宮口的按鈕取消（抽出照舊是按鈕）。
 const FINGER_HOLD_ACTS = new Set(["finger_in", "vagina_finger", "cervix_rub"]);
-// 2026-11-22 使用者（第二版）：手伸進去以後先不動作——出現左右選項：左「摸陰唇」、中「抽出」、右「扣子宮」（揉子宮口）；按一下做一次。
 /** 現在可不可以做這個動作（已解鎖、不忙、一般聊天）。actId 沒給＝能不能把手伸進去（看「插入手指」解鎖沒）。 */
 function fingerCan(actId = "finger_in") {
   if (!girl || !sheetOpen() || talkBusy || sceneOpen()) return false;
@@ -10496,14 +10495,21 @@ function fingerCan(actId = "finger_in") {
   if (actId === "pull_out") return true;
   return availableActs(girl, { canTease: canTease(player) }).some((a) => a.id === actId);
 }
-/** 手在褲子裡選了一個動作：送出（摸陰唇 labia／扣子宮 cervix_rub／抽出 pull_out）。 */
-function fingerAct(actId) {
+// 2026-11-22 使用者（第三版）：按住才算——手伸進去後一直按著、左右滑選（左摸陰唇／右扣子宮）；按著的時候一輪一輪做：
+//   一輪＝一個動作（結算一次身體狀態）＋動作圖、一句（從召喚時產好的台詞庫拿，不等模型）約一秒；放開＝結束回到原來畫面。
+/** 一輪：做一次這個動作（摸陰唇 labia／扣子宮 cervix_rub）。走摸黑影那條快路（不等模型、不打「你」那行）。 */
+function fingerRound(actId) {
+  if (actId !== "labia" && actId !== "cervix_rub") return false;
   if (!fingerCan(actId)) return false;
-  if (actId === "pull_out" && !(girl.bodyState?.organs?.vagina?.stuffed === "fingers")) return true;   // 裡面沒手指（只摸了陰唇）：手退出來就好，不用說話
-  void sendTalkAct(actId);
+  void sendTalkAct(actId, { touchZone: "groin" });
   return true;
 }
-window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES, finger: { can: fingerCan, act: fingerAct, busy: () => !!talkBusy } };
+/** 放開：手拿出來（不說話、不等模型），回到原來畫面。 */
+function fingerEnd() {
+  if (!girl) return;
+  if (clearVaginaFingers(girl)) { renderBodyPanel(); persistRoom(); }
+}
+window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES, finger: { can: fingerCan, round: fingerRound, end: fingerEnd, busy: () => !!talkBusy } };
 
 function undressPlayOpen() {
   if (undressChatActive()) return sheetOpen();

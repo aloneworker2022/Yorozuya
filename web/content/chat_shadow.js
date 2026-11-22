@@ -1390,14 +1390,14 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     });
   }
 
-  // ---------------------------------------------------------------- 手指插入（2026-11-22 使用者）
-  //   按住陰唇 → 鏡頭以胸口為中心慢慢放大（靠近她），放大到陰唇在對話框上緣上面一點點就停；放開（還沒停住）＝退回去。
-  //   停住後問 summon 可不可以玩弄（RoomTouch.finger.can()＝插入手指解鎖沒）：不行＝她反抗（摸下體的反應＋罵你）、鏡頭退回；
-  //   可以＝玩家的手從畫面右下伸過來，越過褲頭從上面伸進去（不是從下面），指尖停在陰唇上——先不動作（第二版）：
-  //   出現選項：左「摸陰唇」、中「抽出」、右「扣子宮」（揉子宮口）；按一下做一次（手做那個動作、她回一句），做完選項再出來。
-  //   手在裡面時她一直有反應（fg_r0～r2 抗拒、fg_w0～w2 迎合；熱戀以前抗拒、程度照性奮），summon 的 fgWelcome／fgLevel 決定。
-  const FG = { st: 'idle', p: 0, t: 0, S: 1, O: null, box0: null, holdT: 0, eatClick: false, mode: 'idle', roundAt: 0, seenIn: false, loop: 0, last: 0, zoom: null, hand: null, geo: null, opts: null, pose: '', poseAt: 0, clock: 0 };
-  const FG_APPROACH = 1500, FG_REACH = 1700, FG_OUT = 1000, FG_BACK = 800, FG_HOLD = 220, FG_FPS = 8, FG_ROUND = 2600;
+  // ---------------------------------------------------------------- 手指插入（2026-11-22 使用者，第三版）
+  //   按住陰唇：可以玩弄（RoomTouch.finger.can()＝插入手指解鎖沒）才靠近——鏡頭以胸口為中心慢慢放大，到陰唇在對話框上緣上面一點點停；
+  //   不行＝她馬上反抗（摸下體的反應＋罵你），不靠近。靠近後玩家的手從畫面右下伸過來、越過褲頭從上面伸進去（不是從下面）。
+  //   一直按著：往左滑＝摸陰唇、往右滑＝扣子宮（揉子宮口）；按著的時候一輪一輪做（一輪＝一個動作，結算一次狀態，動作圖＋一句約一秒）；
+  //   放開＝結束（手拿出來）回到原來畫面。她的反應一直循環（fg_r0～r2 抗拒、fg_w0～w2 迎合；熱戀以前抗拒、程度照她的感覺）。
+  //   噴水不是常態：某一輪做完她到了最高那段才噴一次——往畫面前方、微微往上噴開（像開香檳）。
+  const FG = { st: 'idle', p: 0, t: 0, S: 1, O: null, box0: null, holdT: 0, eatClick: false, mode: 'idle', roundAt: 0, loop: 0, last: 0, zoom: null, hand: null, geo: null, ui: null, pose: '', shown: '', clock: 0, pid: null, x0: 0, choice: null, squirtAt: 0, squirtCheck: 0, wasIn: false };
+  const FG_APPROACH = 1500, FG_REACH = 1700, FG_OUT = 700, FG_BACK = 700, FG_HOLD = 220, FG_FPS = 8, FG_ROUND = 1000, FG_SWIPE = 26, FG_SQUIRT = 1300;
   const fgEase = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
   /** 畫布像素 → zoom 層（沒放大時）的座標。畫布是 object-fit: contain、靠下置中。 */
   function fgLocal(px, py) {
@@ -1443,7 +1443,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const chestY = wr.top + O[1], groinY = wr.top + Gl[1];
     FG.box0 = [FG.zoom.offsetWidth, FG.zoom.offsetHeight];
     FG.O = O; FG.S = Math.max(1.15, Math.min(5, (top - 10 - chestY) / Math.max(4, groinY - chestY)));   // 陰唇停在對話框上緣上面一點點
-    FG.st = 'approach'; FG.p = 0; FG.t = 0; FG.mode = 'idle'; FG.seenIn = false; FG.pose = '';
+    FG.st = 'approach'; FG.p = 0; FG.t = 0; FG.mode = 'idle'; FG.choice = null; FG.pose = ''; FG.squirtAt = 0;
     fgRun();
     return true;
   }
@@ -1451,74 +1451,68 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (FG.wasIn) document.dispatchEvent(new CustomEvent('chat-shadow-finger', { detail: { on: false } }));   // 手收回來了：對話框、插入圖照舊
     FG.wasIn = false;
     FG.st = 'idle'; FG.p = 0; FG.t = 0; FG.geo = null; FG.pose = ''; FG.shown = ''; FG.mode = 'idle';
-    fgApply(1); fgOpts(false);
+    fgApply(1); fgSwipe(false);
     if (FG.hand) { FG.hand.hidden = true; FG.hand.getContext('2d').clearRect(0, 0, FG.hand.width, FG.hand.height); }
     if (FG.loop) cancelAnimationFrame(FG.loop); FG.loop = 0;
     placeFeet();
   }
   /** 現在她該做哪一個反應（fg_r0…fg_w2）。 */
   function fgPoseOf(sp) { return 'fg_' + (sp && sp.fgWelcome ? 'w' : 'r') + Math.max(0, Math.min(2, Number(sp && sp.fgLevel) || 0)); }
-  /** 選項（左摸陰唇、中抽出、右扣子宮）。 */
-  function fgOpts(show) {
-    if (!FG.opts) {
+  /** 左右滑的提示（左摸陰唇、右扣子宮）：不能按（手指一直按在她身上），只是告訴你往哪滑、現在在做哪個。 */
+  function fgSwipe(show) {
+    if (!FG.ui) {
       if (!show) return;
-      const box = document.createElement('div'); box.id = 'fg-opts';
-      box.style.cssText = 'position:fixed;left:0;right:0;z-index:90;pointer-events:none;display:flex;justify-content:space-between;align-items:flex-end;padding:0 10px;box-sizing:border-box';
-      const mk = (id, label, side) => { const b = document.createElement('button'); b.type = 'button'; b.dataset.fg = id; b.textContent = label;
-        b.style.cssText = 'pointer-events:auto;font:inherit;font-size:1.05em;padding:.7em 1.1em;border-radius:10px;border:2px solid rgba(255,255,255,.85);background:rgba(20,18,36,.78);color:#fff6fb;box-shadow:0 4px 14px rgba(0,0,0,.35)' + (side === 'mid' ? ';font-size:.92em;padding:.5em .9em;opacity:.9' : '');
-        b.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); fgChoose(id); }); return b; };
-      box.append(mk('labia', '摸陰唇', 'l'), mk('pull_out', '抽出', 'mid'), mk('cervix_rub', '扣子宮', 'r'));
+      const box = document.createElement('div'); box.id = 'fg-swipe';
+      box.style.cssText = 'position:fixed;left:0;right:0;z-index:90;pointer-events:none;display:flex;justify-content:space-between;align-items:flex-end;padding:0 8px;box-sizing:border-box';
+      const mk = (id, label) => { const b = document.createElement('div'); b.dataset.fg = id; b.textContent = label;
+        b.style.cssText = 'font-size:1.02em;padding:.55em .9em;border-radius:10px;border:2px solid rgba(255,255,255,.55);background:rgba(20,18,36,.6);color:#fff6fb;transition:transform .12s,background .12s,opacity .12s'; return b; };
+      box.append(mk('labia', '◀ 摸陰唇'), mk('cervix_rub', '扣子宮 ▶'));
       document.getElementById('portrait-sheet')?.appendChild(box);
-      FG.opts = box;
+      FG.ui = box;
     }
-    // 放在對話框上面；主畫面的互動鍵列（#talk-acts，整條寬、蓋在對話框正上方）在的話再往上，不然會被它蓋住、按不到
+    FG.ui.style.display = show ? 'flex' : 'none';
+    if (!show) return;
     const tb = document.getElementById('talk-box'), ta = document.getElementById('talk-acts');
     let top = tb ? tb.getBoundingClientRect().top : innerHeight * .7;
     if (ta && !ta.hidden) { const r = ta.getBoundingClientRect(); if (r.height > 0 && r.top < top + 4 && r.bottom > top - 80) top = Math.min(top, r.top); }
-    FG.opts.style.bottom = Math.max(0, innerHeight - top + 10) + 'px';
+    FG.ui.style.bottom = Math.max(0, innerHeight - top + 10) + 'px';
     const F = window.RoomTouch && window.RoomTouch.finger;
-    for (const b of FG.opts.querySelectorAll('button')) { const ok = !F || F.can(b.dataset.fg); b.disabled = !ok; b.style.opacity = ok ? '' : '.45'; b.title = ok ? '' : '還不行'; }
-    FG.opts.hidden = !show; FG.opts.style.display = show ? 'flex' : 'none';
+    for (const b of FG.ui.children) {
+      const on = FG.choice === b.dataset.fg, ok = !F || F.can(b.dataset.fg) || on;
+      b.style.background = on ? 'rgba(160,40,96,.9)' : 'rgba(20,18,36,.6)';
+      b.style.transform = on ? 'scale(1.12)' : '';
+      b.style.opacity = ok || F.busy() ? '' : '.4';
+    }
   }
-  function fgChoose(id) {
-    if (FG.st !== 'in' || FG.mode !== 'idle') return;
-    const F = window.RoomTouch && window.RoomTouch.finger;
-    if (id === 'pull_out') { F && F.act('pull_out'); FG.st = 'out'; FG.t = 1; fgOpts(false); return; }
-    if (!F || !F.act(id)) return;
-    FG.mode = id === 'labia' ? 'rub' : 'dig'; FG.roundAt = performance.now(); fgOpts(false);
-    if (cur && cur.sets.r_groin && !FG.shown) { reactPlay = { kind: 'r_groin', t0: 0, wait: performance.now() }; play(); }
+  /** 放開：結束（手拿出來、回到原來畫面）。 */
+  function fgEnd() {
+    if (FG.pid != null) { try { canvas.releasePointerCapture(FG.pid); } catch { /* 已經放了 */ } }
+    FG.pid = null; FG.choice = null; fgSwipe(false);
+    clearTimeout(FG.holdT); FG.holdT = 0;
+    if (FG.st === 'approach') FG.st = 'back';
+    else if (FG.st === 'reach' || FG.st === 'in') { const wasReach = FG.st === 'reach'; FG.st = 'out'; FG.t = wasReach ? FG.t : 1; window.RoomTouch?.finger?.end?.(); }
   }
   function fgRun() { if (!FG.loop) { FG.last = 0; FG.loop = requestAnimationFrame(fgTick); } }
   function fgTick(now) {
     FG.loop = 0;
     if (FG.st === 'idle' || !wrap || wrap.hidden) { if (FG.st !== 'idle') fingerReset(); return; }
     const dt = FG.last ? Math.min(100, now - FG.last) : 16; FG.last = now;
-    const sp = (!fgTick.spAt || now - fgTick.spAt > 400) ? (fgTick.sp = spec(), fgTick.spAt = now, fgTick.sp) : fgTick.sp;
-    const fingerIn = !!(sp && sp.fingerIn), F = window.RoomTouch && window.RoomTouch.finger;
-    // 她的反應：手伸過來就開始算（插隊），手在裡面的時候播
+    const sp = (!fgTick.spAt || now - fgTick.spAt > 300) ? (fgTick.sp = spec(), fgTick.spAt = now, fgTick.sp) : fgTick.sp;
+    const F = window.RoomTouch && window.RoomTouch.finger;
     if (FG.st === 'reach' || FG.st === 'in') { const k = fgPoseOf(sp); if (k !== FG.pose || !cur.sets[k]) { FG.pose = k; ensureSet(cur, k); bump(cur, k); } }
-    if (FG.st === 'approach') { FG.p = Math.min(1, FG.p + dt / FG_APPROACH); if (FG.p >= 1) FG.st = 'check'; }
+    if (FG.st === 'approach') { FG.p = Math.min(1, FG.p + dt / FG_APPROACH); if (FG.p >= 1) { FG.st = 'reach'; FG.t = 0; } }
     else if (FG.st === 'back') { FG.p = Math.max(0, FG.p - dt / FG_BACK); if (FG.p <= 0) { fingerReset(); return; } }
-    else if (FG.st === 'check') {
-      if (F && F.can()) {
-        FG.st = 'reach'; FG.t = 0; FG.wasIn = true;
-        document.dispatchEvent(new CustomEvent('chat-shadow-finger', { detail: { on: true } }));   // summon：對話框字出完一秒收起來、插入圖只閃一秒
-        // 三段反應都先算（現在這段最先）：她的感覺一變就能馬上換
-        const ty = fgPoseOf(sp).slice(3, 4), now0 = fgPoseOf(sp);
-        for (const k of ['fg_' + ty + '2', 'fg_' + ty + '1', 'fg_' + ty + '0', now0]) { ensureSet(cur, k); bump(cur, k); }
-      }
-      else {   // 不能玩弄：她反抗（跟摸下體一樣的反應、罵你），鏡頭退回
-        window.RoomTouch?.zone('groin');
-        if (cur && cur.sets.r_groin) { if (!full(cur.sets.r_groin, nOf('r_groin'))) bump(cur, 'r_groin'); reactPlay = { kind: 'r_groin', t0: 0, wait: performance.now() }; play(); }
-        FG.st = 'deny'; FG.t = 0;
-      }
-    } else if (FG.st === 'deny') { FG.t += dt; if (FG.t > 900) FG.st = 'back'; }
-    else if (FG.st === 'reach') { FG.t = Math.min(1, FG.t + dt / FG_REACH); if (FG.t >= 1) { FG.st = 'in'; FG.mode = 'idle'; fgOpts(true); } }
+    else if (FG.st === 'reach') { FG.t = Math.min(1, FG.t + dt / FG_REACH); if (FG.t >= 1) { FG.st = 'in'; FG.mode = 'idle'; fgSwipe(true); } }
     else if (FG.st === 'in') {
-      if (fingerIn) FG.seenIn = true;
-      if (FG.seenIn && !fingerIn && FG.mode === 'idle') { FG.st = 'out'; FG.t = 1; fgOpts(false); }   // 用下面的抽出按鈕抽了
-      else if (FG.mode !== 'idle' && now - FG.roundAt > FG_ROUND && !(F && F.busy())) { FG.mode = 'idle'; fgOpts(true); }   // 這一下做完、她講完：選項再出來
-      else if (FG.mode === 'idle' && FG.opts && !FG.opts.hidden && (!fgTick.optAt || now - fgTick.optAt > 700)) { fgTick.optAt = now; fgOpts(true); }   // 解鎖、忙不忙會變：常常重新看一下
+      // 按著往左右滑：選哪個；有選、上一輪做完（她那句出來了）、而且過了一秒 → 下一輪
+      const want = FG.choice, busy = F ? F.busy() : false;
+      if (want && !busy && now - FG.roundAt >= FG_ROUND) {
+        if (F && F.round(want)) { FG.mode = want === 'labia' ? 'rub' : 'dig'; FG.roundAt = now; FG.squirtCheck = now + 700; }
+        else FG.mode = 'idle';
+      } else if (!want && !busy && now - FG.roundAt >= FG_ROUND) FG.mode = 'idle';
+      // 這一輪做完她到了最高那段 → 噴一次（不是一直噴）
+      if (FG.squirtCheck && now >= FG.squirtCheck && !busy) { FG.squirtCheck = 0; const s2 = spec(); if (s2 && Number(s2.fgLevel) >= 2) FG.squirtAt = now; }
+      if (!fgTick.uiAt || now - fgTick.uiAt > 250) { fgTick.uiAt = now; fgSwipe(true); }
     } else if (FG.st === 'out') { FG.t = Math.max(0, FG.t - dt / FG_OUT); if (FG.t <= 0) FG.st = 'back'; }
     const zp = FG.st === 'approach' || FG.st === 'back' ? fgEase(FG.p) : 1;
     fgApply(1 + (FG.S - 1) * zp);
@@ -1580,29 +1574,58 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
         od[i] = c[0]; od[i + 1] = c[1]; od[i + 2] = c[2]; od[i + 3] = alpha;
       }
     }
-    // 噴水（反應到高潮那一段）：從陰唇一陣一陣往前下噴、落下來
-    if (mf && mf.fg && mf.fg.squirt) {
-      const burst = (sec % 1.6) / 1.6, src = [g.cx + .2, Lz - .6];
-      for (let i = 0; i < 26; i++) {
-        const h = Math.sin(i * 12.9898) * 43758.5453, r = h - Math.floor(h), u = (burst + i / 26) % 1;
-        if (u > .9) continue;
-        const ang = Math.PI * (-1.15 + 1.3 * r), sp = 5 + 3 * ((i * 7) % 5) / 5, x = src[0] + Math.cos(ang) * sp * u, z = src[1] + Math.sin(ang) * sp * u * .8 - 6 * u * u;   // 往兩邊、往前散開再落下（正面看是一圈噴開）
-        const [px, py] = fgPx(x, z), a = Math.round(230 * (1 - u)), j = (Math.round(py) * Wd + Math.round(px)) * 4;
-        for (const [ox, oy] of [[0, 0], [1, 0], [0, 1]]) { const k = j + (oy * Wd + ox) * 4; if (k >= 0 && k < od.length - 3 && px >= 0 && px < Wd - 1) { od[k] = 214; od[k + 1] = 232; od[k + 2] = 250; od[k + 3] = Math.max(od[k + 3], a); } }
+    // 噴水（某一輪做完她到了最高那段才噴一次）：像開香檳——往畫面前方（往你這邊）、微微往上噴開；
+    //   正面看＝從陰唇往外一圈散開、整體往上飄一點再落下，越靠近你（越後面）水珠越大、越淡
+    if (FG.squirtAt && now - FG.squirtAt < FG_SQUIRT) {
+      const T0 = (now - FG.squirtAt) / FG_SQUIRT, src = [g.cx + .2, Lz - .3];
+      for (let i = 0; i < 70; i++) {
+        const h1 = Math.sin(i * 12.9898) * 43758.5453, r1 = h1 - Math.floor(h1), h2 = Math.sin(i * 78.233) * 12345.678, r2 = h2 - Math.floor(h2);
+        const born = r2 * .45, u = (T0 - born) / .55; if (u <= 0 || u >= 1) continue;   // 前 0.45 一直噴出來，每顆飛 0.55
+        const core = i % 3 === 0, a = r1 * 2 * Math.PI, spread = (core ? 2.6 : 8) * (0.35 + .65 * ((i * 7) % 10) / 10);
+        const x = src[0] + Math.cos(a) * spread * u, z = src[1] + (Math.sin(a) * spread * .5 + 10) * u - 6 * u * u;   // 往前往上噴開（整團往上衝再落一點）
+        const [px, py] = fgPx(x, z), sz = 1 + Math.round(3.2 * u), al = Math.round(235 * (1 - u * .8));
+        for (let oy = 0; oy < sz; oy++) for (let ox = 0; ox < sz; ox++) {
+          const X = Math.round(px) + ox, Y = Math.round(py) + oy; if (X < 0 || Y < 0 || X >= Wd || Y >= Hd) continue;
+          const k = (Y * Wd + X) * 4, hi = ox === 0 && oy === 0 && sz > 1;
+          od[k] = hi ? 248 : 206; od[k + 1] = hi ? 252 : 228; od[k + 2] = 255; od[k + 3] = Math.max(od[k + 3], al);
+        }
       }
     }
     c2.putImageData(out, 0, 0);
   }
   function fingerBind() {
-    // 按住下體：按住 0.22 秒才算（點一下照舊是摸陰唇）；還沒停住就放開＝退回去
+    // 按住下體 0.22 秒：可以玩弄才靠近（不行＝她馬上反抗）；點一下照舊是摸陰唇。按著不放：往左右滑選、放開＝結束
     canvas.addEventListener('pointerdown', (ev) => {
       if (FG.st !== 'idle' || !cur || cur.cv !== CV) return;
       const [x, y] = toCanvas(ev); if (zoneAt(x, y) !== 'groin') return;
       clearTimeout(FG.holdT);
-      FG.holdT = setTimeout(() => { FG.holdT = 0; if (fgStart()) FG.eatClick = true; }, FG_HOLD);
+      const pid = ev.pointerId, x0 = ev.clientX;
+      FG.holdT = setTimeout(() => {
+        FG.holdT = 0; FG.eatClick = true;
+        const F = window.RoomTouch && window.RoomTouch.finger;
+        if (!(F && F.can())) {   // 不能玩弄：不靠近，她馬上反抗
+          window.RoomTouch?.zone('groin');
+          if (cur && cur.sets.r_groin) { if (!full(cur.sets.r_groin, nOf('r_groin'))) bump(cur, 'r_groin'); reactPlay = { kind: 'r_groin', t0: 0, wait: performance.now() }; play(); }
+          return;
+        }
+        if (!fgStart()) return;
+        FG.pid = pid; FG.x0 = x0; FG.choice = null;
+        try { canvas.setPointerCapture(pid); } catch { /* 已經放開了 */ }
+        // 手伸進去：通知 summon（對話框字出完一秒收、圖只閃一秒）；三段反應先算
+        FG.wasIn = true; document.dispatchEvent(new CustomEvent('chat-shadow-finger', { detail: { on: true } }));
+        const sp = spec(), ty = fgPoseOf(sp).slice(3, 4), now0 = fgPoseOf(sp);
+        for (const k of ['fg_' + ty + '2', 'fg_' + ty + '1', 'fg_' + ty + '0', now0]) { ensureSet(cur, k); bump(cur, k); }
+      }, FG_HOLD);
     });
-    const up = () => { clearTimeout(FG.holdT); FG.holdT = 0; if (FG.st === 'approach') FG.st = 'back'; };
-    for (const k of ['pointerup', 'pointercancel', 'pointerleave']) canvas.addEventListener(k, up);
+    canvas.addEventListener('pointermove', (ev) => {
+      if (FG.pid == null || ev.pointerId !== FG.pid) return;
+      if (FG.st !== 'in') { FG.x0 = ev.clientX; return; }   // 手還沒伸進去：起點跟著手指（伸進去以後才算滑）
+      const dx = ev.clientX - FG.x0;
+      FG.choice = dx <= -FG_SWIPE ? 'labia' : dx >= FG_SWIPE ? 'cervix_rub' : null;
+    });
+    const up = (ev) => { if (FG.holdT) { clearTimeout(FG.holdT); FG.holdT = 0; } if (FG.pid != null && ev.pointerId === FG.pid) fgEnd(); };
+    canvas.addEventListener('pointerup', up);
+    canvas.addEventListener('pointercancel', up);
   }
 
   // 生氣／開心也看她說的話（2026-11-21 使用者：話裡有「哼」「討厭」「生氣」「變態」這類字也算生氣）；「不生氣」「別生氣」不算
