@@ -333,7 +333,7 @@
      *  根部外鼓、股四頭肌、膝蓋骨、小腿肚都照這個方向放（不像 legRaw 假設站著、外側固定是 ±x）。膝關節跟著斜。
      *  side：−1 右腿／＋1 左腿；toe：腳尖方向。坐在地上時 sh.floor 會把貼地那面切平（大腿躺地被壓扁）。 */
     function sitLeg(sh, P, side, hip, knee, ankle, toe, front) {
-      (sh._legs = sh._legs || []).push([hip, knee, ankle, side]);   // 2026-11-21 褲子、裙子跟著腿走
+      (sh._legs = sh._legs || []).push([hip, knee, ankle, side, sh.off]);   // 2026-11-21 褲子、裙子跟著腿走
       const b = P.b, wT = F(b, 'thigh'), wC = F(b, 'calf'), fr = b.frame, pl = sh.part; sh.limb = 1; sh.part = 'legs';
       const sub = (a, c) => [a[0] - c[0], a[1] - c[1], a[2] - c[2]], add = (a, c, k = 1) => [a[0] + c[0] * k, a[1] + c[1] * k, a[2] + c[2] * k];
       const dot = (a, c) => a[0] * c[0] + a[1] * c[1] + a[2] * c[2], nrm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
@@ -415,8 +415,8 @@
       sh.cone(BODY, [ax - tx * 1.0, ay - ty * 1.0 - .4, az + 3.5], [heel[0], heel[1], heel[2] + 1.0], .8 * q, 1.0 * q);   // 阿基里斯腱
     }
     // 2026-10-30 pt77u：手腳零件標 limb（上衣算軀幹表面時排除），手臂關節記下來給袖子用
-    function arm(sh, P, shoulder, elbow, wrist, hand = true) { (sh._arms = sh._arms || []).push([shoulder, elbow, wrist]); sh.limb = 1; const pp = sh.part; sh.part = shoulder[0] < 0 ? 'armL' : 'armR'; try { return armRaw(sh, P, shoulder, elbow, wrist, hand); } finally { sh.limb = 0; sh.part = pp; } }
-    function leg(sh, ...a) { (sh._legs = sh._legs || []).push([a[2], a[3], a[4], a[1]]); sh.limb = 1; const pp = sh.part; sh.part = 'legs'; try { return legRaw(sh, ...a); } finally { sh.limb = 0; sh.part = pp; } }
+    function arm(sh, P, shoulder, elbow, wrist, hand = true) { (sh._arms = sh._arms || []).push([shoulder, elbow, wrist, sh.off]); sh.limb = 1; const pp = sh.part; sh.part = shoulder[0] < 0 ? 'armL' : 'armR'; try { return armRaw(sh, P, shoulder, elbow, wrist, hand); } finally { sh.limb = 0; sh.part = pp; } }
+    function leg(sh, ...a) { (sh._legs = sh._legs || []).push([a[2], a[3], a[4], a[1], sh.off]); sh.limb = 1; const pp = sh.part; sh.part = 'legs'; try { return legRaw(sh, ...a); } finally { sh.limb = 0; sh.part = pp; } }
     function armRaw(sh, P, shoulder, elbow, wrist, hand = true) {
       const b = P.b, wA = F(b, 'arm'), fr = b.frame;
       const elbow_r = b.bone ? 1.95 : 2.1 * wA;
@@ -1307,7 +1307,7 @@
       if (lace.length > 1) sh.chain(BODY, lace, lace.map(() => .22));
       sh.cloth = 0;
     }
-    function stockingsG(sh, P, doll, tor) {   // 大腿襪：照腿本身的零件放大一圈（任何體型、姿勢都包得住）——膝蓋以下全部、大腿從膝蓋往上 55%；上緣一圈黑色蕾絲口
+    function stockingsG(sh, P, doll, tor, hidBand = false) {   // 大腿襪：照腿本身的零件放大一圈（任何體型、姿勢都包得住）——膝蓋以下全部、大腿從膝蓋往上 55%；上緣一圈黑色蕾絲口
       const legs = sh._legs || [], src = sh.prims.filter(p => p.part === 'legs' && !p.cloth && p.mat === 0 && (p.k === 0 || p.k === 1));
       const cut = {};
       for (const [hip, knee, , side] of legs) cut[side > 0 ? 1 : -1] = { hip, knee };
@@ -1319,7 +1319,7 @@
         sh.prims.push(c);
       }
       sh.cloth = 8;
-      for (const [hip, knee] of legs) { const b = P.b, wT = F(b, 'thigh'), up = knee.map((v, i) => v + (hip[i] - v) * .53), up2 = knee.map((v, i) => v + (hip[i] - v) * .6); sh.cone(BODY, up, up2, 4.65 * wT + .35, 4.75 * wT + .35); }
+      if (!hidBand) for (const [hip, knee] of legs) { const b = P.b, wT = F(b, 'thigh'), up = knee.map((v, i) => v + (hip[i] - v) * .53), up2 = knee.map((v, i) => v + (hip[i] - v) * .6); sh.cone(BODY, up, up2, 4.65 * wT + .35, 4.75 * wT + .35); }
       sh.cloth = 0;
     }
     function garterG(sh, P, doll, tor) {   // 吊襪帶：腰上一圈黑帶，每條腿前面、側面各一條帶子拉到襪口
@@ -1364,7 +1364,20 @@
       const hs = P.b.head, top = tor.zc + P.head_h / 2 - .3, yc = tor.yl(tor.zc);
       for (const s of [-1, 1]) { const base = [s * 3.6 * hs, yc - .3, top - .8], tip = [s * 4.9 * hs, yc - .6, top + 3.6]; sh.cone(HAIR, base, tip, 1.9, .25); }
     }
+    // 2026-11-22 使用者：衣服全部往右偏一點、左邊像破掉——站姿把整個身體挪了 sh.off（重心放一隻腳），衣服用射線量到的已經是挪過的位置，
+    //   做出來的零件又被加一次 sh.off＝挪兩次。做衣服時 sh.off 先歸零；照手腳關節做的部分（袖子、褲管）把關節換成挪過的位置。
     function dress(sh, P, doll, tor) {
+      // 2026-11-22（使用者：全部衣服往右偏一點，左邊像破掉）：衣服的點都是從身體表面、關節算出來的世界座標，
+      //   推進去又被加一次姿勢位移 sh.off（站姿重心偏右 .9）→ 衣服整件往右偏。穿衣服時 off 歸零；
+      //   手腳關節各自記下當時的 off（站姿：手有 off、腳沒有），換成世界座標再給衣服用。
+      const O = sh.off || [0, 0, 0], arms = sh._arms, legs = sh._legs;
+      const mv = (q, o) => q && (o ? [q[0] + o[0], q[1] + o[1], q[2] + o[2]] : q);
+      sh._arms = arms && arms.map(([a, b, c, o]) => [mv(a, o), mv(b, o), mv(c, o), [0, 0, 0]]);
+      sh._legs = legs && legs.map(([a, b, c, sd, o]) => [mv(a, o), mv(b, o), mv(c, o), sd, [0, 0, 0]]);
+      sh.off = [0, 0, 0]; sh._offZeroed = 1;
+      try { return dressRaw(sh, P, doll, tor); } finally { sh.off = O; sh._offZeroed = 0; sh._arms = arms; sh._legs = legs; if (doll.wear && (doll.wear.extras || []).includes('ears')) earsG(sh, P, doll, tor); }
+    }
+    function dressRaw(sh, P, doll, tor) {
       const c = String(doll.cloth || '');
       // 2026-11-19 聊天黑影：內衣（胸罩）的零件標 under，外衣疊在上面時分層畫（灰色半透明）
       const under = (f) => { const i0 = sh.prims.length; f(); for (let i = i0; i < sh.prims.length; i++) sh.prims[i].under = 1; };
@@ -1382,11 +1395,11 @@
         else if (t) garm('top', () => tee(sh, P, doll, tor, { shirt: t === 'shirt', crop: t === 'crop', over: t === 'over', cami: t === 'cami', long: t === 'long', fab: w.fab, hemZ: w.dress ? tor.zW - .6 : w.bottom && t !== 'over' && t !== 'crop' ? tor.zW + .3 : undefined }));   // 有下身：上衣紮進腰裡（oversize、短版不紮）
         if (w.bottom) garm('bot', () => (w.bottom === 'pants' || w.bottom === 'shorts' ? pantsG : skirtG)(sh, P, doll, tor, w.bottom));
         for (const x of w.extras || []) {
-          if (x === 'stockings') garm('bot', () => stockingsG(sh, P, doll, tor));
+          if (x === 'stockings') garm('bot', () => stockingsG(sh, P, doll, tor, w.bottom && w.bottom !== 'shorts'));   // 裙子、長褲蓋住襪口：不畫蕾絲口（不然從裙子底下刺出來）
           else if (x === 'garter') garm('bot', () => garterG(sh, P, doll, tor));
           else if (x === 'apron') garm('top', () => apronG(sh, P, doll, tor));
           else if (x === 'collar') garm('top', () => collarG(sh, P, doll, tor, false));
-          else if (x === 'ears') earsG(sh, P, doll, tor);
+          else if (x === 'ears' && !sh._offZeroed) earsG(sh, P, doll, tor);   // 有 sh.off 時在 dress 外面（照頭的位置）才畫
         }
         return;
       }
@@ -1423,7 +1436,9 @@
       sh.cloth = 0;
     }
     function groin(sh, P, doll, tor) {
-      const C = tor.C, surf = (x, z, back = false) => { for (let k = 0; k < 300; k++) { const y = back ? -20 + k * .1 : 20 - k * .1; if (bodyDist(sh, x, y, z) < 0) return y; } return null; };
+      // 2026-11-22：姿勢位移 sh.off（站姿重心偏一邊）——放零件的座標是身體座標（推進去會再加 off），探身體表面要換到世界座標，不然左右兩邊探到的表面不對稱
+      const O = sh.off || [0, 0, 0], bD = (x, y, z) => bodyDist(sh, x + O[0], y + O[1], z + O[2]), tD = (x, y, z) => torsoD(sh, x + O[0], y + O[1], z + O[2]);
+      const C = tor.C, surf = (x, z, back = false) => { for (let k = 0; k < 300; k++) { const y = back ? -20 + k * .1 : 20 - k * .1; if (bD(x, y, z) < 0) return y; } return null; };
       const patch = (x, z, r, d = .25) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y + d, z], [r, .35, r]); };
       const gap = 1.2;   // 兩腿之間的胯下最低點（約 C）
       const lab = String(doll.labia || ''), lOpen = lab.endsWith('_open'), lStyle = lab.replace('_open', '');
@@ -1465,7 +1480,7 @@
         //   零件標 pk：front 前片／edge 滾邊／str 細帶／bow 蝴蝶結／back 背後；side：−1 右、＋1 左（脫的動畫用）。
         const zb = C + 7.4, zc = C - gap, i0 = sh.prims.length;
         // 只貼軀幹表面（不貼到插腰的手、坐著時的大腿上）
-        const surf = (x, z, back = false) => { for (let k = 0; k < 300; k++) { const y = back ? -20 + k * .1 : 20 - k * .1; if (torsoD(sh, x, y, z) < 0) return y; } return null; };
+        const surf = (x, z, back = false) => { for (let k = 0; k < 300; k++) { const y = back ? -20 + k * .1 : 20 - k * .1; if (tD(x, y, z) < 0) return y; } return null; };
         const patch = (x, z, r, d = .25) => { const y = surf(x, z); if (y !== null) sh.ell(BODY, [x, y + d, z], [r, .35, r]); };
         const tag = (from, pk, side = 0) => { for (let i = from; i < sh.prims.length; i++) if (!sh.prims[i].pk) { sh.prims[i].pk = pk; sh.prims[i].pside = side; } };
         // 腿口弧線（不是三角形）：上面寬到髖骨、往下先寬寬地下來，靠近胯下才圓弧收進去（像內褲）
@@ -1484,7 +1499,7 @@
         if (bk.length > 1) sh.chain(BODY, bk, bk.map(() => .3));
         // 背後腰上一小段（左右細帶在這裡接起來）
         // 只繞軀幹（不碰到手、腿——坐著時撐地的手、躺地的大腿就在旁邊）
-        const ringAt = (z, a0, a1, step) => { const R = []; for (let a = a0; a <= a1 + 1e-6; a += step) { const t = a * Math.PI / 180, dx = Math.sin(t), dy = Math.cos(t); for (let k = 0; k < 200; k++) { const r = 20 - k * .1; if (torsoD(sh, dx * r, dy * r, z) < 0) { R.push([dx * (r + .3), dy * (r + .3), z]); break; } } } return R; };
+        const ringAt = (z, a0, a1, step) => { const R = []; for (let a = a0; a <= a1 + 1e-6; a += step) { const t = a * Math.PI / 180, dx = Math.sin(t), dy = Math.cos(t); for (let k = 0; k < 200; k++) { const r = 20 - k * .1; if (tD(dx * r, dy * r, z) < 0) { R.push([dx * (r + .3), dy * (r + .3), z]); break; } } } return R; };
         { const R = ringAt(zb + .8, 160, 200, 10); if (R.length > 1) sh.chain(BODY, R, R.map(() => .28)); }
         tag(j, 'back');
         for (const sd of [-1, 1]) {
@@ -1517,7 +1532,7 @@
         const ring = [];
         for (let a = 0; a <= 360; a += 12) {
           const t = a * Math.PI / 180, dx = Math.sin(t), dy = Math.cos(t); let q = null;
-          for (let k = 0; k < 200; k++) { const r = 20 - k * .1; if (bodyDist(sh, dx * r, dy * r, zb) < 0) { q = [dx * (r + .3), dy * (r + .3), zb]; break; } }
+          for (let k = 0; k < 200; k++) { const r = 20 - k * .1; if (bD(dx * r, dy * r, zb) < 0) { q = [dx * (r + .3), dy * (r + .3), zb]; break; } }
           if (q) ring.push(q);
         }
         if (ring.length > 2) sh.chain(BODY, ring, ring.map(() => .32));

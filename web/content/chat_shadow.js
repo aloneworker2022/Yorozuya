@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=18', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=19', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
