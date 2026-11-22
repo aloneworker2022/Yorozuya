@@ -838,3 +838,6 @@ body.room-home.kb-open #talk-acts { display: none; }
 #portrait-sheet.finger-mode #talk-box{position:fixed;left:50%;transform:translateX(-50%);top:max(8px,env(safe-area-inset-top));bottom:auto;width:min(calc(100% - 16px),440px);z-index:4}
 #portrait-sheet.finger-mode #action-flash-img{top:calc(max(8px,env(safe-area-inset-top)) + 12svh);bottom:auto;z-index:5;height:min(40svh,calc(0.8 * var(--portrait-w)));width:auto;aspect-ratio:1}   /* 往下一點、跟半身立繪（#fg-pulse，往上一點）疊在一起 */
 #portrait-sheet.finger-mode .talk-acts{bottom:max(6px,env(safe-area-inset-bottom))}
+/* 2026-11-22 使用者：脫衣服按鈕改到旁邊、不要在中間（中間是她的身體，要摸、要按住）——互動鍵列裡的「脫衣服」推到最右邊；脫衣對話的按鈕也靠右 */
+.talk-acts button[data-scene=undress]{margin-left:auto}
+#portrait-sheet .talk-acts.undress-bar{justify-content:flex-end}

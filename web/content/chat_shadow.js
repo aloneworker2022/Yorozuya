@@ -1506,21 +1506,27 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   function fgPoseOf(sp) { return 'fg_' + (sp && sp.fgWelcome ? 'w' : 'r') + Math.max(0, Math.min(2, Number(sp && sp.fgLevel) || 0)); }
   /** 噴水粒子（像開香檳：往畫面前方、微微往上噴開；正面看＝往外一圈散開、整團往上衝再落一點，越飛越近水珠越大越淡）。
    *  src＝人偶座標（陰唇）；el＝從開始噴過了幾毫秒；wins＝哪幾段時間在噴 [[開始, 結束], …]；每顆飛 life 毫秒。 */
-  function fgSpray(od, Wd, Hd, src, el, wins, life = 550) {
+  //   2026-11-22 使用者：噴出去要快、有速度感，水滴落下正常 → 噴出去很快（前 0.1 秒就飛到大半、拉出一條殘影），之後慢下來、照重力落下
+  function fgSpray(od, Wd, Hd, src, el, wins, life = 900) {
+    const G = 70;   // 重力（人偶單位／秒²）
+    const pos = (j, tau, ang, spread) => { const k = 1 - Math.exp(-tau / .06); return [src[0] + Math.cos(ang) * spread * k, src[1] + (Math.sin(ang) * spread * .55 + 12) * k - .5 * G * tau * tau]; };
+    const put = (X, Y, al, hi) => { if (X < 0 || Y < 0 || X >= Wd || Y >= Hd) return; const k = (Y * Wd + X) * 4; od[k] = hi ? 248 : 206; od[k + 1] = hi ? 252 : 228; od[k + 2] = 255; od[k + 3] = Math.max(od[k + 3], al); };
     for (const [a, b] of wins) {
       if (el < a || el > b + life) continue;
-      const N = Math.max(10, Math.round((b - a) / 7));
+      const N = Math.max(12, Math.round((b - a) / 6));
       for (let j = 0; j < N; j++) {
-        const born = a + (b - a) * j / N, u = (el - born) / life; if (u <= 0 || u >= 1) continue;
+        const born = a + (b - a) * j / N, ms = el - born; if (ms <= 0 || ms >= life) continue;
+        const tau = ms / 1000, u = ms / life;
         const h1 = Math.sin(j * 12.9898 + a * .013) * 43758.5453, r1 = h1 - Math.floor(h1), h2 = Math.sin(j * 78.233 + a * .07) * 12345.678, r2 = h2 - Math.floor(h2);
-        const core = j % 3 === 0, ang = r1 * 2 * Math.PI, spread = (core ? 2.6 : 8) * (0.35 + .65 * r2);
-        const x = src[0] + Math.cos(ang) * spread * u, z = src[1] + (Math.sin(ang) * spread * .5 + 10) * u - 6 * u * u;
-        const [px, py] = fgPx(x, z), sz = 1 + Math.round(3.2 * u), al = Math.round(235 * (1 - u * .8));
-        for (let oy = 0; oy < sz; oy++) for (let ox = 0; ox < sz; ox++) {
-          const X = Math.round(px) + ox, Y = Math.round(py) + oy; if (X < 0 || Y < 0 || X >= Wd || Y >= Hd) continue;
-          const k = (Y * Wd + X) * 4, hi = ox === 0 && oy === 0 && sz > 1;
-          od[k] = hi ? 248 : 206; od[k + 1] = hi ? 252 : 228; od[k + 2] = 255; od[k + 3] = Math.max(od[k + 3], al);
+        const core = j % 3 === 0, ang = r1 * 2 * Math.PI, spread = (core ? 8 : 22) * (0.35 + .65 * r2);
+        const [x, z] = pos(j, tau, ang, spread), [px, py] = fgPx(x, z);
+        const k = 1 - Math.exp(-tau / .06), sz = 1 + Math.round(3 * Math.min(1, k * 1.2)), al = Math.round(235 * (1 - Math.max(0, (u - .55) / .45)));
+        // 剛噴出去（很快）：往回拉一條殘影
+        if (tau < .14) {
+          const [x0, z0] = pos(j, Math.max(0, tau - .03), ang, spread), [qx, qy] = fgPx(x0, z0), n = Math.max(1, Math.ceil(Math.hypot(px - qx, py - qy)));
+          for (let s2 = 0; s2 <= n; s2++) put(Math.round(qx + (px - qx) * s2 / n), Math.round(qy + (py - qy) * s2 / n), Math.round(al * (.35 + .5 * s2 / n)), false);
         }
+        for (let oy = 0; oy < sz; oy++) for (let ox = 0; ox < sz; ox++) put(Math.round(px) + ox, Math.round(py) + oy, al, ox === 0 && oy === 0 && sz > 1);
       }
     }
   }
@@ -1529,7 +1535,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   //   once 噴一下／faucet 像水龍頭噴三秒／double 噴一下又再噴一下，summon 的 fgSquirt）。坐一陣子（40 秒）或關掉聊天才起來。
   const COL = { st: 'none', t0: 0, impactAt: 0, until: 0, style: 'once', disp: null, loop: 0 };
   const COL_FPS = 12, COL_SIT = 40000, COL_IMPACT = 7;
-  const SPRAY = { once: [[0, 450]], faucet: [[0, 3000]], double: [[0, 380], [900, 1300]] };
+  const SPRAY = { once: [[0, 300]], faucet: [[0, 3000]], double: [[0, 260], [800, 1060]] };
   function colStart() {
     if (!cur || cur.cv !== CV) return;
     const sp = spec(); COL.style = (sp && SPRAY[sp.fgSquirt]) ? sp.fgSquirt : 'once';
@@ -1545,7 +1551,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (COL.st === 'none' || !wrap || wrap.hidden) { if (COL.st !== 'none') colReset(); return; }
     const H = FG.hand;
     if (H && FG.st === 'idle') {
-      const el = COL.impactAt ? now - COL.impactAt : -1, wins = SPRAY[COL.style], end = Math.max(...wins.map((w) => w[1])) + 600;
+      const el = COL.impactAt ? now - COL.impactAt : -1, wins = SPRAY[COL.style], end = Math.max(...wins.map((w) => w[1])) + 950;
       if (el >= 0 && el < end && COL.disp) {
         H.style.left = canvas.offsetLeft + 'px'; H.style.top = canvas.offsetTop + 'px'; H.style.width = canvas.offsetWidth + 'px'; H.style.height = canvas.offsetHeight + 'px';
         const g = FG.geo || fgGeo(), P = cur && cur.P;
@@ -1695,7 +1701,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       }
     }
     // 噴水（某一輪做完她到了最高那段才噴一次）：像開香檳——往畫面前方、微微往上噴開（fgSpray）
-    if (FG.squirtAt && now - FG.squirtAt < FG_SQUIRT + 600) fgSpray(od, Wd, Hd, [g.cx + .2, Lz - .3], now - FG.squirtAt, [[0, FG_SQUIRT * .6]]);
+    if (FG.squirtAt && now - FG.squirtAt < FG_SQUIRT + 950) fgSpray(od, Wd, Hd, [g.cx + .2, Lz - .3], now - FG.squirtAt, [[0, 260]]);
     c2.putImageData(out, 0, 0);
   }
   function fingerBind() {
