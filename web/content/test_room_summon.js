@@ -405,7 +405,7 @@ function girlAngryNow(who) {
   if ((Number(who._angryUntil) || 0) > Date.now()) return true;
   try { const m = getMoodCarry(who); return !!(m && m.type === "angry" && (Number(m.level) || 0) >= 15); } catch { return false; }
 }
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now() } : null);
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers" } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
@@ -10458,7 +10458,23 @@ function touchZone(zone) {
   void sendTalkAct(ok[Math.floor(Math.random() * ok.length)], { touchZone: zone });
   return true;
 }
-window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES };
+// 2026-11-22 使用者：手指插入改成按住黑影的陰唇——鏡頭慢慢靠近，停住後判斷可不可以玩弄；可以＝玩家的手從畫面右下伸過來、
+//   從褲子上方腰部伸進去（不是從下面）→ 插進去。插入手指／扣陰道／揉子宮口的按鈕取消（抽出照舊是按鈕）。
+const FINGER_HOLD_ACTS = new Set(["finger_in", "vagina_finger", "cervix_rub"]);
+/** 現在可不可以把手指插進去（已解鎖、不忙、一般聊天）。 */
+function fingerCan() {
+  if (!girl || !sheetOpen() || talkBusy || sceneOpen()) return false;
+  if (undressChatActive() || sexChatActive() || begDialogActive() || escortDialogActive()) return false;
+  player = ensurePlayer(player);
+  return availableActs(girl, { canTease: canTease(player) }).some((a) => a.id === "finger_in");
+}
+/** 手伸進去了：送出「插入手指」。 */
+function fingerInsert() {
+  if (!fingerCan()) return false;
+  void sendTalkAct("finger_in");
+  return true;
+}
+window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES, finger: { can: fingerCan, insert: fingerInsert } };
 
 function undressPlayOpen() {
   if (undressChatActive()) return sheetOpen();
@@ -10828,6 +10844,7 @@ function refreshTalkActs() {
   const acts = availableActs(girl, { canTease: canTease(player) });
   for (const act of acts) {
     if (TOUCH_ACTS.has(act.id)) continue;   // 這些改成摸黑影（touchZone），不出按鈕
+    if (FINGER_HOLD_ACTS.has(act.id)) continue;   // 2026-11-22 使用者：取消插入手指／扣陰道／揉子宮口按鈕 → 改成按住黑影的下體（手伸進去）
     const btn = document.createElement("button");
     btn.type = "button";
     btn.dataset.act = act.id;

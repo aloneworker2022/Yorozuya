@@ -889,7 +889,16 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     canvas = document.createElement('canvas');
     canvas.width = CV.w * SCALE; canvas.height = CV.h * SCALE;
     ctx = canvas.getContext('2d');
-    wrap.appendChild(canvas);
+    // 2026-11-22 手指插入：鏡頭靠近＝整個黑影（連同玩家的手那層）一起放大 → 多一層 zoom 包住畫布和手
+    FG.zoom = document.createElement('div');
+    FG.zoom.className = 'cs-zoom';
+    FG.zoom.style.cssText = 'position:relative;width:100%;height:100%;display:flex;align-items:flex-end;justify-content:center;transform-origin:50% 50%';
+    FG.hand = document.createElement('canvas');
+    FG.hand.width = canvas.width; FG.hand.height = canvas.height;
+    FG.hand.style.cssText = 'position:absolute;pointer-events:none;filter:none';
+    FG.hand.hidden = true;
+    FG.zoom.append(canvas, FG.hand);
+    wrap.appendChild(FG.zoom);
     talk.insertBefore(wrap, talk.firstChild);
     return wrap;
   }
@@ -1045,6 +1054,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   function placeFeet() {
     placePortrait();
     if (!wrap || wrap.hidden || canvas._feet == null) return;
+    if (FG.st !== 'idle') return;   // 手指插入的鏡頭靠近中：畫布放大了，不要拿放大後的位置去對腳底
     if (pinForKeyboard()) return;   // 鍵盤出來：釘住不動
     const box = document.getElementById('talk-box');
     const T = box ? box.getBoundingClientRect().top : 0;
@@ -1199,6 +1209,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       } else { wrap.hidden = true; wrap.classList.remove('cs-in', 'cs-out'); }
     }
     if (on || (animPlay && !animPlay.t0)) play(); else stop();
+    if (!on && FG.st !== 'idle') fingerReset();   // 聊天關了／換立繪：鏡頭、手都收掉
     if (on) placeFeet(); else placePortrait();
   }
 
@@ -1256,7 +1267,9 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     }, true);
     // 黑影畫布蓋住畫面中間：點到她旁邊透明的地方＝點背景（關掉聊天，跟原本一樣）；
     // 點在她身上＝摸她（使用者：調戲不用按鈕）：胸部／下體／腰部臀部 → test_room_summon.js 的 RoomTouch.zone 挑一個已解鎖的動作
+    fingerBind();
     canvas.addEventListener('click', (ev) => {
+      if (FG.eatClick) { FG.eatClick = false; return; }   // 按住下體（手指插入）放開時的那一下不算摸
       const [x, y] = toCanvas(ev), f = cur && cur.sets[mode] && (cur.sets[mode].find(Boolean));
       if (!f) return;
       const xi = Math.round(x), yi = Math.round(y);
@@ -1270,6 +1283,164 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
         if (cur && cur.sets[k]) { if (!full(cur.sets[k], nOf(k))) bump(cur, k); reactPlay = { kind: k, t0: 0, wait: performance.now() }; play(); }
       }
     });
+  }
+
+  // ---------------------------------------------------------------- 手指插入（2026-11-22 使用者）
+  //   按住陰唇 → 鏡頭以胸口為中心慢慢放大（靠近她），放大到陰唇在對話框上緣上面一點點就停；放開（還沒停住）＝退回去。
+  //   停住後問 summon 可不可以玩弄（RoomTouch.finger.can）：不行＝她反抗（摸下體的反應＋罵你）、鏡頭退回；
+  //   可以＝玩家的手從畫面右下伸過來，到褲頭（腰）上方、手指往下從褲頭伸進去（不是從下面）→ 插進去（送「插入手指」）。
+  //   插著的時候鏡頭停在近處、手指在裡面慢慢動；抽出（按鈕）→ 手退出來、鏡頭退回。全裸沒有褲頭：手指從上面滑下來、在陰唇那裡沒進去。
+  const FG = { st: 'idle', p: 0, t: 0, S: 1, O: null, at: 0, holdT: 0, eatClick: false, sent: false, seenIn: false, sentAt: 0, loop: 0, last: 0, zoom: null, hand: null, geo: null };
+  const FG_APPROACH = 1500, FG_REACH = 1900, FG_OUT = 1000, FG_BACK = 800, FG_HOLD = 220;
+  const fgEase = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+  /** 畫布像素 → zoom 層（沒放大時）的座標。畫布是 object-fit: contain、靠下置中。 */
+  function fgLocal(px, py) {
+    const cw = canvas.offsetWidth, ch = canvas.offsetHeight, k = Math.min(cw / canvas.width, ch / canvas.height);
+    return [canvas.offsetLeft + (cw - canvas.width * k) / 2 + px * k, canvas.offsetTop + (ch - canvas.height * k) + py * k];
+  }
+  const fgPx = (x, z) => [(CV.ax + x * 1.1) * SCALE, (CV.ay - z) * SCALE];   // 人偶座標 → 畫布像素（跟 zoneAt 反過來）
+  /** 這一次的幾何：身體中線、陰唇、胸口、褲頭高度（沒有褲頭＝全裸）。 */
+  function fgGeo() {
+    const P = cur && cur.P; if (!P) return null;
+    let doll = null; try { doll = JSON.parse(cur.key); } catch { doll = null; }
+    const S = P.S, C = P.C, T = P.T, zW = S - .6 * T;
+    // 身體中線：照這一格的像素量（站姿重心偏一邊）：髖部那一列、包含猜的位置的那一段實心的中間
+    let cx = .9;
+    const img = cur.sets[mode] && cur.sets[mode].find(Boolean);
+    if (img) {
+      const [gx, gy] = fgPx(.9, C + 4), y = Math.round(gy), A = (x) => x >= 0 && x < img.width && img.data[(y * img.width + x) * 4 + 3] > 0;
+      let l = Math.round(gx), r = l; if (A(l)) { while (A(l - 1)) l--; while (A(r + 1)) r++; cx = ((l + r) / 2 / SCALE - CV.ax) / 1.1; }
+    }
+    const w = doll && doll.wear, bot = w && w.bottom;
+    let band = null;
+    if (w && (w.dress || ['pants', 'shorts', 'short', 'long', 'pencil', 'pleat', 'qipao'].includes(bot))) band = zW + .3;
+    else if (bot === 'bikini') band = C + 6.2;
+    else if (doll && doll.pants === 'tie_thong') band = C + 7.4;
+    else if (doll && doll.pants) band = C + 9;
+    return { cx, C, S, T, gz: C + 1.4, chestZ: S - .3 * T, band };
+  }
+  /** 放大：直接把 zoom 層的版面放大（不用 CSS transform——transform 縮放會被瀏覽器糊掉，像素要清楚），以胸口 O 為中心。 */
+  function fgApply(scale) {
+    const z = FG.zoom; if (!z) return;
+    if (scale <= 1.0001 || !FG.O) { z.style.position = 'relative'; z.style.left = z.style.top = ''; z.style.width = z.style.height = '100%'; return; }
+    const [w0, h0] = FG.box0, [ox, oy] = FG.O;
+    z.style.position = 'absolute'; z.style.width = (w0 * scale) + 'px'; z.style.height = (h0 * scale) + 'px';
+    z.style.left = (ox - ox * scale) + 'px'; z.style.top = (oy - oy * scale) + 'px';
+  }
+  function fgStart() {
+    const g = fgGeo(); if (!g) return false;
+    FG.geo = g;
+    const O = fgLocal(...fgPx(g.cx, g.chestZ)), Gl = fgLocal(...fgPx(g.cx, g.gz));
+    const wr = FG.zoom.getBoundingClientRect(), box = document.getElementById('talk-box'), top = box ? box.getBoundingClientRect().top : innerHeight * .7;
+    const chestY = wr.top + O[1], groinY = wr.top + Gl[1];
+    FG.box0 = [FG.zoom.offsetWidth, FG.zoom.offsetHeight];
+    FG.O = O; FG.S = Math.max(1.15, Math.min(5, (top - 10 - chestY) / Math.max(4, groinY - chestY)));   // 陰唇停在對話框上緣上面一點點
+    FG.st = 'approach'; FG.p = 0; FG.t = 0; FG.sent = false; FG.seenIn = false;
+    fgRun();
+    return true;
+  }
+  function fingerReset() {
+    FG.st = 'idle'; FG.p = 0; FG.t = 0; FG.geo = null;
+    fgApply(1);
+    if (FG.hand) { FG.hand.hidden = true; FG.hand.getContext('2d').clearRect(0, 0, FG.hand.width, FG.hand.height); }
+    if (FG.loop) cancelAnimationFrame(FG.loop); FG.loop = 0;
+    placeFeet();
+  }
+  function fgRun() { if (!FG.loop) { FG.last = 0; FG.loop = requestAnimationFrame(fgTick); } }
+  function fgTick(now) {
+    FG.loop = 0;
+    if (FG.st === 'idle' || !wrap || wrap.hidden) { if (FG.st !== 'idle') fingerReset(); return; }
+    const dt = FG.last ? Math.min(100, now - FG.last) : 16; FG.last = now;
+    const sp = spec(), fingerIn = !!(sp && sp.fingerIn);
+    if (FG.st === 'approach') { FG.p = Math.min(1, FG.p + dt / FG_APPROACH); if (FG.p >= 1) FG.st = 'check'; }
+    else if (FG.st === 'back') { FG.p = Math.max(0, FG.p - dt / FG_BACK); if (FG.p <= 0) { fingerReset(); return; } }
+    else if (FG.st === 'check') {
+      const F = window.RoomTouch && window.RoomTouch.finger;
+      if (fingerIn) { FG.st = 'in'; FG.t = 1; FG.sent = true; FG.seenIn = true; }
+      else if (F && F.can()) { FG.st = 'reach'; FG.t = 0; }
+      else {   // 不能玩弄：她反抗（跟摸下體一樣的反應、罵你），鏡頭退回
+        window.RoomTouch?.zone('groin');
+        if (cur && cur.sets.r_groin) { if (!full(cur.sets.r_groin, nOf('r_groin'))) bump(cur, 'r_groin'); reactPlay = { kind: 'r_groin', t0: 0, wait: performance.now() }; play(); }
+        FG.st = 'deny'; FG.t = 0;
+      }
+    } else if (FG.st === 'deny') { FG.t += dt; if (FG.t > 900) FG.st = 'back'; }
+    else if (FG.st === 'reach') {
+      FG.t = Math.min(1, FG.t + dt / FG_REACH);
+      if (FG.t >= .82 && !FG.sent) {   // 手指到了：插進去
+        FG.sent = true; FG.sentAt = now;
+        const ok = window.RoomTouch?.finger?.insert();
+        if (!ok) { FG.st = 'out'; FG.t = 1; }
+        else if (cur && cur.sets.r_groin) { if (!full(cur.sets.r_groin, nOf('r_groin'))) bump(cur, 'r_groin'); reactPlay = { kind: 'r_groin', t0: 0, wait: performance.now() }; play(); }
+      }
+      if (FG.st === 'reach' && FG.t >= 1) FG.st = 'in';
+    } else if (FG.st === 'in') {
+      if (fingerIn) FG.seenIn = true;
+      // 抽出了（按鈕）／她沒讓你插（台詞說不要、裡面一直是空的）→ 手退出來
+      if ((FG.seenIn && !fingerIn) || (!FG.seenIn && now - FG.sentAt > 20000)) { FG.st = 'out'; FG.t = 1; }
+    } else if (FG.st === 'out') { FG.t = Math.max(0, FG.t - dt / FG_OUT); if (FG.t <= 0) FG.st = 'back'; }
+    const zp = FG.st === 'approach' || FG.st === 'back' ? fgEase(FG.p) : 1;
+    fgApply(1 + (FG.S - 1) * zp);
+    fgDraw(now);
+    FG.loop = requestAnimationFrame(fgTick);
+  }
+  /** 玩家的手（像素風，比她的身體深一點的暖灰、深色描邊）。整條手臂沿一條路走：畫面右下（畫面外）→ 褲頭右上方 → 從褲頭往下伸進去 → 陰唇。
+   *  t：0 伸過來 → .45 指尖到褲頭 → .82 手指進去到底；在裡面時慢慢抽動。過了褲頭的那一段藏在布裡（淡淡的鼓起來）；全裸＝指尖過了陰唇就看不到（進去了）。 */
+  function fgDraw(now) {
+    const H = FG.hand, g = FG.geo; if (!H || !g) return;
+    const showHand = FG.st === 'reach' || FG.st === 'in' || FG.st === 'out';
+    H.style.left = canvas.offsetLeft + 'px'; H.style.top = canvas.offsetTop + 'px'; H.style.width = canvas.offsetWidth + 'px'; H.style.height = canvas.offsetHeight + 'px';
+    const c2 = H.getContext('2d'); c2.clearRect(0, 0, H.width, H.height);
+    H.hidden = !showHand; if (!showHand) return;
+    const nude = g.band == null, bandZ = nude ? g.gz + 4.2 : g.band;
+    // 路徑（人偶座標 x, z）：A0 畫面右下外面 → M 褲頭右上方 → E 褲頭（伸進去的地方）→ L 最深（指尖在陰唇裡面一點）
+    const A0 = [g.cx + 30, g.gz - 20], M = [g.cx + 5.5, bandZ + 2.2], E = [g.cx + .7, bandZ], L = [g.cx + .25, g.gz - .9];
+    const Q = [A0, M, E, L], seg = [], cum = [0];
+    for (let i = 0; i + 1 < Q.length; i++) { const l = Math.hypot(Q[i + 1][0] - Q[i][0], Q[i + 1][1] - Q[i][1]); seg.push(l); cum.push(cum[i] + l); }
+    const at = (d) => { d = Math.max(-40, Math.min(cum[cum.length - 1] + 2, d)); let i = 0; while (i < seg.length - 1 && d > cum[i + 1]) i++; const u = (d - cum[i]) / seg[i]; return [Q[i][0] + (Q[i + 1][0] - Q[i][0]) * u, Q[i][1] + (Q[i + 1][1] - Q[i][1]) * u]; };
+    const dE = cum[2], dL = cum[3], dLip = nude ? dE + Math.hypot(E[0] - L[0], E[1] - (g.gz - .2)) : dE;   // 從哪裡開始算「進去了」
+    const t = FG.st === 'in' ? 1 : FG.t;
+    let dTip;
+    if (t < .45) dTip = cum[0] + (dE - .3) * fgEase(t / .45);
+    else if (t < .82) dTip = dE - .3 + (dL - dE + .3) * fgEase((t - .45) / .37);
+    else dTip = dL;
+    if (FG.st === 'in') dTip = dL - .6 + .6 * Math.sin(now / 1000 * 2 * Math.PI / 1.1);   // 在裡面慢慢抽動
+    const FL = 3.4, PL = 3.2, ARM = 60;   // 手指、手掌、前臂（一直拉到畫面外）長度
+    const W = (d) => { const back = dTip - d; return back < FL ? 2.1 : back < FL + PL ? 3.4 : back < FL + PL + 1.2 ? 3.0 : 3.6 + Math.min(1, (back - FL - PL) / 10) * .8; };   // 每一段的寬
+    const tmp = fgDraw.tmp || (fgDraw.tmp = [document.createElement('canvas'), document.createElement('canvas')]);
+    const layers = tmp.map((cv) => { cv.width = H.width; cv.height = H.height; const c = cv.getContext('2d'); c.clearRect(0, 0, cv.width, cv.height); c.fillStyle = '#000'; return c; });
+    const disc = (c, q, r) => { const [x, y] = fgPx(q[0], q[1]); c.beginPath(); c.arc(x, y, r * 1.1 * SCALE / 2 + .6, 0, 2 * Math.PI); c.fill(); };
+    // 沿著路徑從指尖往回一路蓋圓（寬度照那一段）；過了「進去的點」的放在裡面那層
+    for (let d = dTip; d > dTip - ARM; d -= .25) disc(d > dLip ? layers[1] : layers[0], at(d), W(d));
+    // 指尖圓一點、拇指根貼在手掌外側
+    const tipQ = at(dTip), b0 = at(dTip - FL), b1 = at(dTip - FL - .8), dv = [b0[0] - b1[0], b0[1] - b1[1]], dl = Math.hypot(dv[0], dv[1]) || 1, nrmv = [dv[1] / dl, -dv[0] / dl];
+    disc(dTip > dLip ? layers[1] : layers[0], tipQ, 2.0);
+    disc(dTip - FL > dLip ? layers[1] : layers[0], [b0[0] + nrmv[0] * 1.6, b0[1] + nrmv[1] * 1.6], 1.6);
+    // 像素化（alpha 門檻）＋上色＋描邊；裡面那層：褲頭裡＝淡淡的影子，全裸＝看不到
+    const Wd = H.width, Hd = H.height, out = c2.createImageData(Wd, Hd), od = out.data;
+    const srcs = layers.map((c) => c.getImageData(0, 0, Wd, Hd).data);
+    const on = (sd, x, y) => x >= 0 && y >= 0 && x < Wd && y < Hd && sd[(y * Wd + x) * 4 + 3] >= 128;
+    for (let L2 = 1; L2 >= 0; L2--) {
+      const sd = srcs[L2], alpha = L2 === 0 ? 255 : nude ? 0 : 80; if (!alpha) continue;
+      for (let y = 0; y < Hd; y++) for (let x = 0; x < Wd; x++) {
+        if (!on(sd, x, y)) continue;
+        if (L2 === 1 && on(srcs[0], x, y)) continue;   // 外面那層蓋在上面
+        const i = (y * Wd + x) * 4, edge = !on(sd, x - 1, y) || !on(sd, x + 1, y) || !on(sd, x, y - 1) || !on(sd, x, y + 1);
+        const c = edge ? [26, 20, 30] : [74, 60, 70];
+        od[i] = c[0]; od[i + 1] = c[1]; od[i + 2] = c[2]; od[i + 3] = alpha;
+      }
+    }
+    c2.putImageData(out, 0, 0);
+  }
+  function fingerBind() {
+    // 按住下體：按住 0.22 秒才算（點一下照舊是摸陰唇）；還沒停住就放開＝退回去
+    canvas.addEventListener('pointerdown', (ev) => {
+      if (FG.st !== 'idle' || !cur || cur.cv !== CV) return;
+      const [x, y] = toCanvas(ev); if (zoneAt(x, y) !== 'groin') return;
+      clearTimeout(FG.holdT);
+      FG.holdT = setTimeout(() => { FG.holdT = 0; if (fgStart()) FG.eatClick = true; }, FG_HOLD);
+    });
+    const up = () => { clearTimeout(FG.holdT); FG.holdT = 0; if (FG.st === 'approach') FG.st = 'back'; };
+    for (const k of ['pointerup', 'pointercancel', 'pointerleave']) canvas.addEventListener(k, up);
   }
 
   // 生氣／開心也看她說的話（2026-11-21 使用者：話裡有「哼」「討厭」「生氣」「變態」這類字也算生氣）；「不生氣」「別生氣」不算
