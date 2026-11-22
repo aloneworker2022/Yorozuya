@@ -1472,8 +1472,10 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     }
     FG.ui.style.display = show ? 'flex' : 'none';
     if (!show) return;
+    // 放在畫面下面：互動鍵列在的話放在它上面；對話框在下半部（還沒移到最上面）就放在對話框上面
     const tb = document.getElementById('talk-box'), ta = document.getElementById('talk-acts');
-    let top = tb ? tb.getBoundingClientRect().top : innerHeight * .7;
+    let top = innerHeight - 14;
+    if (tb) { const r = tb.getBoundingClientRect(); if (r.height > 0 && r.top > innerHeight * .5) top = r.top; }
     if (ta && !ta.hidden) { const r = ta.getBoundingClientRect(); if (r.height > 0 && r.top < top + 4 && r.bottom > top - 80) top = Math.min(top, r.top); }
     FG.ui.style.bottom = Math.max(0, innerHeight - top + 10) + 'px';
     const F = window.RoomTouch && window.RoomTouch.finger;

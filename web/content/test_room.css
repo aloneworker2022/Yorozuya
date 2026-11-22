@@ -832,3 +832,9 @@ body.room-home.kb-open #talk-acts { display: none; }
 /* 2026-11-20 使用者：立繪呼吸改成「中間鼓起、兩邊不動」——portrait_breathe.js 在立繪上面疊 WebGL 畫布扭曲畫；原圖只藏起來（位置、長按照舊） */
 #portrait-img.pb-on{filter:opacity(0)!important}
 #portrait-warp{position:fixed;z-index:0;pointer-events:none;display:none;filter:drop-shadow(0 14px 24px rgba(0,0,0,.5))}
+/* 2026-11-22 使用者：手指插入模式（手伸進去、按著的時候）——輸入框消失、對話框移到畫面最上方；
+   動作圖也在最上方、蓋在對話框上面；互動鍵列貼到最下面（原本對話框的位置空出來，看得到她） */
+#portrait-sheet.finger-mode #talk-input-row{display:none!important}
+#portrait-sheet.finger-mode #talk-box{position:fixed;left:50%;transform:translateX(-50%);top:max(8px,env(safe-area-inset-top));bottom:auto;width:min(calc(100% - 16px),440px);z-index:4}
+#portrait-sheet.finger-mode #action-flash-img{top:max(8px,env(safe-area-inset-top));bottom:auto;z-index:5;height:min(42svh,calc(0.8 * var(--portrait-w)));width:auto;aspect-ratio:1}
+#portrait-sheet.finger-mode .talk-acts{bottom:max(6px,env(safe-area-inset-bottom))}

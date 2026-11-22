@@ -7036,6 +7036,7 @@ var fingerHandOn = false, fingerBoxHidden = false, fingerBoxTimer = 0, fingerBox
 // chat_shadow.js 手伸進去／收回來時通知（detail.on）
 document.addEventListener("chat-shadow-finger", (ev) => {
   fingerHandOn = !!ev.detail?.on;
+  $("portrait-sheet")?.classList.toggle("finger-mode", fingerHandOn);   // 輸入框收起來、對話框和動作圖移到最上方（CSS）
   fingerBoxHidden = false; fingerBoxText = String($("portrait-meta")?.textContent || "");
   clearTimeout(fingerBoxTimer);
   if (fingerHandOn && heldInsert) clearActionFlash();   // 插入圖也只閃一秒，不留在畫面上
