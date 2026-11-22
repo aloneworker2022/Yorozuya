@@ -170,6 +170,8 @@
       if (kw) {
         const w = kneadW(kw, x, y, z);
         x -= kw.o[0] * w; y -= kw.o[1] * w; z -= kw.o[2] * w;
+        // 2026-11-22 上胸波浪（chat_shadow：穿胸罩／比基尼的大奶晃的時候，罩杯上面露出來的那段肉慢半拍晃一下）：只動上半段（根部 0 → 上胸中間最多 → 罩杯那段 0）
+        if (kw.wv) { const g = waveW(kw, x, y, z); x -= kw.wv[0] * g; y -= kw.wv[1] * g; z -= kw.wv[2] * g; }
       }
       let d = primDistRaw(p, x, y, z, fz);
       if (kw) {
@@ -186,6 +188,10 @@
       const t = ((x - kw.root[0]) * kw.f[0] + (y - kw.root[1]) * kw.f[1] + (z - kw.root[2]) * kw.f[2]) / kw.L;
       const u = t <= 0 ? 0 : t >= 1 ? 1 : t;
       return u * u * (3 - 2 * u);
+    }
+    function waveW(kw, x, y, z) {
+      const t = ((x - kw.root[0]) * kw.f[0] + (y - kw.root[1]) * kw.f[1] + (z - kw.root[2]) * kw.f[2]) / kw.L, u = t / .55;
+      return u <= 0 || u >= 1 ? 0 : Math.sin(Math.PI * u);
     }
     function primDistRaw(p, x, y, z, fz) {
       let d;

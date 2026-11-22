@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=26', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=27', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
@@ -166,22 +166,22 @@
       const sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }, E = 5, LOOP = 18;
       const wa = sm(f / (E - 1)), inL = f >= E, ph3 = inL ? 2 * Math.PI * 3 * (f - E) / LOOP : 0;
       const hop = inL ? .32 * Math.sin(ph3) : 0;
-      const bounce = inL ? -.85 * Math.sin(ph3 - 1.15) : 0;
+      const bounce = inL ? -.85 * Math.sin(ph3 - 1.15) : 0, wave = inL ? -.85 * Math.sin(ph3 - 2.2) : 0;   // wave：上胸波浪（再慢一點）
       const sh2 = inL ? Math.sin(ph3 + .6) : 0;   // 肩膀、頭跟著一下一下（比身體早一點）
       if (pose === 'laugh_bend') return { ph: 0, br: .5 + .2 * sh2, tilt: 3 * wa + 2 * Math.sin(ph3 / 3), nod: 14 * wa + 3 * sh2, turn: 0, gest: 0,
-        ang: { kind: 'cross', w: wa, bounce, laugh: true }, bend: 24 * wa + 2.5 * sh2, jolt: hop };
+        ang: { kind: 'cross', w: wa, bounce, wave, laugh: true }, bend: 24 * wa + 2.5 * sh2, jolt: hop };
       return { ph: 0, br: .5 + .2 * sh2, tilt: 5 * wa + 2 * Math.sin(ph3 / 3), nod: -18 * wa - 3 * sh2, turn: 6 * wa, gest: 0,
-        ang: { kind: 'mouth', w: wa, bounce }, bend: -6 * wa, jolt: hop };
+        ang: { kind: 'mouth', w: wa, bounce, wave }, bend: -6 * wa, jolt: hop };
     }
     if (pose === 'ang_akimbo' || pose === 'ang_cross') {
       // 生氣說話：叉腰（f0–3 左手也叉到腰上、f4「哼」身體往上一抖、f5 落下，乳房慢半拍上下晃、越晃越小；f12–19 叉腰講話循環）
       //   抱胸（f0–4 兩手交叉到乳房下面、把乳房托起來壓在手臂上；f5–12 抱胸講話循環，頭轉開、下巴微抬）
       const sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }, ak = pose === 'ang_akimbo';
-      let wa, jolt = 0, bounce = 0, tilt, nod, turn, br;
+      let wa, jolt = 0, bounce = 0, wave = 0, tilt, nod, turn, br;
       if (ak) {
         wa = sm(f / 3);
         jolt = f === 4 ? .9 : f === 5 ? -.3 : 0;
-        bounce = [0, 0, 0, 0, -1, .9, -.6, .4, -.25, .15, -.08, 0][f] || 0;   // 乳房相對身體的上下（身體往上它晚到＝往下）
+        const BT = [0, 0, 0, 0, -1, .9, -.6, .4, -.25, .15, -.08, 0]; bounce = BT[f] || 0; wave = BT[f - 1] || 0;   // 乳房相對身體的上下（身體往上它晚到＝往下）
         if (f < 12) { tilt = -2 * wa; nod = 4 * wa - (f === 4 ? 4 : 0); turn = -10 * wa; br = f >= 4 && f < 8 ? .8 : .3; }
         else { const q = 2 * Math.PI * (f - 12) / 8; tilt = -2 + 2.5 * Math.sin(q); nod = 4 + 3 * Math.max(0, Math.sin(2 * q)); turn = -10 + 3 * Math.sin(q); br = .45 + .25 * Math.sin(2 * q); }
       } else {
@@ -189,7 +189,7 @@
         if (f < 5) { tilt = 3 * wa; nod = -5 * wa; turn = -16 * wa; br = .3; }
         else { const q = 2 * Math.PI * (f - 5) / 8; tilt = 3 + 2 * Math.sin(q); nod = -5 + 3 * Math.max(0, Math.sin(2 * q)); turn = -16 + 4 * Math.sin(q); br = .35 + .2 * Math.sin(2 * q); }
       }
-      return { ph: 0, br, tilt, nod, turn, gest: 0, ang: { kind: ak ? 'akimbo' : 'cross', w: wa, bounce }, jolt };
+      return { ph: 0, br, tilt, nod, turn, gest: 0, ang: { kind: ak ? 'akimbo' : 'cross', w: wa, bounce, wave }, jolt };
     }
     if (pose === 'r_breast' || pose === 'r_groin' || pose === 'r_waist') {
       // 被摸的反應（使用者：陌生生氣、朋友生氣、女友無奈嫌煩、妻子喜歡調情；摸的時候會反抗、遮擋）：
@@ -449,7 +449,7 @@
       }
     }
     // 脫光後的動作（m.mode）：cover 一手遮胸、一手遮下體；fondle 兩手托著乳房揉；touch（坐著）右手摸陰唇
-    let modePlan = null, SOFT = null, crossBand = null;   // SOFT：乳房軟變形（左右各一個位移；根部不動、越往下推越多，連同蓋在上面的衣服）——生氣說話的晃、抱胸托高
+    let modePlan = null, SOFT = null, SOFTW = null, crossBand = null;   // SOFT：乳房軟變形（左右各一個位移；根部不動、越往下推越多，連同蓋在上面的衣服）——生氣說話的晃、抱胸托高
     // 2026-11-22 使用者：脫比基尼上面、脫胸罩，帶子（扣子）解開的時候胸部會垂落——托著的布一鬆，乳房往下掉、晃兩下停住（根部不動、下半顆掉最多）
     if (anim && anim.kind === 'bra' && sh.supDrop && anim.u > .42) {
       const t = (anim.u - .42) * 35, D = sh.supDrop, dz = -D * (1 - Math.exp(-t / 2.2) * Math.cos(t * 1.25)), dy = -.25 * D * Math.min(1, t / 3);
@@ -561,6 +561,11 @@
         const c = mean(L.map(W)), r = Math.max(...L.filter(p => p.r).map(p => Math.max(...p.r)), 2), bot = Math.min(...L.map(p => W(p)[2] - (p.r ? p.r[2] : p.br * .5)));
         return { c, r, bot, front: Math.max(...L.map(p => W(p)[1] + p.br * .7)) }; });
       const big = BR[1] ? Math.max(.3, Math.min(1, (BR[1].r - 3.4) / 2.6)) : .5, w = m.ang.w;
+      // 2026-11-22 使用者：穿衣服時不太會晃；胸罩、比基尼微微晃；大奶穿胸罩／比基尼晃的時候上胸會有波浪
+      //   jig＝晃的幅度：外衣蓋著胸 0.25、只穿胸罩／比基尼 0.45、全裸 1；cupped＝有罩杯撐著（上胸那段才會另外波浪）
+      const outerTop = sh.prims.some(p => p.cloth && !p.under && !p.bik && p.garm !== 'bot' && !p.sleeve && p.part !== 'legs');
+      const cupped = sh.prims.some(p => braPiece(p));
+      const jig = outerTop ? .25 : cupped ? .45 : 1;
       const A = { armL: armPts('armL'), armR: armPts('armR') };
       const hands = {}, poles = {};
       if (m.ang.kind === 'mouth') {   // 摀嘴笑：左手手背遮在嘴前（跟著頭仰）
@@ -570,7 +575,7 @@
         if (A.armL) { hands.armL = lerp(A.armL.w0, mq, w); poles.armL = [-.25, .35, -1]; }   // 手肘往下垂、前臂從胸前斜上來（不要橫過臉）
       } else if (m.ang.kind === 'akimbo') {
         if (A.armL && A.armR) { const r = A.armR.w0; hands.armL = lerp(A.armL.w0, [-r[0], r[1], r[2]], w); poles.armL = [-1, -.4, .15]; }
-        SOFT = { [-1]: [0, 0, m.ang.bounce * (.5 + 1.3 * big)], [1]: [0, 0, m.ang.bounce * (.5 + 1.3 * big)] };   // 晃：根部不動、下半顆晃得最多
+        SOFT = { [-1]: [0, 0, jig * m.ang.bounce * (.5 + 1.3 * big)], [1]: [0, 0, jig * m.ang.bounce * (.5 + 1.3 * big)] };   // 晃：根部不動、下半顆晃得最多（穿衣服晃得少）
       } else if (BR[0] && BR[1]) {
         // 2026-11-21 使用者：大於 C 的抱胸不是把胸壓扁，是手臂把胸撐起來、胸部放在手臂上——
         //   前臂在乳房（托高之後的）下緣下面、貼著身體（不擋在乳房前面），乳房整顆往上托、形狀不壓扁；C 以下只是手交叉在胸下
@@ -609,9 +614,15 @@
       }
       if (m.ang.kind !== 'akimbo' && m.ang.bounce) {   // 笑：乳房跟著一抖一抖（疊在托高上；彎腰時順著往前垂的方向晃）
         // 2026-11-22 使用者：胸部沒有晃（量過只動 0～2 像素）→ 幅度加大到看得出來，C 也會晃、越大晃越多；左右兩顆往外一點點反著晃
-        const bz = m.ang.bounce * (1.4 + 2.6 * big);
+        const bz = jig * m.ang.bounce * (1.4 + 2.6 * big);
         SOFT = SOFT || { [-1]: [0, 0, 0], [1]: [0, 0, 0] };
         for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0] + sd * .18 * bz, SOFT[sd][1] + (th ? .9 * bz * Math.sin(th) + .35 * bz : 0), SOFT[sd][2] + bz];
+      }
+      // 上胸波浪：大奶（D 以上）只穿胸罩／比基尼——罩杯撐住下半顆，露出來的上胸慢半拍晃一下（外衣蓋著就不明顯，不做）
+      if (cupped && !outerTop && big >= .45 && m.ang.wave) {
+        const wv = m.ang.wave * (1.2 + 2.2 * big);
+        SOFTW = { [-1]: [-.25 * wv, .55 * wv, .9 * wv], [1]: [.25 * wv, .55 * wv, .9 * wv] };
+        SOFT = SOFT || { [-1]: [0, 0, 0], [1]: [0, 0, 0] };
       }
       modePlan = { hands, poles, push: { [-1]: [0, 0, 0], [1]: [0, 0, 0] }, round: { [-1]: 0, [1]: 0 }, handDir: {} };
     }
@@ -795,10 +806,10 @@
         const z = p.bc[2] + p.off[2], h = p.k === 0 && p.r ? p.r[2] : p.br * .6;
         top = Math.max(top, z + h); bot = Math.min(bot, z - h); cx += (p.bc[0] + p.off[0]) / L.length; cy += (p.bc[1] + p.off[1]) / L.length;
       }
-      const o = SOFT[sd], g = Math.hypot(o[0], o[1], o[2]);
+      const o = SOFT[sd], ow = SOFTW && SOFTW[sd], g = Math.hypot(o[0], o[1], o[2]) + (ow ? Math.hypot(ow[0], ow[1], ow[2]) : 0);
       if (top - bot < 1 || g < .01) continue;
       softRoot[sd] = { root: [cx, cy, top], L: top - bot, o };
-      const put = (p) => { p.kw = { root: [cx - p.off[0], cy - p.off[1], top - p.off[2]], f: [0, 0, -1], L: top - bot, o }; p.br += g; };
+      const put = (p) => { p.kw = { root: [cx - p.off[0], cy - p.off[1], top - p.off[2]], f: [0, 0, -1], L: top - bot, o, wv: ow || null }; p.br += g; };
       for (const p of L) put(p);
       for (const [p, s2] of overBreast) if (s2 === sd && !p.xf) put(p);
     }
