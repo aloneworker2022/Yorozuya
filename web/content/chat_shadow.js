@@ -10,7 +10,7 @@
 (function () {
   'use strict';
   const DROOM_URL = new URL('../droom/room_doll_chest.js?v=26', (document.currentScript && document.currentScript.src) || location.href).href;
-  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12 }, FPS = { breathe: 4, talk: 7 };
+  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
   const BEAT = {
@@ -125,10 +125,23 @@
     //   bend＋往前彎、nod＋低頭／－仰頭、turn 搖頭；drop 腿軟（整個上半身往下、膝蓋彎）、open 大腿打開、squirt 噴水（畫在手那一層）
     // 2026-11-22 使用者：被摸到噴水以後，手收回去她不會站著——腿軟、雙腿打開成 M 字，癱坐在地上。
     //   col_d 坐下去（一次，最後屁股著地彈一下）、col_s 癱坐著（循環：喘、一抖一抖）。dropFrac＝往下沉到屁股著地的比例（deform 照身形換算）
-    if (pose === 'col_d' || pose === 'col_s') {
-      const sit = pose === 'col_s', E = [0, .05, .15, .32, .55, .78, .95, 1.03, .98, 1][Math.min(9, f)], e = sit ? 1 : E, s3 = Math.sin(3 * ph);
-      return { ph, br: sit ? .7 + .3 * Math.sin(2 * ph) : .5, tilt: 8 * e, nod: 16 * e + (sit ? 3 * Math.sin(ph) : 0), turn: -6 * e, gest: 0, bend: 8 * e, jolt: sit ? .07 * s3 : 0,
-        fg: { kind: sit ? 'cs' : 'cd', ph, drop: 0, dropFrac: e, open: .5 + 2.1 * Math.min(1, e) + (sit ? .05 * Math.sin(2 * ph) : 0), squirt: false } };
+    // 2026-11-22 使用者（第二版）：忽然沒力、狠狠地坐下去——「碰！」屁股撞地（彈一下），撞地那一下噴水；
+    //   一邊噴身體一邊抖（col_q），之後癱坐（col_s）；頭一直往上仰。
+    if (pose === 'col_d' || pose === 'col_s' || pose === 'col_q') {
+      if (pose === 'col_d') {
+        const E = [0, .04, .3, .78, 1.1, .94, 1.03, .99, 1, 1][Math.min(9, f)], J = [0, 0, 0, 0, .45, -.25, .15, -.06, 0, 0][Math.min(9, f)];   // 第 4 格屁股撞地
+        return { ph, br: .25, tilt: 6 * E, nod: -6 - 18 * Math.min(1, E) - 10 * Math.max(0, J), turn: -4 * E, gest: 0, bend: -6 * Math.min(1, E), jolt: 0,
+          fg: { kind: 'cd', ph, drop: 0, dropFrac: E, open: .5 + 2.1 * Math.min(1, E), squirt: false } };
+      }
+      if (pose === 'col_q') {   // 一邊噴一邊抖：身體一抽一抽、腿跟著顫、頭往上仰
+        const J = [.55, -.45, .5, -.4, .55, -.35, .45, -.5][f % 8];   // 抖的幅度放在頭、背、腿（身體往上抽太大，上衣和褲頭中間會裂開）
+        return { ph, br: .25, tilt: 6 + 4 * J, nod: -28 - 8 * J, turn: -4 + 5 * J, gest: 0, bend: -5, jolt: 0,   // 抖在頭、肩、腿（不用 jolt、不加 bend、不另外沉：上半身一動，腿張開時褲頭和褲管會分開）
+          fg: { kind: 'cq', ph, drop: 0, dropFrac: 1, open: 2.45 + .15 * J, squirt: false } };   // 腿不要比癱坐張更開（褲子胯下那條縫會裂開）
+      }
+      const s3 = Math.sin(3 * ph);   // 癱坐：喘、偶爾抖一下，頭還是往上仰
+      return { ph, br: .25 + .1 * Math.sin(2 * ph), tilt: 6 + 1.5 * s3,   // 呼吸起伏放小（腿張開時上半身抬太多，褲頭和褲管會分開）
+        nod: -20 + 3 * Math.sin(ph), turn: -4, gest: 0, bend: -5, jolt: 0,
+        fg: { kind: 'cs', ph, drop: 0, dropFrac: 1, open: 2.6 + .05 * Math.sin(2 * ph), squirt: false } };
     }
     if (pose.slice(0, 3) === 'fg_') {
       const k = pose.slice(3), s2 = Math.sin(2 * ph), s4 = Math.sin(4 * ph);
@@ -486,7 +499,8 @@
       // 2026-11-22 使用者：抓手臂要抓前面那一節（手腕、褲頭上面那段 M→E），不是後面的前臂
       const grip = (part, v, pole) => { const q = G.wr(v); hands[part] = [q[0], frontAny(q[0], q[1]) + 3.2, q[1] + .3]; poles[part] = pole; };
       const knead = (part, b, sd, amp) => { const kk = Math.sin(ph2 + (sd > 0 ? 1.4 : 0)); hands[part] = [b.c[0] * 1.05 + sd * .4 * kk, b.front - b.r * .25, b.c[2] - b.r * .55 + amp * kk]; poles[part] = [sd, .25, -.8]; push[sd] = [-sd * .45 * (1 + kk) * .5, .3, .9 + amp * .8 * kk]; round[sd] = .6 * big; };
-      if (k === 'cd' || k === 'cs') {   // 癱坐：兩手軟軟地垂到地上（身體往下沉之前的座標：最後的位置＋沉下去的量）
+      if ((k === 'cd' || k === 'cs' || k === 'cq') && sh.prims.some(p => p.cloth && p.garm === 'bot')) sh.prims = sh.prims.filter(p => !(p.cloth && p.under && p.pk));   // 癱坐腿張很開：褲子胯下會裂開一點，裡面的黑色丁字褲不要露出來（看到的是皮膚的影子）
+      if (k === 'cd' || k === 'cs' || k === 'cq') {   // 癱坐：兩手軟軟地垂到地上（身體往下沉之前的座標：最後的位置＋沉下去的量）
         const A2 = { armL: armPts('armL'), armR: armPts('armR') }, dMax = Math.max(0, (P.hipz - .9) - P.ankle - 7), dN = (m.fg.drop || 0) + (m.fg.dropFrac || 0) * dMax, e = Math.min(1, m.fg.dropFrac || 0);
         for (const [part, sd] of [['armL', -1], ['armR', 1]]) if (A2[part]) { const fl = [G.cx + sd * 8.5, -1.5, P.ankle + 3 + dN]; hands[part] = lerp(A2[part].w0, fl, e); poles[part] = [sd, -.2, .3]; }
       } else
@@ -642,6 +656,8 @@
     /** 一個身體零件這格怎麼動：[dx, dy, dz, 轉動或 null]。 */
     const act = (p, q) => {
       const part = p.part;
+      // 長頭髮：肩膀以下那段不跟著頭轉（頭往後仰時，整束長髮像棍子一樣甩到前面、蓋到胯下）——照樣往下垂，只跟著身體動
+      if (p.mat === 1 && part !== 'head' && headX && q[2] < S - 3) return [0, jy, hl + jz, null];
       if (part === 'head' || p.mat === 1) return [0, jy, hl + jz, headX];
       if (part === 'armL' || part === 'armR') { const X = armX[part]; return armAct(part, !X ? false : p === X.upper ? 'up' : X.hand && X.hand.has(p) ? 'hand' : false); }
       if (part === 'legs') return null;
@@ -1063,7 +1079,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       for (let f = 0; f < N; f++) todo.push(['talk', f]);
       if (cvOf(doll) === CV && !doll._mode) for (const a of ANGS) { job.sets[a] = []; for (let f = 0; f < NA_OF[a]; f++) todo.push([a, f]); }   // 生氣說話（站著、還沒脫光）
       if (doll._mode === 'touch') { job.sets.peak = []; for (let f = 0; f < NA_OF.peak; f++) todo.push(['peak', f]); }   // 忽然仰頭（偶爾播）
-      if (cvOf(doll) === CV && doll._mode !== 'touch') for (const c of ['col_d', 'col_s']) { job.sets[c] = []; for (let f = 0; f < NA_OF[c]; f++) todo.push([c, f]); }   // 噴水後癱坐（2026-11-22）：先在背景算好（算過的存起來，下次直接拿），放開時才坐得下去
+      if (cvOf(doll) === CV && doll._mode !== 'touch') for (const c of ['col_d', 'col_q', 'col_s']) { job.sets[c] = []; for (let f = 0; f < NA_OF[c]; f++) todo.push([c, f]); }   // 噴水後癱坐（2026-11-22）：先在背景算好（算過的存起來，下次直接拿），放開時才坐得下去
     }
     job.todo = todo; job.doll = doll; job.running = 0;
     runJob(job);
@@ -1241,7 +1257,13 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
         if (COL.fi >= nd - 1 && want >= nd) COL.st = 'hold';
         k = 'col_d'; i = COL.fi;
       }
-      if (COL.st === 'hold') { if (full(Sx, nOf('col_s'))) { COL.st = 'sit'; COL.t0 = t; COL.until = t + COL_SIT; } else { k = 'col_d'; i = nd - 1; } }
+      // 坐下去以後：還在噴就一邊噴一邊抖（col_q），噴完才癱坐（col_s）；那段還沒算好就停在坐下的最後一格
+      const sprayEnd = COL.impactAt ? COL.impactAt + Math.max(...SPRAY[COL.style].map((w) => w[1])) + 250 : 0, Q = cur.sets.col_q || [];
+      if (COL.st === 'hold') {
+        if (t < sprayEnd && full(Q, nOf('col_q'))) { k = 'col_q'; i = Math.floor((t - COL.impactAt) / 1000 * COL_Q_FPS) % nOf('col_q'); }
+        else if (t >= sprayEnd && full(Sx, nOf('col_s'))) { COL.st = 'sit'; COL.t0 = t; COL.until = t + COL_SIT; }
+        else { k = 'col_d'; i = nd - 1; }
+      }
       if (COL.st === 'sit') { if (t > COL.until) { COL.st = 'up'; COL.t0 = t; } else { k = 'col_s'; i = Math.floor((t - COL.t0) / 1000 * 6) % nOf('col_s'); } }
       if (COL.st === 'up') { i = nd - 1 - Math.floor((t - COL.t0) / 1000 * COL_FPS); if (i < 0) { colReset(); mode = ''; } else k = 'col_d'; }
       if (k && cur.sets[k] && cur.sets[k][i]) { COL.disp = { k, i }; if (canvas.dataset.f !== k + i) draw(cur.sets[k][i], k + i); }
@@ -1534,21 +1556,28 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   //   被摸到噴水以後，手收回去她不會站著：腿軟、雙腿打開成 M 字、癱坐在地上；屁股著地那一下忍不住又噴（每個妹子不一樣：
   //   once 噴一下／faucet 像水龍頭噴三秒／double 噴一下又再噴一下，summon 的 fgSquirt）。坐一陣子（40 秒）或關掉聊天才起來。
   const COL = { st: 'none', t0: 0, impactAt: 0, until: 0, style: 'once', disp: null, loop: 0 };
-  const COL_FPS = 12, COL_SIT = 40000, COL_IMPACT = 7;
+  const COL_FPS = 16, COL_SIT = 40000, COL_IMPACT = 4, COL_Q_FPS = 14;
   const SPRAY = { once: [[0, 300]], faucet: [[0, 3000]], double: [[0, 260], [800, 1060]] };
   function colStart() {
     if (!cur || cur.cv !== CV) return;
     const sp = spec(); COL.style = (sp && SPRAY[sp.fgSquirt]) ? sp.fgSquirt : 'once';
-    ensureSet(cur, 'col_d'); ensureSet(cur, 'col_s'); bump(cur, 'col_s'); bump(cur, 'col_d');
+    for (const c of ['col_s', 'col_q', 'col_d']) { ensureSet(cur, c); bump(cur, c); }
     COL.st = 'wait'; COL.t0 = 0; COL.impactAt = 0; COL.until = 0;
     play(); colRun();
   }
   function colReset() { COL.st = 'none'; COL.disp = null; COL.impactAt = 0; if (FG.hand && FG.st === 'idle') FG.hand.hidden = true; }
   function colRun() { if (!COL.loop) COL.loop = requestAnimationFrame(colTick); }
-  /** 癱坐時手那一層只畫噴水（屁股著地那一下）。 */
+  /** 癱坐時手那一層只畫噴水（屁股著地那一下）；撞地「碰！」那一下整個畫面震一下。 */
   function colTick(now) {
     COL.loop = 0;
     if (COL.st === 'none' || !wrap || wrap.hidden) { if (COL.st !== 'none') colReset(); return; }
+    if (FG.zoom && FG.st === 'idle') {
+      const ie = COL.impactAt ? now - COL.impactAt : -1, sprayMs = Math.max(...SPRAY[COL.style].map((w) => w[1])) + 250;
+      // 撞地「碰！」大震一下；之後噴水的那段身體一直小小地抖（抖的那段動畫還沒算好也看得到在抖）
+      const amp = ie >= 0 && ie < 420 ? Math.max(9 * Math.pow(1 - ie / 420, 1.6), 2.2) : ie >= 0 && ie < sprayMs ? 2.2 : 0;
+      if (amp > .3) { FG.zoom.style.left = (amp * Math.sin(ie * .09)).toFixed(1) + 'px'; FG.zoom.style.top = (amp * .9 * Math.abs(Math.cos(ie * .07))).toFixed(1) + 'px'; FG.shaking = true; }
+      else if (FG.shaking) { FG.zoom.style.left = FG.zoom.style.top = ''; FG.shaking = false; }
+    }
     const H = FG.hand;
     if (H && FG.st === 'idle') {
       const el = COL.impactAt ? now - COL.impactAt : -1, wins = SPRAY[COL.style], end = Math.max(...wins.map((w) => w[1])) + 950;
@@ -1624,7 +1653,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (FG.st === 'reach' || FG.st === 'in') {
       const k = fgPoseOf(sp); if (k !== FG.pose || !cur.sets[k]) { FG.pose = k; ensureSet(cur, k); bump(cur, k); }
       // 到了最高那段：癱坐排到最前面先算（每次按著只排一次；順序：現在這段 → 噴水痙攣 → 坐下去 → 癱坐），噴了以後放開才坐得下去
-      if (k.slice(-1) === '2' && !FG.colQ) { FG.colQ = true; for (const c of ['col_s', 'col_d', 'fg_' + k.charAt(3) + 'x', k]) { ensureSet(cur, c); bump(cur, c); } }
+      if (k.slice(-1) === '2' && !FG.colQ) { FG.colQ = true; for (const c of ['col_s', 'col_q', 'col_d', 'fg_' + k.charAt(3) + 'x', k]) { ensureSet(cur, c); bump(cur, c); } }
     }
     if (FG.st === 'approach') { FG.p = Math.min(1, FG.p + dt / FG_APPROACH); if (FG.p >= 1) { FG.st = 'reach'; FG.t = 0; } }
     else if (FG.st === 'back') { FG.p = Math.max(0, FG.p - dt / FG_BACK); if (FG.p <= 0) { const sq = FG.squirted; FG.squirted = false; fingerReset(); if (sq) colStart(); return; } }   // 噴過：手收回去以後癱坐
@@ -1637,7 +1666,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
         else FG.mode = 'idle';
       } else if (!want && !busy && now - FG.roundAt >= FG_ROUND) FG.mode = 'idle';
       // 這一輪做完她到了最高那段 → 噴一次（不是一直噴）
-      if (FG.squirtCheck && now >= FG.squirtCheck && !busy) { FG.squirtCheck = 0; const s2 = spec(); if (s2 && Number(s2.fgLevel) >= 2) { FG.squirtAt = now; if (!FG.squirted) { FG.squirted = true; for (const c of ['col_s', 'col_d']) { ensureSet(cur, c); bump(cur, c); } } } }   // 噴過：放開以後會癱坐——坐下去的格子馬上排到最前面算
+      if (FG.squirtCheck && now >= FG.squirtCheck && !busy) { FG.squirtCheck = 0; const s2 = spec(); if (s2 && Number(s2.fgLevel) >= 2) { FG.squirtAt = now; if (!FG.squirted) { FG.squirted = true; for (const c of ['col_s', 'col_q', 'col_d']) { ensureSet(cur, c); bump(cur, c); } } } }   // 噴過：放開以後會癱坐——坐下去的格子馬上排到最前面算
       if (!fgTick.uiAt || now - fgTick.uiAt > 250) { fgTick.uiAt = now; fgSwipe(true); }
     } else if (FG.st === 'out') { FG.t = Math.max(0, FG.t - dt / FG_OUT); if (FG.t <= 0) FG.st = 'back'; }
     const zp = FG.st === 'approach' || FG.st === 'back' ? fgEase(FG.p) : 1;
@@ -1844,5 +1873,5 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   }
 
   window.ChatShadow = { sync, undress, shapeOf, areolaOf, motion, deform, shade, ready: (k) => !!(cur && full(cur.sets[k], nOf(k))), P: () => cur && cur.P,
-    test: { render: testRender, poses: () => ['breathe', 'talk', ...REACTS, ...ANGS, ...ANIMS, 'bikini', 'peak', 'fg_r0', 'fg_r1', 'fg_r2', 'fg_w0', 'fg_w1', 'fg_w2', 'fg_rx', 'fg_wx', 'col_d', 'col_s'] } };
+    test: { render: testRender, poses: () => ['breathe', 'talk', ...REACTS, ...ANGS, ...ANIMS, 'bikini', 'peak', 'fg_r0', 'fg_r1', 'fg_r2', 'fg_w0', 'fg_w1', 'fg_w2', 'fg_rx', 'fg_wx', 'col_d', 'col_q', 'col_s'] } };
 })();
