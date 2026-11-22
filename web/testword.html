@@ -207,6 +207,7 @@
     <span><label>放大</label><select id="cst-zoom"><option value="2">2×</option><option value="3" selected>3×</option><option value="4">4×</option></select></span>
     <label style="display:inline-flex;gap:.3em;align-items:center"><input id="cst-loop" type="checkbox" checked>循環</label>
     <button id="cst-play" type="button">▶ 播放</button>
+    <button id="cst-server" type="button" title="把這張表單送到伺服器（樹莓派）用 Node 算，算完傳回來播；順便量一格要幾秒">☁ 送後台算</button>
     <button id="cst-stop" type="button">■ 停</button>
     <span id="cst-status" class="mini"></span>
   </div>
@@ -215,7 +216,7 @@
   </div>
   <div id="cst-frame" class="mini"></div>
 </details>
-<script src="/content/chat_shadow.js?v=62"></script>
+<script src="/content/chat_shadow.js?v=63"></script>
 <script>
 (() => {
   const POSE_ZH = { breathe: '呼吸', talk: '說話', r_breast: '被摸：胸部', r_groin: '被摸：下體', r_waist: '被摸：腰臀',
@@ -236,20 +237,15 @@
   }
   let timer = 0, token = 0;
   function stop() { clearTimeout(timer); timer = 0; token++; }
-  async function play() {
-    stop();
-    const my = token, CS = window.ChatShadow;
-    if (!CS || !CS.test) { $('cst-status').textContent = 'chat_shadow.js 沒載到'; return; }
+  /** 表單 → 黑影的規格（spec）和動作。 */
+  function formSpec() {
     const tier = $('cst-tier').value, pose = $('cst-pose').value;
     const spec = { look: { height_cm: +$('cst-h').value || 163, build: $('cst-build').value, cup: $('cst-cup').value + ' 罩杯', breast_shape: $('cst-shape').value, breast_splay: $('cst-splay').checked ? '外擴' : '', areola: $('cst-areola').value, hair: $('cst-hair').value },
       outfit: $('cst-outfit').value, undressStage: +$('cst-st').value, wife: tier === 'wife', tier, mode: $('cst-mode').value || null };
-    $('cst-status').textContent = '算圖中…';
-    const t0 = performance.now();
-    let res;
-    try { res = await CS.test.render(spec, pose, (d, n) => { if (my === token) $('cst-status').textContent = `算圖 ${d}/${n}`; }); }
-    catch (e) { if (my === token) $('cst-status').textContent = '失敗：' + (e.message || e); return; }
-    if (my !== token) return;
-    $('cst-status').textContent = `好了（${res.frames.length} 格，${((performance.now() - t0) / 1000).toFixed(1)} 秒）`;
+    return { spec, pose };
+  }
+  /** 播放算好的格子（本機算或後台算都一樣）：res＝{frames: ImageData[], seq: [[格, 毫秒]…], pose}。 */
+  function playFrames(res, my, pose) {
     const cv = $('cst-cv'), ctx = cv.getContext('2d'), z = +$('cst-zoom').value, f0 = res.frames[0];
     cv.width = f0.width; cv.height = f0.height; cv.style.width = f0.width * z / 2 + 'px'; cv.style.height = f0.height * z / 2 + 'px';
     let k = 0;
@@ -263,10 +259,48 @@
     };
     step();
   }
+  async function play() {
+    stop();
+    const my = token, CS = window.ChatShadow;
+    if (!CS || !CS.test) { $('cst-status').textContent = 'chat_shadow.js 沒載到'; return; }
+    const { spec, pose } = formSpec();
+    $('cst-status').textContent = '算圖中…';
+    const t0 = performance.now();
+    let res;
+    try { res = await CS.test.render(spec, pose, (d, n) => { if (my === token) $('cst-status').textContent = `算圖 ${d}/${n}`; }); }
+    catch (e) { if (my === token) $('cst-status').textContent = '失敗：' + (e.message || e); return; }
+    if (my !== token) return;
+    $('cst-status').textContent = `好了（本機算 ${res.frames.length} 格，${((performance.now() - t0) / 1000).toFixed(1)} 秒）`;
+    playFrames(res, my, pose);
+  }
+  // 2026-11-22 使用者：手機平板算圖又慢又燙 → 表單送後台（伺服器用 Node 算），算完傳回一張橫排的連續圖，前台切成格子播；顯示後台一格要幾秒
+  async function playServer() {
+    stop();
+    const my = token, { spec, pose } = formSpec(), t0 = performance.now();
+    $('cst-status').textContent = '送到後台算…（樹莓派可能要等一下）';
+    const tick = setInterval(() => { if (my === token) $('cst-status').textContent = `後台算圖中…（${((performance.now() - t0) / 1000).toFixed(0)} 秒）`; }, 1000);
+    let j;
+    try {
+      const r = await fetch('/api/shadow-render', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spec, pose }) });
+      if (!r.ok) { let msg = r.status + ''; try { const e = await r.json(); msg = e.detail || msg; } catch { msg = (await r.text().catch(() => '')) || msg; } throw new Error(r.status === 404 ? '伺服器還沒有這個功能（pull 最新版、重啟 uvicorn）' : msg); }
+      j = await r.json();
+    } catch (e) { clearInterval(tick); if (my === token) $('cst-status').textContent = '後台失敗：' + (e.message || e); return; }
+    clearInterval(tick);
+    if (my !== token) return;
+    const img = new Image(); img.src = 'data:image/png;base64,' + j.png;
+    try { await img.decode(); } catch { $('cst-status').textContent = '後台傳回來的圖打不開'; return; }
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+    const frames = []; for (let i = 0; i < j.n; i++) frames.push(g.getImageData(i * j.w, 0, j.w, j.h));
+    const total = ((performance.now() - t0) / 1000).toFixed(1);
+    $('cst-status').textContent = `後台好了：${j.n} 格｜後台算 ${j.renderSec} 秒（平均一格 ${j.perFrame} 秒，${j.workers} 核心一起算；一個核心一格約 ${j.perFrameCore} 秒）｜含傳輸共 ${total} 秒｜${j.arch} ${j.cpu}`;
+    playFrames({ frames, seq: j.seq, pose: j.pose }, my, pose);
+  }
   function boot() {
     const poses = (window.ChatShadow?.test?.poses?.() || Object.keys(POSE_ZH));
     $('cst-pose').innerHTML = poses.map((p) => `<option value="${p}">${POSE_ZH[p] || p}</option>`).join('');
     $('cst-play').addEventListener('click', play);
+    $('cst-server').addEventListener('click', playServer);
     $('cst-stop').addEventListener('click', stop);
     loadPools();
   }

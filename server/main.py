@@ -8189,4 +8189,31 @@ def discover_apk():
 
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+# 2026-11-22 後台算黑影（使用者：手機平板算圖又慢又燙 → testword 填表單送後台算、算完交給前台播；順便量這台一格要幾秒）
+#   用 Node 跑 server/shadow_render.mjs（讀 web/content/chat_shadow.js＋web/droom/room_doll_chest.js，所有核心一起算）
+class ShadowRenderReq(BaseModel):
+    spec: dict
+    pose: str = "breathe"
+
+
+@app.post("/api/shadow-render")
+async def shadow_render(req: ShadowRenderReq):
+    node = shutil.which("node")
+    if not node:
+        raise HTTPException(503, "伺服器沒有 Node.js（樹莓派：sudo apt install nodejs）")
+    if not re.fullmatch(r"[a-z_0-9]{1,24}", req.pose or ""):
+        raise HTTPException(400, "動作名稱不對")
+    script = Path(__file__).resolve().parent / "shadow_render.mjs"
+    proc = await asyncio.create_subprocess_exec(
+        node, str(script), stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(json.dumps({"spec": req.spec, "pose": req.pose}).encode()), timeout=900)
+    except asyncio.TimeoutError:
+        proc.kill()
+        raise HTTPException(504, "算太久（超過 15 分鐘）")
+    if proc.returncode != 0:
+        raise HTTPException(500, "算圖失敗：" + err.decode("utf-8", "replace")[-600:])
+    return json.loads(out)
+
+
 app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")

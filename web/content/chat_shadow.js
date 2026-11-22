@@ -1815,6 +1815,8 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     sync();
   }
 
+  // 2026-11-22 後台算圖（server/shadow_render.mjs 用 Node 跑這個檔）：不碰畫面，只把算圖的函式交出去
+  if (globalThis.__CHAT_SHADOW_HEADLESS) { Object.assign(globalThis.__CHAT_SHADOW_HEADLESS, { setF: (f) => { F = f; }, dollOf, wearOf, motion, drawFrame, nOf, playSeq, CV, SCALE, N }); return; }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
   // ---------------------------------------------------------------- testword 測試台（2026-11-21 使用者：黑影人動作測試，選體型、參數、衣著、動作，按播放）
