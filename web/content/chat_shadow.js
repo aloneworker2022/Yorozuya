@@ -10,7 +10,7 @@
 (function () {
   'use strict';
   const DROOM_URL = new URL('../droom/room_doll_chest.js?v=26', (document.currentScript && document.currentScript.src) || location.href).href;
-  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8 }, FPS = { breathe: 4, talk: 7 };
+  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
   const BEAT = {
@@ -31,8 +31,9 @@
   const ANG = {
     ang_akimbo: { enter: 12, loop: [12, 19], exit: [3, 2, 1, 0], ms: (i) => (i < 4 ? 75 : i === 4 ? 60 : i < 12 ? 75 : 150) },
     ang_cross: { enter: 5, loop: [5, 12], exit: [4, 3, 2, 1, 0], ms: (i) => (i < 5 ? 85 : 155) },
-    laugh_bend: { enter: 4, loop: [4, 9], exit: [3, 2, 1, 0], ms: (i) => (i < 4 ? 80 : 105) },
-    laugh_back: { enter: 4, loop: [4, 9], exit: [3, 2, 1, 0], ms: (i) => (i < 4 ? 80 : 105) },
+    // 2026-11-22 使用者：笑用更多格（胸部的動作不順）——進場 5 格、循環 18 格（一圈笑三下，每格 55 毫秒）
+    laugh_bend: { enter: 5, loop: [5, 22], exit: [4, 3, 2, 1, 0], ms: (i) => (i < 5 ? 70 : 55) },
+    laugh_back: { enter: 5, loop: [5, 22], exit: [4, 3, 2, 1, 0], ms: (i) => (i < 5 ? 70 : 55) },
   };
   const beatCum = {};
   /** 播了 ms 毫秒，該是第幾格（超過最後一格回 n）。 */
@@ -160,13 +161,16 @@
     }
     if (pose === 'laugh_bend' || pose === 'laugh_back') {
       // 笑：bend＝上半身從腰往前彎（度，負＝往後仰）；jolt 一抖一抖（笑的時候肩膀一上一下）
-      const sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }, wa = sm(f / 3), L = f >= 4 ? f - 4 : -1;
-      const hop = L < 0 ? 0 : [.38, -.12, .3, -.1, .36, -.14][L];
-      // 2026-11-21 使用者：笑的時候胸部會跟著抖——身體一上一下，乳房慢半拍反著晃（根部不動、下半顆晃最多）
-      const bounce = L < 0 ? 0 : [-.85, .75, -.7, .6, -.8, .65][L];
-      if (pose === 'laugh_bend') return { ph: 0, br: .5 + (L >= 0 ? .3 * (L % 2) : 0), tilt: 3 * wa + (L >= 0 ? 2 * Math.sin(L * 2.1) : 0), nod: 14 * wa + (L >= 0 ? 4 * (L % 2) : 0), turn: 0, gest: 0,
-        ang: { kind: 'cross', w: wa, bounce, laugh: true }, bend: 24 * wa + (L >= 0 ? 3 * (L % 2) : 0), jolt: hop };
-      return { ph: 0, br: .5 + (L >= 0 ? .3 * (L % 2) : 0), tilt: 5 * wa + (L >= 0 ? 2 * Math.sin(L * 1.7) : 0), nod: -18 * wa - (L >= 0 ? 4 * (L % 2) : 0), turn: 6 * wa, gest: 0,
+      // 2026-11-22 使用者：用更多格、胸部要順——進場 5 格（wa 慢慢到位）＋循環 18 格（一圈笑三下）：
+      //   身體一上一下是平滑的波（hop），乳房像軟彈簧慢半拍跟著晃（bounce，相位落後），一圈剛好接回開頭，不會一格一格跳
+      const sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }, E = 5, LOOP = 18;
+      const wa = sm(f / (E - 1)), inL = f >= E, ph3 = inL ? 2 * Math.PI * 3 * (f - E) / LOOP : 0;
+      const hop = inL ? .32 * Math.sin(ph3) : 0;
+      const bounce = inL ? -.85 * Math.sin(ph3 - 1.15) : 0;
+      const sh2 = inL ? Math.sin(ph3 + .6) : 0;   // 肩膀、頭跟著一下一下（比身體早一點）
+      if (pose === 'laugh_bend') return { ph: 0, br: .5 + .2 * sh2, tilt: 3 * wa + 2 * Math.sin(ph3 / 3), nod: 14 * wa + 3 * sh2, turn: 0, gest: 0,
+        ang: { kind: 'cross', w: wa, bounce, laugh: true }, bend: 24 * wa + 2.5 * sh2, jolt: hop };
+      return { ph: 0, br: .5 + .2 * sh2, tilt: 5 * wa + 2 * Math.sin(ph3 / 3), nod: -18 * wa - 3 * sh2, turn: 6 * wa, gest: 0,
         ang: { kind: 'mouth', w: wa, bounce }, bend: -6 * wa, jolt: hop };
     }
     if (pose === 'ang_akimbo' || pose === 'ang_cross') {
