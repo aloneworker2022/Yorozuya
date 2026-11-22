@@ -768,7 +768,8 @@
           //   wt＝有多重（越大、本來越垂越重）：越重越寬、上下微扁、往兩邊溢出越多。
           const heavyShp = SHP === 'pendulous' || SHP === 'teardrop' || SHP === 'heavy' || SHP === 'bell';
           const wt = Math.min(1.3, Math.max(0, (r - 4) / 3) + (heavyShp ? .4 : 0));
-          const zS = zB + .5 + r * (.16 - .06 * wt), c = [cx + s * r * .04 * wt, cy - r * .05, zS], R = [r * (.95 + .12 * wt), r * (.93 - .04 * wt), r * (.9 - .07 * wt)];
+          const zS = zB + .5 + r * (.16 - .06 * wt) + (doll.splay === 'wide' ? r * .12 : 0), c = [cx + s * r * .04 * wt, cy - r * .05, zS], R = [r * (.95 + .12 * wt), r * (.93 - .04 * wt), r * (.9 - .07 * wt)];
+          // 外擴也托高（使用者：雖然外擴但是有托高）——外擴往外彎時會顯得低，多抬一點
           sh.cone(BODY, root, c, r * .55, r * .8);
           sh.ell(BODY, c, R);
           sh.ell(BODY, [c[0], c[1] - r * .04, c[2] - r * .2], [R[0] * 1.02, r * .9, r * .74]);   // 水球：下半微微飽滿（重量在下面，但沒有垂）
@@ -776,12 +777,13 @@
           const ro = r * (.42 + .1 * wt), ri = r * (.34 + .08 * wt), xo = c[0] + s * R[0] * .66, xi = s * Math.max(.4 + ri, Math.abs(c[0]) - R[0] * .6);
           sh.ell(BODY, [xo, c[1] - r * .02, c[2] - r * .2], [ro, r * .5, r * .55]);   // 外側溢出
           sh.ell(BODY, [xi, c[1] + r * .02, c[2] - r * .22], [ri, r * .45, r * .48]);    // 內側溢出（不跨過中線）
-          sh.bikDrop = Math.max(sh.bikDrop || 0, r * (.22 + .22 * wt));   // 解開帶子時往下掉多少（chat_shadow 脫比基尼的動畫用）
+          sh.supDrop = Math.max(sh.supDrop || 0, r * (.22 + .22 * wt) + (doll.splay === 'wide' ? r * .12 : 0));   // 解開帶子時往下掉多少（chat_shadow 脫比基尼的動畫用）
           nipAt([c[0], c[1] + R[1] * .97, c[2] - r * .02], [0, 1, 0], { c, r: R });
         } else
         if (doll.braSupport && !SMALL_G.hemi[doll.cup]) {
           // 2026-10-30 pt78u：穿胸罩＝托高＋往中間集中＋往前挺。不管原本圓／鐘／下垂，都收成被罩杯撐住的圓挺形（下垂型變化最大）
           const zS = zB + 1.4 + r * .3 + bz * .3, c = [s * (2.5 + r * .26) * cs + bx * .35, yl(zS) + 3.5 * cs + r * .62 + by * .4, zS];
+          { const hv = SHP === 'pendulous' || SHP === 'teardrop' || SHP === 'heavy' || SHP === 'bell', wt = Math.min(1.3, Math.max(0, (r - 4) / 3) + (hv ? .4 : 0)); sh.supDrop = Math.max(sh.supDrop || 0, r > 3.4 ? r * (.3 + .22 * wt) : 0); }   // 2026-11-22 使用者：脫胸罩解開時也要垂落（掉多少）
           sh.cone(BODY, [s * (2.4 + r * .2) * cs, yl(zA) + 2.4 * cs + r * .1, zA], c, r * .55, r * .82);
           const R = [r * .9, r * .95, r * .86];
           sh.ell(BODY, c, R);
