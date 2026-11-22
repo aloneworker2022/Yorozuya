@@ -148,6 +148,20 @@ function rollGraded(pool, luck, rating, extraWeight = null) {
   return weightedPick(keep.map(([x]) => x), keep.map(([, wt]) => wt));
 }
 
+/** 照總評抽身材（2026-11-22 使用者：召喚等級跟身材掛鉤）：跟總評同一級的權重 1、差一級 0.3、差兩級 0.04、再遠不抽。
+ *  池子裡沒有那麼高（低）的級（例如乳型最高 SS）就以池子的最高（最低）級當目標。extraWeight：另外的權重（罩杯×乳型配對）。 */
+export const BODY_GRADE_DIST_W = [1, 0.3, 0.04];
+export function rollByGrade(pool, overall, rating, extraWeight = null) {
+  const av = (pool || []).map(asGraded).filter(Boolean).filter(x => allow(x, rating));
+  if (!av.length) return null;
+  const tiers = av.map(x => Math.max(0, GRADE_ORDER.indexOf(itemGrade(x))));
+  const target = Math.min(Math.max(...tiers), Math.max(Math.min(...tiers), Math.max(0, GRADE_ORDER.indexOf(overall))));
+  const keep = [];
+  av.forEach((x, i) => { let wt = BODY_GRADE_DIST_W[Math.abs(tiers[i] - target)] || 0; if (wt && extraWeight) wt *= extraWeight(x, itemGrade(x), tiers[i]); if (wt > 0) keep.push([x, wt]); });
+  if (!keep.length) return null;
+  return weightedPick(keep.map(([x]) => x), keep.map(([, wt]) => wt));
+}
+
 function cupLetter(item) {
   if (!item) return "";
   if (item.cup) return String(item.cup).toUpperCase();
@@ -273,10 +287,6 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
 
   const A = F.appearance;
   const txt = x => (x && (x.text || x.name)) || "";
-  const build = rollGraded(A.build, luck, rating);
-  const cupPool = A.cup || A.bust;
-  const cup = rollGraded(cupPool, luck, rating);
-  const breastShape = rollBreastShape(A.breast_shape, luck, rating, cup);
   const eyes = rollGraded(A.eyes, luck, rating);
   const areola = (A.areola && A.areola.length) ? rollGraded(A.areola, luck, rating) : null;
   const nipple = (A.nipple && A.nipple.length) ? rollGraded(A.nipple, luck, rating) : null;
@@ -303,6 +313,45 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
   const sleepSrc = (A.sleep_style || []).map(x => typeof x === "string" ? x : x.text).filter(Boolean);
   const eroticOutfits = eroticSrc.length ? pickN(eroticSrc, EROTIC_OUTFIT_SIZE) : [];
   const sleepOutfits = sleepSrc.length ? pickN(sleepSrc, SLEEP_OUTFIT_SIZE) : [];
+  const traits = rollTraits(F.special_traits, luck, rating);
+
+  // 總評 = 計分軸純平均。髮色／特徵仍抽進 look,但不進分(鑑別度低、只會把 SSR 稀釋掉)。
+  // 性器軸等機率抽、不進分。NSFW 沒抽到的軸(乳暈／乳頭)不進平均,避免 SFW 被缺軸扭曲。
+  // 2026-11-22 使用者：召喚等級要跟身材掛鉤 → 等級先決定（不含身材的那幾項平均），身材（體型、罩杯、乳型）再照等級抽：
+  //   SSR 的身材幾乎都在 SS～SSR、N 的在 N～R（rollByGrade）。身材三項的等級仍記在 grades 裡（卡面顯示），只是不再進平均。
+  const grades = {
+    personality: itemGrade(arch),
+    libido: itemGrade(lib),
+    eyes: itemGrade(eyes),
+    eye_color: itemGrade(eyeColor),
+    face: itemGrade(face),
+    mouth: itemGrade(mouth),
+    hair: itemGrade(hair),
+  };
+  if (areola) grades.areola = itemGrade(areola);
+  if (nipple) grades.nipple = itemGrade(nipple);
+  traits.forEach((t, i) => { grades["special" + (i + 1)] = itemGrade(t); });
+  const vals = Object.values(grades).map(g => GRADE_VALUE[normGrade(g)] ?? 1);
+  const score = vals.reduce((a, b) => a + b, 0) / vals.length;
+  // 機率化進位:小數部分當進位機率(分佈平滑,沒有整數斷崖)
+  let idx = Math.min(GRADE_ORDER.length - 1, Math.floor(score) + (Math.random() < (score - Math.floor(score)) ? 1 : 0));
+  // 整體獲得率 +5%:算出總評後有 5% 再升一階
+  if (idx < GRADE_ORDER.length - 1 && Math.random() < UPGRADE_P) idx += 1;
+  // 滿 6 人 SSR 拉到約 5%:只從 SS 往上升,隨 luck 線性加(luck 0 不加)
+  if (GRADE_ORDER[idx] === "SS") {
+    const p = (clamp(luck) / 92) * SSR_PROMOTE_AT_MAX;
+    if (p > 0 && Math.random() < p) idx += 1;
+  }
+  const overallGrade = GRADE_ORDER[idx];
+  const build = rollByGrade(A.build, overallGrade, rating);
+  const cupPool = A.cup || A.bust;
+  const cup = rollByGrade(cupPool, overallGrade, rating);
+  const breastShape = rollByGrade(A.breast_shape, overallGrade, rating, (x) => breastFit(cup, x))
+    || rollBreastShape(A.breast_shape, luck, rating, cup);
+  grades.build = itemGrade(build);
+  grades.cup = itemGrade(cup);
+  grades.breast_shape = itemGrade(breastShape);
+
   const cupText = txt(cup);
   const shapeText = txt(breastShape);
   const splayText = rollSplay(cup, shapeText);
@@ -340,37 +389,6 @@ export function generateGirl({ luck = 0, rating = "nsfw", usedNames = [] } = {})
   };
   // 器官開發度（2026-10-09 使用者）：新召喚一律粉色起算（乳暈／乳頭／陰唇），抽到的原字串留在 look.devBase，大小／形狀照舊
   applyDevLook(look, { nipples: 0, labia: 0 });
-  const traits = rollTraits(F.special_traits, luck, rating);
-
-  // 總評 = 計分軸純平均。髮色／特徵仍抽進 look,但不進分(鑑別度低、只會把 SSR 稀釋掉)。
-  // 性器軸等機率抽、不進分。NSFW 沒抽到的軸(乳暈／乳頭)不進平均,避免 SFW 被缺軸扭曲。
-  const grades = {
-    personality: itemGrade(arch),
-    libido: itemGrade(lib),
-    build: itemGrade(build),
-    cup: itemGrade(cup),
-    breast_shape: itemGrade(breastShape),
-    eyes: itemGrade(eyes),
-    eye_color: itemGrade(eyeColor),
-    face: itemGrade(face),
-    mouth: itemGrade(mouth),
-    hair: itemGrade(hair),
-  };
-  if (areola) grades.areola = itemGrade(areola);
-  if (nipple) grades.nipple = itemGrade(nipple);
-  traits.forEach((t, i) => { grades["special" + (i + 1)] = itemGrade(t); });
-  const vals = Object.values(grades).map(g => GRADE_VALUE[normGrade(g)] ?? 1);
-  const score = vals.reduce((a, b) => a + b, 0) / vals.length;
-  // 機率化進位:小數部分當進位機率(分佈平滑,沒有整數斷崖)
-  let idx = Math.min(GRADE_ORDER.length - 1, Math.floor(score) + (Math.random() < (score - Math.floor(score)) ? 1 : 0));
-  // 整體獲得率 +5%:算出總評後有 5% 再升一階
-  if (idx < GRADE_ORDER.length - 1 && Math.random() < UPGRADE_P) idx += 1;
-  // 滿 6 人 SSR 拉到約 5%:只從 SS 往上升,隨 luck 線性加(luck 0 不加)
-  if (GRADE_ORDER[idx] === "SS") {
-    const p = (clamp(luck) / 92) * SSR_PROMOTE_AT_MAX;
-    if (p > 0 && Math.random() < p) idx += 1;
-  }
-  const overallGrade = GRADE_ORDER[idx];
 
   // 名字防撞
   const used = new Set(usedNames);

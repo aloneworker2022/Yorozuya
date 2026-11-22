@@ -1,5 +1,5 @@
 /* 試煉房抽妹子：人設跟 /testword 同一套。抽到後背景補半身立繪。不寫遊戲名冊。 */
-import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES, fixBreastShapeText } from "./girl_gen.js?v=9";
+import { loadPools, generateGirl, RARITY_MARK, PERSONALITY_NAMES, KINK_NAMES, fixBreastShapeText } from "./girl_gen.js?v=10";
 import {
   ensureBody,
   clampBody,
