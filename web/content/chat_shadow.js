@@ -811,7 +811,11 @@
       softRoot[sd] = { root: [cx, cy, top], L: top - bot, o };
       const put = (p) => { p.kw = { root: [cx - p.off[0], cy - p.off[1], top - p.off[2]], f: [0, 0, -1], L: top - bot, o, wv: ow || null }; p.br += g; };
       for (const p of L) put(p);
-      for (const [p, s2] of overBreast) if (s2 === sd && !p.xf) put(p);
+      // 2026-11-22 使用者：胸罩不會變形——胸罩／比基尼上面的布不跟著乳房軟變形（不拉長、不波浪），整片硬硬地跟著乳房動一點點；其他衣服照舊
+      for (const [p, s2] of overBreast) if (s2 === sd && !p.xf) {
+        if (braPiece(p)) { p.off = [p.off[0] + o[0] * .55, p.off[1] + o[1] * .55, p.off[2] + o[2] * .55]; continue; }
+        put(p);
+      }
     }
     for (const st of sh.areolaStamps || []) {
       const sd = Math.sign(st.q[0]) || 1, d = modePlan ? modePlan.push[sd] : [0, 0, 0], k = modePlan ? modePlan.round[sd] : 0;
