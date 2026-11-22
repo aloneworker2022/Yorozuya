@@ -215,12 +215,12 @@
   </div>
   <div id="cst-frame" class="mini"></div>
 </details>
-<script src="/content/chat_shadow.js?v=58"></script>
+<script src="/content/chat_shadow.js?v=59"></script>
 <script>
 (() => {
   const POSE_ZH = { breathe: '呼吸', talk: '說話', r_breast: '被摸：胸部', r_groin: '被摸：下體', r_waist: '被摸：腰臀',
     ang_akimbo: '生氣：叉腰（抖一下、乳搖）', ang_cross: '生氣：雙手抱胸', laugh_bend: '開心：笑彎腰（抱胸低頭）', laugh_back: '開心：摀嘴仰頭笑',
-    shirt: '脫 T 恤（外衣）', bra: '脫胸罩', panties: '脫丁字褲', bikini: '脫比基尼（先上面再下面；身上那套是比基尼時，脫衣動作都會播這個）', peak: '高潮仰頭（妻子坐著摸陰唇）', fg_r0: '手伸進去：抗拒', fg_r1: '手伸進去：抗拒有感', fg_r2: '手伸進去：抗拒非常有感', fg_w0: '手伸進去：迎合', fg_w1: '手伸進去：迎合有感', fg_w2: '手伸進去：迎合高潮', fg_rx: '噴水痙攣（抗拒）', fg_wx: '噴水痙攣（迎合）' };
+    shirt: '脫 T 恤（外衣）', bra: '脫胸罩', panties: '脫丁字褲', bikini: '脫比基尼（先上面再下面；身上那套是比基尼時，脫衣動作都會播這個）', peak: '高潮仰頭（妻子坐著摸陰唇）', fg_r0: '手伸進去：抗拒', fg_r1: '手伸進去：抗拒有感', fg_r2: '手伸進去：抗拒非常有感', fg_w0: '手伸進去：迎合', fg_w1: '手伸進去：迎合有感', fg_w2: '手伸進去：迎合高潮', fg_rx: '噴水痙攣（抗拒）', fg_wx: '噴水痙攣（迎合）', col_d: '腿軟癱坐下去', col_s: 'M 字腿癱坐（循環）' };
   const $ = (id) => document.getElementById(id);
   const fill = (sel, list, pick) => { sel.innerHTML = list.map((t) => `<option>${String(t).replace(/</g, '&lt;')}</option>`).join(''); if (pick && list.includes(pick)) sel.value = pick; };
   let pools = null;

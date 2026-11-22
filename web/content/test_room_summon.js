@@ -412,7 +412,9 @@ function fingerMood(who) {
   // 2026-11-22 使用者：有感／非常有感／高潮要跟她的感覺對上——性奮之外，痙攣、失神（≥75）也算最高那段，失神 ≥50 至少有感
   let stun = 0; try { ensureStunFields(who); stun = effectiveStun(who, "") || 0; } catch { stun = 0; }
   const lvl = st === "climax" || inSpasm(who) || stun >= 75 ? 2 : st === "aroused" || st === "wantFill" || stun >= 50 ? 1 : 0;
-  return { fgWelcome: idx >= (STAGE_INDEX.passionate ?? 5), fgLevel: lvl };
+  // 噴水的樣子（2026-11-22 使用者：每個妹子不一樣——噴一下／像水龍頭噴三秒／噴一下又再噴一下）：照她的 id 固定一種
+  const key = String(who?.id || who?.name || ""); let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return { fgWelcome: idx >= (STAGE_INDEX.passionate ?? 5), fgLevel: lvl, fgSquirt: ["once", "faucet", "double"][h % 3] };
 }
 window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl) } : null);
 
