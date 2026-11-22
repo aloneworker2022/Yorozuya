@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=21', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=22', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
@@ -907,9 +907,11 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       if (md !== 'none') { doll._mode = md; if (md === 'touch') doll._body = 'mermaid'; }
     }
     let noBra = false;
+    const w0 = wearOf(s.outfit), bikini = !!(w0 && w0.top === 'bikini');   // 2026-11-22 使用者：比基尼脫掉就是全裸（沒有胸罩、內褲那兩階）
+    if (bikini && st >= 1) { noBra = true; doll.pants = ''; return doll; }
     if (st === 0) {   // 2026-11-21 使用者：畫她衣櫃裡的衣服（對照表 WEAR_OF）
       const w = wearOf(s.outfit);
-      if (w) { doll.wear = w; noBra = !!w.noBra; if (!noBra) doll.underBra = true; if (w.noPants) doll.pants = ''; }
+      if (w) { doll.wear = w; noBra = !!w.noBra; if (!noBra) doll.underBra = true; if (w.noPants) doll.pants = ''; if (bikini) doll.bikiniSupport = true; }   // 比基尼：托高成水球、不集中、外擴照舊
       else if (w === null) doll.cloth = 'bra';
       else { doll.cloth = 'tee'; doll.underBra = true; }
     }

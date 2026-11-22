@@ -515,7 +515,7 @@
       if (doll.flatTop) for (let i = kn0; i < prims.length; i++) { const p = prims[i]; if (p.k !== 1 || p.nip) continue;
         const b = coneB(p); p.ra *= .38; setCone(p, [p.a[0], p.a[1] - r * .1, p.a[2] - r * .3], b); break; }
       // 太大一定會垂：E 以上從根部往下拉長，越大越多（半球型有撐住、只垂一點）
-      const sag = Math.max(0, r - 4.3) * (doll.braSupport ? .05 : doll.shape === 'pendulous' || doll.shape === 'heavy' || doll.shape === 'wide' ? .03 : .13);   // 木瓜本來就垂，長度寫在形狀裡，不再多拉
+      const sag = Math.max(0, r - 4.3) * (doll.braSupport || doll.bikiniSupport ? .05 : doll.shape === 'pendulous' || doll.shape === 'heavy' || doll.shape === 'wide' ? .03 : .13);   // 木瓜本來就垂，長度寫在形狀裡，不再多拉
       if (sag) each(q => [q[0], q[1], root[2] + (q[2] - root[2]) * (1 + sag)]);
       // 間隔：整顆左右平移
       // 2026-11-17（使用者）：靠近＝兩顆又圓又挺、沒穿內衣互相推擠 → 不是疊在一起變一條直線，是各自微微往兩邊轉開、乳頭朝外，只在中間碰到的那一小段有乳溝
@@ -760,6 +760,18 @@
           sh.ell(BODY, [c[0] + s * r * (.8 + .35 * q), c[1] - r * .05, c[2] - r * .05], [r * (.6 + .25 * q), r * .62, r * .9]);
           nipAt([c[0], c[1] + ry * .97, c[2]], [0, 1, 0], { c, r: R });
           sh._pressFront = [0, c[1] + ry, c[2]]; sh._pressRy = ry;
+        } else
+        if (doll.bikiniSupport && !doll.braSupport && !SMALL_G.hemi[doll.cup] && r > 3.4) {
+          // 2026-11-22 使用者：穿比基尼的巨乳不會那麼垂——被托高、像兩顆水球；托高時軟軟的肉往三角布兩邊溢出。
+          //   不往中間集中（跟胸罩不同）；外擴的照樣外擴（bustPost 之後還是會彎）。
+          const zS = zB + .5 + r * .16, c = [cx, cy - r * .05, zS], R = [r * .95, r * .93, r * .9];
+          sh.cone(BODY, root, c, r * .55, r * .8);
+          sh.ell(BODY, c, R);
+          sh.ell(BODY, [c[0], c[1] - r * .04, c[2] - r * .2], [r * .97, r * .9, r * .74]);   // 水球：下半微微飽滿（重量在下面，但沒有垂）
+          const ro = r * .36, ri = r * .3, xo = c[0] + s * r * .74, xi = s * Math.max(.4 + ri, Math.abs(c[0]) - r * .62);
+          sh.ell(BODY, [xo, c[1] + r * .02, c[2] - r * .22], [ro, r * .48, r * .46]);   // 外側溢出
+          sh.ell(BODY, [xi, c[1] + r * .06, c[2] - r * .24], [ri, r * .42, r * .4]);    // 內側溢出（不跨過中線）
+          nipAt([c[0], c[1] + R[1] * .97, c[2] - r * .02], [0, 1, 0], { c, r: R });
         } else
         if (doll.braSupport && !SMALL_G.hemi[doll.cup]) {
           // 2026-10-30 pt78u：穿胸罩＝托高＋往中間集中＋往前挺。不管原本圓／鐘／下垂，都收成被罩杯撐住的圓挺形（下垂型變化最大）
@@ -1311,9 +1323,12 @@
     //   上：見 bikiniTopG（橫帶在乳房下面、三角往上包到乳頭上方）；沒有托高、不集中（乳房照原本的形狀）。
     function bikiniTopG(sh, P, doll, tor) {
       // 2026-11-22 使用者更正穿法：橫的那條綁在乳房下面（肋骨上），三角布從那條往上包住乳房、尖端過乳頭。
-      //   乳房小：看得到中間那段橫帶；乳房大、尤其下垂：橫帶藏在乳房下面看不到，只看到兩片往上的三角。
-      //   正面看：三角底邊＝乳房下緣（下垂的話比肋骨上的帶子低，布從下緣往裡包到帶子）或帶子（小胸），往上收到乳頭上方的尖端。
-      const r = tor.cupr, isB = p => p.bust && !p.nip, notB = p => !p.bust && !p.limb && p.mat === 0, ST = .4;
+      //   乳房小：看得到中間那段橫帶；乳房大：橫帶藏在乳房下面看不到，只看到兩片往上的三角。
+      //   正面看：三角底邊＝乳房下緣（比帶子低的話，布從下緣往裡包到帶子）或帶子（小胸），往上收到乳頭上方的尖端。
+      //   不會做那麼大片、兩片不會連在一起（使用者）：底邊寬度有上限、內側角離中線留空；兩邊微微外凸（布撐在圓的乳房上），在乳頭那個高度剛好蓋住乳暈。
+      // 身體中線：姿勢位移（站姿重心偏一邊），穿衣服時記在 sh._dressOff
+      const X0 = (sh._dressOff || [0])[0];
+      const r = tor.cupr, isB = p => p.bust && !p.nip, notB = p => !p.bust && !p.limb && p.mat === 0, ST = .4, EXP = .65;
       const nips = sh.prims.filter(p => p.nip === 2 && p.k === 0 && !p.limb).map(p => [p.c[0] + p.off[0], p.c[1] + p.off[1], p.c[2] + p.off[2]]);
       const arOf = s => { const a = (sh.areolaStamps || []).filter(q => Math.sign(q.q[0]) === s).map(q => q.ar); return a.length ? Math.max(...a) : 1.6; };
       const front = (x, z, f) => rayHit(sh, [x, 30, z], [0, -1, 0], f, 50, .1);
@@ -1322,60 +1337,70 @@
       const T = {};
       sh.cloth = 8;
       for (const s of [-1, 1]) {
-        const n = nips.find(q => Math.sign(q[0]) === s); if (!n) continue;
-        const ar = arOf(s);
+        const n = nips.find(q => Math.sign(q[0] - X0) === s); if (!n) continue;
+        const ar = arOf(s), dn = Math.abs(n[0] - X0);
         let bot = n[2]; for (let z = n[2]; z > n[2] - r * 3; z -= .2) { if (breastFront(n[0], z)) bot = z; else break; }   // 乳頭正下方，乳房看得到的最低點
-        const zb = Math.min(zu, bot - .1), za = n[2] + ar * 1.35 + .5;   // 底邊、尖端
-        const need = ar * 1.15 + .2, hb = Math.min(r * 1.0, Math.max(need * (za - zb) / Math.max(.5, za - n[2]), need * 1.1));   // 乳頭那個高度要夠寬蓋住乳暈
-        const xa = n[0] - s * hb * .15;   // 尖端微微往中間偏（繞頸的繩往脖子拉）
-        const inTri = (x, z) => { if (z < zb || z > za) return false; const u = (za - z) / (za - zb), cx = xa + (n[0] - xa) * u; return Math.abs(x - cx) <= hb * u; };
+        const zb = Math.min(zu, bot - .1), need = ar * 1.05 + .2;
+        const hb = Math.max(need * 1.1, Math.min(r * .56, dn - 1.2));
+        const q = Math.min(.9, Math.pow(need / hb, 1 / EXP));   // 乳頭在三角的哪個高度（從尖端算）才夠寬
+        const za = Math.min(n[2] + r * 1.1, Math.max(n[2] + ar + .5, (n[2] - q * zb) / (1 - q)));
+        const xa = n[0] - s * hb * .12;   // 尖端微微往中間偏（繞頸的繩往脖子拉）
+        const half = (u) => hb * Math.pow(Math.max(0, u), EXP), cxAt = (u) => xa + (n[0] - xa) * u;
+        const inTri = (x, z) => { if (z < zb || z > za) return false; const u = (za - z) / (za - zb); return Math.abs(x - cxAt(u)) <= half(u); };
+        // 布貼在看得到的乳房上；乳房下緣以下只有在橫帶上面（小胸：肋骨上那一小段）才貼——大胸的布順著乳房圓圓的下緣包進去，不是一刀切平
+        const at = (x, z) => breastFront(x, z) || (z >= zu - .2 ? front(x, z, null) : null), low = {};
         for (let z = zb; z <= za + 1e-6; z += ST) for (let x = n[0] - hb - .2; x <= n[0] + hb + .2; x += ST) {
           if (!inTri(x, z)) continue;
-          const q = breastFront(x, z) || front(x, z, null); if (!q) continue;
-          sh.ell(BODY, [x, q[1] + .3, z], [.5, .45, .5]);
+          const p = at(x, z); if (!p) continue;
+          sh.ell(BODY, [x, p[1] + .3, z], [.5, .45, .5]);
+          const k = Math.round(x / ST); if (low[k] == null || z < low[k]) low[k] = z;
         }
-        const E = [[xa, za], [n[0] - hb, zb], [n[0] + hb, zb], [xa, za]], edge = [];   // 邊緣滾一圈（細）
-        for (let i = 0; i < 3; i++) for (let t = 0; t < 1; t += .1) { const x = E[i][0] + (E[i + 1][0] - E[i][0]) * t, z = E[i][1] + (E[i + 1][1] - E[i][1]) * t, q = breastFront(x, z) || front(x, z, null); if (q) edge.push([x, q[1] + .42, z]); }
-        if (edge.length > 1) sh.chain(BODY, edge.concat([edge[0]]), edge.map(() => .2).concat([.2]));
+        const edge = [], put = (x, z) => { const p = at(x, z); if (p) edge.push([x, p[1] + .42, z]); };   // 邊緣滾一圈（細）：兩斜邊＋順著下緣
+        for (let u = 0; u <= 1.001; u += .06) put(cxAt(u) - half(u), za - (za - zb) * u);
+        for (const k of Object.keys(low).map(Number).sort((a, b) => a - b)) put(k * ST, low[k]);
+        for (let u = 1; u >= -.001; u -= .06) put(cxAt(u) + half(u), za - (za - zb) * u);
+        if (edge.length > 1) sh.chain(BODY, edge, edge.map(() => .2));
         const ap = breastFront(xa, za) || front(xa, za, null);
         T[s] = { n, za, xa, apexY: ap ? ap[1] : n[1] };
       }
       if (!T[-1] || !T[1]) { sh.cloth = 0; return; }
       // 繞頸細繩：尖端 → 沿胸口往上斜到脖子側面 → 脖子後面
-      const nx = 2.4, nz = tor.S + 2.2;
+      const nx = 2.4, nz = tor.S + 2.2, nb = p => !p.limb && p.mat === 0;
       for (const s of [-1, 1]) {
-        const t = T[s], pts = [[t.xa, t.apexY + .4, t.za]];
-        for (let u = .15; u <= 1.001; u += .15) { const x = t.xa + (s * nx - t.xa) * u, z = t.za + (nz - t.za) * u, q = rayHit(sh, [x, 30, z], [0, -1, 0], p => !p.limb && p.mat === 0, 50, .1); if (q) pts.push([x, q[1] + .3, z]); }
-        const bq = rayHit(sh, [s * nx * .7, -25, nz + .4], [0, 1, 0], p => !p.limb && p.mat === 0, 50, .1); if (bq) pts.push([s * nx * .7, bq[1] - .3, nz + .4]);
+        const t = T[s], pts = [[t.xa, t.apexY + .4, t.za]], ex = X0 + s * nx;
+        for (let u = .15; u <= 1.001; u += .15) { const x = t.xa + (ex - t.xa) * u, z = t.za + (nz - t.za) * u, p = rayHit(sh, [x, 30, z], [0, -1, 0], nb, 50, .1); if (p) pts.push([x, p[1] + .3, z]); }
+        const bx = X0 + s * nx * .7, bq = rayHit(sh, [bx, -25, nz + .4], [0, 1, 0], nb, 50, .1); if (bq) pts.push([bx, bq[1] - .3, nz + .4]);
         if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .2));
       }
-      // 橫帶：貼著肋骨繞一圈（不貼乳房）——乳房大、下垂時被乳房擋住，自然看不到中間那段
-      { const R = []; for (let a = 0; a <= 360; a += 8) { const th = a * Math.PI / 180, dx = Math.sin(th), dy = Math.cos(th), yc = tor.yl(zu) - 1, q = rayHit(sh, [dx * 22, yc + dy * 22, zu], [-dx, -dy, 0], notB, 40, .1); if (q) R.push([q[0] + dx * .3, q[1] + dy * .3, zu]); }
+      // 橫帶：貼著肋骨繞一圈（不貼乳房）——乳房大時被乳房擋住，自然看不到中間那段
+      { const R = []; for (let a = 0; a <= 360; a += 8) { const th = a * Math.PI / 180, dx = Math.sin(th), dy = Math.cos(th), yc = tor.yl(zu) - 1, p = rayHit(sh, [X0 + dx * 22, yc + dy * 22, zu], [-dx, -dy, 0], notB, 40, .1); if (p) R.push([p[0] + dx * .3, p[1] + dy * .3, zu]); }
         if (R.length > 2) sh.chain(BODY, R, R.map(() => .24)); }
       sh.cloth = 0;
     }
     function bikiniBotG(sh, P, doll, tor) {
+      const X0 = (sh._dressOff || [0])[0];   // 身體中線（姿勢位移）
       const C = tor.C, zc = C - 1.2, zf = C + 6.2, zk = zf + .15;   // 胯下、前片上緣、兩側綁帶的高度
-      const f = p => !p.limb && p.mat === 0 && p.part !== 'legs' && !p.bust;   // 不貼到下垂、垂到前面來的乳房
-      const surf = (x, z, back) => { const q = rayHit(sh, [x, back ? -25 : 25, z], [0, back ? 1 : -1, 0], f, 50, .1); return q ? q[1] : null; };
+      const f = p => !p.limb && p.mat === 0 && p.part !== 'legs' && !p.bust;   // 不貼到垂到前面來的乳房
+      const surf = (x, z, back) => { const q = rayHit(sh, [X0 + x, back ? -25 : 25, z], [0, back ? 1 : -1, 0], f, 50, .1); return q ? q[1] : null; };
       const ST = .4;
       sh.cloth = 8;
-      // 前片：上緣寬（到髖骨內側）往下收成窄窄的胯下（像三角褲：兩邊直直斜下來）
+      // 前片：上緣寬（到髖骨內側）往下收成窄窄的胯下（像三角褲：兩邊直直斜下來）；後片包住一半屁股
       const hwF = (z) => { const u = Math.max(0, Math.min(1, (z - zc) / (zf - zc))); return 1.3 + 5.2 * Math.pow(u, 1.25); };
-      const hwB = (z) => { const u = Math.max(0, Math.min(1, (z - zc) / (zf - zc))); return 1.3 + 5.6 * Math.pow(u, .9); };   // 後片：包住一半屁股
+      const hwB = (z) => { const u = Math.max(0, Math.min(1, (z - zc) / (zf - zc))); return 1.3 + 5.6 * Math.pow(u, .9); };
       for (const [back, hw] of [[false, hwF], [true, hwB]]) {
-        for (let z = zc; z <= zf + 1e-6; z += ST) { const h = hw(z); for (let x = -h; x <= h + 1e-6; x += ST) { const y = surf(x, z, back); if (y !== null) sh.ell(BODY, [x, y + (back ? -.3 : .3), z], [.5, .45, .5]); } }
-        const edge = []; for (const sd of [-1, 1]) { const L = []; for (let z = zc; z <= zf + 1e-6; z += .5) { const x = sd * hw(z), y = surf(x, z, back); if (y !== null) L.push([x, y + (back ? -.42 : .42), z]); } if (L.length > 1) sh.chain(BODY, L, L.map(() => .2)); edge.push(L); }
-        const top = []; for (let x = -hw(zf); x <= hw(zf) + 1e-6; x += .5) { const y = surf(x, zf, back); if (y !== null) top.push([x, y + (back ? -.42 : .42), zf]); } if (top.length > 1) sh.chain(BODY, top, top.map(() => .22));
+        const sg = back ? -1 : 1;
+        for (let z = zc; z <= zf + 1e-6; z += ST) { const h = hw(z); for (let x = -h; x <= h + 1e-6; x += ST) { const y = surf(x, z, back); if (y !== null) sh.ell(BODY, [X0 + x, y + sg * .3, z], [.5, .45, .5]); } }
+        for (const sd of [-1, 1]) { const L = []; for (let z = zc; z <= zf + 1e-6; z += .5) { const x = sd * hw(z), y = surf(x, z, back); if (y !== null) L.push([X0 + x, y + sg * .42, z]); } if (L.length > 1) sh.chain(BODY, L, L.map(() => .2)); }
+        const top = []; for (let x = -hw(zf); x <= hw(zf) + 1e-6; x += .5) { const y = surf(x, zf, back); if (y !== null) top.push([X0 + x, y + sg * .42, zf]); } if (top.length > 1) sh.chain(BODY, top, top.map(() => .22));
       }
       // 胯下：前後片在底下接起來（從正下方往上打）
-      { const pts = []; for (let y = 3; y >= -3; y -= .6) { const q = rayHit(sh, [0, y, zc - 8], [0, 0, 1], f, 12, .1); if (q) pts.push([0, y, q[2] - .25]); } if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .6)); }
+      { const pts = []; for (let y = 3; y >= -3; y -= .6) { const q = rayHit(sh, [X0, y, zc - 8], [0, 0, 1], f, 12, .1); if (q) pts.push([X0, y, q[2] - .25]); } if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .6)); }
       // 兩側綁帶：前片上角 → 繞過髖部 → 後片上角；髖部一個小蝴蝶結、兩條帶尾
       for (const sd of [-1, 1]) {
         const pts = [], fy = surf(sd * hwF(zf), zf, false), by = surf(sd * hwB(zf), zf, true);
-        if (fy !== null) pts.push([sd * hwF(zf), fy + .4, zf]);
-        for (let a = 40; a <= 140.01; a += 10) { const th = a * Math.PI / 180, dx = sd * Math.sin(th), dy = Math.cos(th), yc = tor.yl(zk) - 1, q = rayHit(sh, [dx * 22, yc + dy * 22, zk], [-dx, -dy, 0], f, 40, .1); if (q) pts.push([q[0] + dx * .3, q[1] + dy * .3, zk]); }
-        if (by !== null) pts.push([sd * hwB(zf), by - .4, zf]);
+        if (fy !== null) pts.push([X0 + sd * hwF(zf), fy + .4, zf]);
+        for (let a = 40; a <= 140.01; a += 10) { const th = a * Math.PI / 180, dx = sd * Math.sin(th), dy = Math.cos(th), yc = tor.yl(zk) - 1, q = rayHit(sh, [X0 + dx * 22, yc + dy * 22, zk], [-dx, -dy, 0], f, 40, .1); if (q) pts.push([q[0] + dx * .3, q[1] + dy * .3, zk]); }
+        if (by !== null) pts.push([X0 + sd * hwB(zf), by - .4, zf]);
         if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .22));
         const side = pts[Math.floor(pts.length / 2)];
         if (side) { const k = [side[0] + sd * .4, side[1] + .3, side[2]]; sh.ell(BODY, k, [.45, .45, .45]); for (const up of [1, -1]) sh.ell(BODY, [k[0] + sd * .35, k[1] + .3, k[2] + up * .7], [.4, .35, .65]); sh.cone(BODY, k, [k[0] + sd * .7, k[1] + .3, k[2] - 2.6], .18, .16); sh.cone(BODY, k, [k[0] + sd * .15, k[1] + .4, k[2] - 2.3], .18, .16); }
@@ -1449,8 +1474,8 @@
       const mv = (q, o) => q && (o ? [q[0] + o[0], q[1] + o[1], q[2] + o[2]] : q);
       sh._arms = arms && arms.map(([a, b, c, o]) => [mv(a, o), mv(b, o), mv(c, o), [0, 0, 0]]);
       sh._legs = legs && legs.map(([a, b, c, sd, o]) => [mv(a, o), mv(b, o), mv(c, o), sd, [0, 0, 0]]);
-      sh.off = [0, 0, 0]; sh._offZeroed = 1;
-      try { return dressRaw(sh, P, doll, tor); } finally { sh.off = O; sh._offZeroed = 0; sh._arms = arms; sh._legs = legs; if (doll.wear && (doll.wear.extras || []).includes('ears')) earsG(sh, P, doll, tor); }
+      sh.off = [0, 0, 0]; sh._offZeroed = 1; sh._dressOff = O;   // _dressOff：身體中線在哪（以中線為準的衣服要用）
+      try { return dressRaw(sh, P, doll, tor); } finally { sh.off = O; sh._offZeroed = 0; sh._dressOff = null; sh._arms = arms; sh._legs = legs; if (doll.wear && (doll.wear.extras || []).includes('ears')) earsG(sh, P, doll, tor); }
     }
     function dressRaw(sh, P, doll, tor) {
       const c = String(doll.cloth || '');

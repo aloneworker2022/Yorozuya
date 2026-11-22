@@ -6077,7 +6077,26 @@ function undressPortraitShot(who, opts = {}) {
 }
 
 /** 這一拍的脫衣事實。旁白照這個寫，不能改結果。 */
-function undressBeat(help, outcome, stageBefore, stageAfter) {
+/** 身上那套是比基尼（脫掉＝全裸，2026-11-22 使用者）。 */
+function bikiniOutfit(who) {
+  return /比基尼/.test(String(wornOutfit(who) || ""));
+}
+
+function undressBeat(help, outcome, stageBefore, stageAfter, bikini = false) {
+  if (bikini && outcome === "flee") {
+    const text = "她掙開你的手，比基尼還在身上，人逃離了房間。";
+    return { text, canned: `（${text}）` };
+  }
+  if (bikini && outcome === "ignore") {
+    const text = "你叫她脫，她沒有動手，比基尼還穿著。";
+    return { text, canned: `（${text}）` };
+  }
+  if (bikini && stageAfter >= 3) {
+    const text = help
+      ? "你解開她比基尼脖子後面和背後的細繩、再拉開兩側的綁帶，比基尼離開了，身上什麼都沒穿。"
+      : "她自己解開比基尼的細繩和兩側綁帶，比基尼掉下來，身上什麼都沒穿。";
+    return { text, canned: `（${text}）` };
+  }
   if (outcome === "flee") {
     const still = stageBefore <= 0 ? "外衣還在身上" : stageBefore === 1 ? "胸罩和內褲都還在" : "內褲還在";
     const text = `她掙開你的手，${still}，人逃離了房間。`;
@@ -10694,7 +10713,7 @@ async function playUndress(mode) {
     if (outcome === "advance") {
       const u = ensureUndress(girl);
       clearVaginaFingers(girl);
-      u.stage = Math.min(3, stageBefore + 1);
+      u.stage = bikiniOutfit(girl) ? 3 : Math.min(3, stageBefore + 1);   // 2026-11-22 使用者：比基尼脫掉就是全裸（沒有胸罩、內褲那兩階）
       stageAfter = u.stage;
       // 2026-11-19 使用者：她脫了 → 聊天黑影（坐著）表演脫衣動畫（T 恤／胸罩／內褲），旁白生出來之前就開始播
       if (stageAfter > stageBefore) window.ChatShadow?.undress?.(stageBefore, stageAfter);
@@ -10714,7 +10733,7 @@ async function playUndress(mode) {
       }
     }
 
-    const beat = undressBeat(help, outcome, stageBefore, stageAfter);
+    const beat = undressBeat(help, outcome, stageBefore, stageAfter, bikiniOutfit(girl));
     ensureSummonUndressSet(girl);
     const [note, reply] = await Promise.all([
       narrateUndress(beat),
