@@ -1341,29 +1341,41 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   async function testRender(spec, pose, onProgress) {
     await loadDroom();
     const UND = { shirt: 0, bra: 1, panties: 2 };
-    let st = Math.max(0, Math.min(3, Number(spec.undressStage) || 0)), undressing = false, mode = spec.mode || null;
-    if (pose in UND) { st = UND[pose]; undressing = true; }
-    if (pose === 'peak') { st = 3; mode = 'touch'; }
-    const doll = dollOf(spec, st, undressing, mode), job = { key: JSON.stringify(doll) }, n = nOf(pose), frames = [];
-    let next = 0, done = 0;
-    const worker1 = async () => {
-      while (next < n) {
-        const f = next++, k = fkey(job, pose, f);
-        let img = await cacheGet(k);
-        if (!img) {
-          const r = await renderFrame(doll, pose, f);
-          if (r.err) throw new Error(r.err);
-          img = new ImageData(new Uint8ClampedArray(r.px), r.w, r.h);
-          void cachePut(k, img);
+    // 2026-11-22 使用者：測試時比基尼還是舊的脫法 → 身上那套是比基尼時，脫衣動作一律照遊戲裡的脫法：先上面（手伸到背後解開，胸罩那段）、再下面（解開兩側的結）
+    const bik = (wearOf(spec.outfit) || {}).top === 'bikini';
+    if (bik && (pose in UND || pose === 'bikini')) pose = 'bikini';
+    const parts = pose === 'bikini' ? [['bra', 0], ['panties', 2]] : [[pose, null]];
+    const frames = [], seq = []; let doll = null, total = 0, done = 0;
+    for (const [ps] of parts) total += nOf(ps);
+    for (const [ps, st0] of parts) {
+      let st = Math.max(0, Math.min(3, Number(spec.undressStage) || 0)), undressing = false, mode = spec.mode || null;
+      if (st0 != null) { st = st0; undressing = true; }
+      else if (ps in UND) { st = UND[ps]; undressing = true; }
+      if (ps === 'peak') { st = 3; mode = 'touch'; }
+      const d = dollOf(spec, st, undressing, mode), job = { key: JSON.stringify(d) }, n = nOf(ps), base = frames.length, part = [];
+      doll = doll || d;
+      let next = 0;
+      const worker1 = async () => {
+        while (next < n) {
+          const f = next++, k = fkey(job, ps, f);
+          let img = await cacheGet(k);
+          if (!img) {
+            const r = await renderFrame(d, ps, f);
+            if (r.err) throw new Error(r.err);
+            img = new ImageData(new Uint8ClampedArray(r.px), r.w, r.h);
+            void cachePut(k, img);
+          }
+          part[f] = img;
+          if (onProgress) onProgress(++done, total);
         }
-        frames[f] = img;
-        if (onProgress) onProgress(++done, n);
-      }
-    };
-    await Promise.all(Array.from({ length: Math.max(1, workers.length) }, worker1));
-    return { frames, seq: playSeq(pose), doll };
+      };
+      await Promise.all(Array.from({ length: Math.max(1, workers.length) }, worker1));
+      frames.push(...part);
+      for (const [i, ms] of playSeq(ps)) seq.push([base + i, ms]);
+    }
+    return { frames, seq, doll, pose };
   }
 
   window.ChatShadow = { sync, undress, shapeOf, areolaOf, motion, deform, shade, ready: (k) => !!(cur && full(cur.sets[k], nOf(k))), P: () => cur && cur.P,
-    test: { render: testRender, poses: () => ['breathe', 'talk', ...REACTS, ...ANGS, ...ANIMS, 'peak'] } };
+    test: { render: testRender, poses: () => ['breathe', 'talk', ...REACTS, ...ANGS, ...ANIMS, 'bikini', 'peak'] } };
 })();
