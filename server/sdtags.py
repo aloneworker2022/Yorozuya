@@ -357,6 +357,7 @@ EROTIC_STYLE = {
     "絲襪馬甲套裝": "corset, stockings, garter, bustier lingerie",
     "超短旗袍開襟": "very short cheongsam, open qipao, revealing",
     "半透明薄紗只遮重點": "sheer veil, barely covering, translucent fabric",
+    "黑色三角比基尼配綁帶三角褲": "black micro triangle bikini, string bikini bottom, side-tie panties, erotic lingerie",   # 2026-11-22
 }
 
 # 妻子解鎖的睡衣

@@ -1307,6 +1307,87 @@
       if (lace.length > 1) sh.chain(BODY, lace, lace.map(() => .22));
       sh.cloth = 0;
     }
+    // 2026-11-22 使用者：情趣內衣——三角比基尼（小三角剛好擋住乳頭）＋三角褲（前後兩片三角、兩側綁帶）。黑色不透明（布 8）。
+    //   上：每邊一片往上尖的小三角，照乳暈大小剛好蓋住（乳暈在三角形內切圓裡）；尖端往上一條細繩繞到脖子後（繞頸）；
+    //       三角底邊一條細繩：兩片中間跨過乳溝（懸空、不貼進乳溝），外側繞過側胸到背後。沒有托高、不集中（乳房照原本的形狀）。
+    function bikiniTopG(sh, P, doll, tor) {
+      const r = tor.cupr, isB = p => p.bust && !p.nip, ST = .4;
+      const nips = sh.prims.filter(p => p.nip === 2 && p.k === 0 && !p.limb).map(p => [p.c[0] + p.off[0], p.c[1] + p.off[1], p.c[2] + p.off[2]]);
+      const arOf = s => { const a = (sh.areolaStamps || []).filter(q => Math.sign(q.q[0]) === s).map(q => q.ar); return a.length ? Math.max(...a) : 1.6; };
+      const front = (x, z, f) => rayHit(sh, [x, 30, z], [0, -1, 0], f, 50, .1);
+      const T = {};
+      sh.cloth = 8;
+      for (const s of [-1, 1]) {
+        const n = nips.find(q => Math.sign(q[0]) === s); if (!n) continue;
+        const R = Math.min(arOf(s) * .85 + .2, r * .45);   // 內切圓半徑：剛好比乳暈大一點（小三角，只擋乳頭、乳暈）
+        const zb = n[2] - R, za = n[2] + 2 * R, hb = Math.sqrt(3) * R, xa = n[0] - s * R * .35;   // 尖端微微往中間偏（繞頸的繩往脖子拉）
+        const inTri = (x, z) => { if (z < zb || z > za) return false; const u = (za - z) / (za - zb), cx = xa + (n[0] - xa) * u; return Math.abs(x - cx) <= hb * u; };
+        for (let z = zb; z <= za + 1e-6; z += ST) for (let x = n[0] - hb - .2; x <= n[0] + hb + .2; x += ST) {
+          if (!inTri(x, z)) continue;
+          const q = front(x, z, isB) || front(x, z, null); if (!q) continue;
+          sh.ell(BODY, [x, q[1] + .3, z], [.5, .45, .5]);
+        }
+        // 邊緣滾一圈（細）
+        const E = [[xa, za], [n[0] - hb, zb], [n[0] + hb, zb], [xa, za]], edge = [];
+        for (let i = 0; i < 3; i++) for (let t = 0; t < 1; t += .12) { const x = E[i][0] + (E[i + 1][0] - E[i][0]) * t, z = E[i][1] + (E[i + 1][1] - E[i][1]) * t, q = front(x, z, isB) || front(x, z, null); if (q) edge.push([x, q[1] + .42, z]); }
+        if (edge.length > 1) sh.chain(BODY, edge.concat([edge[0]]), edge.map(() => .2).concat([.2]));
+        const yAt = (x, z) => { const q = front(x, z, isB) || front(x, z, null); return q ? q[1] : null; };
+        T[s] = { n, zb, za, xa, hb, apexY: yAt(xa, za), inY: yAt(n[0] - s * hb, zb), outY: yAt(n[0] + s * hb, zb) };
+      }
+      if (!T[-1] || !T[1]) { sh.cloth = 0; return; }
+      // 繞頸細繩：尖端 → 沿胸口往上斜到脖子側面 → 脖子後面
+      const nx = 2.4, nz = tor.S + 2.2;
+      for (const s of [-1, 1]) {
+        const t = T[s], pts = [[t.xa, (t.apexY ?? t.n[1]) + .4, t.za]];
+        for (let u = .15; u <= 1.001; u += .15) { const x = t.xa + (s * nx - t.xa) * u, z = t.za + (nz - t.za) * u, q = rayHit(sh, [x, 30, z], [0, -1, 0], p => !p.limb && p.mat === 0, 50, .1); if (q) pts.push([x, q[1] + .3, z]); }
+        const bq = rayHit(sh, [s * nx * .7, -25, nz + .4], [0, 1, 0], p => !p.limb && p.mat === 0, 50, .1); if (bq) pts.push([s * nx * .7, bq[1] - .3, nz + .4]);
+        if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .2));
+      }
+      // 底邊細繩：中間跨過乳溝（直線）＋外側繞到背後
+      const zb = Math.min(T[-1].zb, T[1].zb);
+      { const a = T[-1], b2 = T[1], pa = [a.n[0] + a.hb, (a.inY ?? a.n[1]) + .35, a.zb], pb = [b2.n[0] - b2.hb, (b2.inY ?? b2.n[1]) + .35, b2.zb]; sh.chain(BODY, [pa, pb], [.22, .22]); }
+      for (const s of [-1, 1]) {
+        const t = T[s], pts = [[t.n[0] + s * t.hb, (t.outY ?? t.n[1]) + .35, t.zb]];
+        // 從外角往外、往背後：繞軀幹一圈的射線（從外往中心打），角度從外角那邊一路到背後正中
+        const a0 = Math.atan2(s * 1, 1) * 180 / Math.PI;
+        for (let a = Math.abs(a0) + 8; a <= 180.01; a += 8) {
+          const th = s * a * Math.PI / 180, dx = Math.sin(th), dy = Math.cos(th), yc = tor.yl(zb) - 1, z = t.zb - (t.zb - zb) * Math.min(1, (a - 45) / 60);
+          const q = rayHit(sh, [dx * 22, yc + dy * 22, z], [-dx, -dy, 0], p => !p.limb && p.mat === 0, 40, .1);
+          if (q && Math.abs(q[0]) >= Math.abs(t.n[0] + s * t.hb) - .3) pts.push([q[0] + dx * .3, q[1] + dy * .3, z]);
+          else if (q && a > 90) pts.push([q[0] + dx * .3, q[1] + dy * .3, z]);
+        }
+        if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .22));
+      }
+      sh.cloth = 0;
+    }
+    function bikiniBotG(sh, P, doll, tor) {
+      const C = tor.C, zc = C - 1.2, zf = C + 6.2, zk = zf + .15;   // 胯下、前片上緣、兩側綁帶的高度
+      const f = p => !p.limb && p.mat === 0 && p.part !== 'legs';
+      const surf = (x, z, back) => { const q = rayHit(sh, [x, back ? -25 : 25, z], [0, back ? 1 : -1, 0], f, 50, .1); return q ? q[1] : null; };
+      const ST = .4;
+      sh.cloth = 8;
+      // 前片：上緣寬（到髖骨內側）往下收成窄窄的胯下（像三角褲：兩邊直直斜下來）
+      const hwF = (z) => { const u = Math.max(0, Math.min(1, (z - zc) / (zf - zc))); return 1.3 + 5.2 * Math.pow(u, 1.25); };
+      const hwB = (z) => { const u = Math.max(0, Math.min(1, (z - zc) / (zf - zc))); return 1.3 + 5.6 * Math.pow(u, .9); };   // 後片：包住一半屁股
+      for (const [back, hw] of [[false, hwF], [true, hwB]]) {
+        for (let z = zc; z <= zf + 1e-6; z += ST) { const h = hw(z); for (let x = -h; x <= h + 1e-6; x += ST) { const y = surf(x, z, back); if (y !== null) sh.ell(BODY, [x, y + (back ? -.3 : .3), z], [.5, .45, .5]); } }
+        const edge = []; for (const sd of [-1, 1]) { const L = []; for (let z = zc; z <= zf + 1e-6; z += .5) { const x = sd * hw(z), y = surf(x, z, back); if (y !== null) L.push([x, y + (back ? -.42 : .42), z]); } if (L.length > 1) sh.chain(BODY, L, L.map(() => .2)); edge.push(L); }
+        const top = []; for (let x = -hw(zf); x <= hw(zf) + 1e-6; x += .5) { const y = surf(x, zf, back); if (y !== null) top.push([x, y + (back ? -.42 : .42), zf]); } if (top.length > 1) sh.chain(BODY, top, top.map(() => .22));
+      }
+      // 胯下：前後片在底下接起來（從正下方往上打）
+      { const pts = []; for (let y = 3; y >= -3; y -= .6) { const q = rayHit(sh, [0, y, zc - 8], [0, 0, 1], f, 12, .1); if (q) pts.push([0, y, q[2] - .25]); } if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .6)); }
+      // 兩側綁帶：前片上角 → 繞過髖部 → 後片上角；髖部一個小蝴蝶結、兩條帶尾
+      for (const sd of [-1, 1]) {
+        const pts = [], fy = surf(sd * hwF(zf), zf, false), by = surf(sd * hwB(zf), zf, true);
+        if (fy !== null) pts.push([sd * hwF(zf), fy + .4, zf]);
+        for (let a = 40; a <= 140.01; a += 10) { const th = a * Math.PI / 180, dx = sd * Math.sin(th), dy = Math.cos(th), yc = tor.yl(zk) - 1, q = rayHit(sh, [dx * 22, yc + dy * 22, zk], [-dx, -dy, 0], f, 40, .1); if (q) pts.push([q[0] + dx * .3, q[1] + dy * .3, zk]); }
+        if (by !== null) pts.push([sd * hwB(zf), by - .4, zf]);
+        if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .22));
+        const side = pts[Math.floor(pts.length / 2)];
+        if (side) { const k = [side[0] + sd * .4, side[1] + .3, side[2]]; sh.ell(BODY, k, [.45, .45, .45]); for (const up of [1, -1]) sh.ell(BODY, [k[0] + sd * .35, k[1] + .3, k[2] + up * .7], [.4, .35, .65]); sh.cone(BODY, k, [k[0] + sd * .7, k[1] + .3, k[2] - 2.6], .18, .16); sh.cone(BODY, k, [k[0] + sd * .15, k[1] + .4, k[2] - 2.3], .18, .16); }
+      }
+      sh.cloth = 0;
+    }
     function stockingsG(sh, P, doll, tor, hidBand = false) {   // 大腿襪：照腿本身的零件放大一圈（任何體型、姿勢都包得住）——膝蓋以下全部、大腿從膝蓋往上 55%；上緣一圈黑色蕾絲口
       const legs = sh._legs || [], src = sh.prims.filter(p => p.part === 'legs' && !p.cloth && p.mat === 0 && (p.k === 0 || p.k === 1));
       const cut = {};
@@ -1392,8 +1473,10 @@
         else if (t === 'teddy') garm('top', () => tee(sh, P, doll, tor, { cami: true, hemZ: tor.C + .6, fab: 8 }));   // 連身情趣衣：細肩帶、高衩到胯下
         else if (t === 'openShirt') garm('top', () => tee(sh, P, doll, tor, { shirt: true, open: true, fab: w.fab }));
         else if (t === 'qipao') garm('top', () => { tee(sh, P, doll, tor, { hemZ: tor.zW - .6, fab: w.fab }); collarG(sh, P, doll, tor, true); });
+        else if (t === 'bikini') garm('top', () => bikiniTopG(sh, P, doll, tor));
         else if (t) garm('top', () => tee(sh, P, doll, tor, { shirt: t === 'shirt', crop: t === 'crop', over: t === 'over', cami: t === 'cami', long: t === 'long', fab: w.fab, hemZ: w.dress ? tor.zW - .6 : w.bottom && t !== 'over' && t !== 'crop' ? tor.zW + .3 : undefined }));   // 有下身：上衣紮進腰裡（oversize、短版不紮）
-        if (w.bottom) garm('bot', () => (w.bottom === 'pants' || w.bottom === 'shorts' ? pantsG : skirtG)(sh, P, doll, tor, w.bottom));
+        if (w.bottom === 'bikini') garm('bot', () => bikiniBotG(sh, P, doll, tor));
+        else if (w.bottom) garm('bot', () => (w.bottom === 'pants' || w.bottom === 'shorts' ? pantsG : skirtG)(sh, P, doll, tor, w.bottom));
         for (const x of w.extras || []) {
           if (x === 'stockings') garm('bot', () => stockingsG(sh, P, doll, tor, w.bottom && w.bottom !== 'shorts'));   // 裙子、長褲蓋住襪口：不畫蕾絲口（不然從裙子底下刺出來）
           else if (x === 'garter') garm('bot', () => garterG(sh, P, doll, tor));
