@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=23', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=24', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
@@ -395,6 +395,11 @@
     }
     // 脫光後的動作（m.mode）：cover 一手遮胸、一手遮下體；fondle 兩手托著乳房揉；touch（坐著）右手摸陰唇
     let modePlan = null, SOFT = null;   // SOFT：乳房軟變形（左右各一個位移；根部不動、越往下推越多，連同蓋在上面的衣服）——生氣說話的晃、抱胸托高
+    // 2026-11-22 使用者：脫比基尼上面、帶子解開的時候，胸部會垂落——托著的布一鬆，乳房往下掉、晃兩下停住（根部不動、下半顆掉最多）
+    if (anim && anim.kind === 'bra' && sh.bikDrop && anim.u > .42) {
+      const t = (anim.u - .42) * 35, D = sh.bikDrop, dz = -D * (1 - Math.exp(-t / 2.2) * Math.cos(t * 1.25)), dy = -.25 * D * Math.min(1, t / 3);
+      SOFT = { [-1]: [0, dy, dz], [1]: [0, dy, dz] };
+    }
     if (!anim && m.mode) {
       const W = (p) => [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
       const mean = (L) => { const c = [0, 0, 0]; for (const q of L) for (let i = 0; i < 3; i++) c[i] += q[i] / L.length; return c; };

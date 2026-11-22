@@ -764,13 +764,19 @@
         if (doll.bikiniSupport && !doll.braSupport && !SMALL_G.hemi[doll.cup] && r > 3.4) {
           // 2026-11-22 使用者：穿比基尼的巨乳不會那麼垂——被托高、像兩顆水球；托高時軟軟的肉往三角布兩邊溢出。
           //   不往中間集中（跟胸罩不同）；外擴的照樣外擴（bustPost 之後還是會彎）。
-          const zS = zB + .5 + r * .16, c = [cx, cy - r * .05, zS], R = [r * .95, r * .93, r * .9];
+          // 2026-11-22 使用者：巨乳或下垂的乳房會壓在比基尼上面——看起來比較寬，軟肉微微往三角布兩邊溢出；外擴的一樣托高。
+          //   wt＝有多重（越大、本來越垂越重）：越重越寬、上下微扁、往兩邊溢出越多。
+          const heavyShp = SHP === 'pendulous' || SHP === 'teardrop' || SHP === 'heavy' || SHP === 'bell';
+          const wt = Math.min(1.3, Math.max(0, (r - 4) / 3) + (heavyShp ? .4 : 0));
+          const zS = zB + .5 + r * (.16 - .06 * wt), c = [cx + s * r * .04 * wt, cy - r * .05, zS], R = [r * (.95 + .12 * wt), r * (.93 - .04 * wt), r * (.9 - .07 * wt)];
           sh.cone(BODY, root, c, r * .55, r * .8);
           sh.ell(BODY, c, R);
-          sh.ell(BODY, [c[0], c[1] - r * .04, c[2] - r * .2], [r * .97, r * .9, r * .74]);   // 水球：下半微微飽滿（重量在下面，但沒有垂）
-          const ro = r * .36, ri = r * .3, xo = c[0] + s * r * .74, xi = s * Math.max(.4 + ri, Math.abs(c[0]) - r * .62);
-          sh.ell(BODY, [xo, c[1] + r * .02, c[2] - r * .22], [ro, r * .48, r * .46]);   // 外側溢出
-          sh.ell(BODY, [xi, c[1] + r * .06, c[2] - r * .24], [ri, r * .42, r * .4]);    // 內側溢出（不跨過中線）
+          sh.ell(BODY, [c[0], c[1] - r * .04, c[2] - r * .2], [R[0] * 1.02, r * .9, r * .74]);   // 水球：下半微微飽滿（重量在下面，但沒有垂）
+          // 溢出：三角布兩邊各一片扁扁的軟肉，大半埋在乳房裡、只凸出一點點（越重凸越多），順著乳房的弧度（不是一顆顆的球）
+          const ro = r * (.42 + .1 * wt), ri = r * (.34 + .08 * wt), xo = c[0] + s * R[0] * .66, xi = s * Math.max(.4 + ri, Math.abs(c[0]) - R[0] * .6);
+          sh.ell(BODY, [xo, c[1] - r * .02, c[2] - r * .2], [ro, r * .5, r * .55]);   // 外側溢出
+          sh.ell(BODY, [xi, c[1] + r * .02, c[2] - r * .22], [ri, r * .45, r * .48]);    // 內側溢出（不跨過中線）
+          sh.bikDrop = Math.max(sh.bikDrop || 0, r * (.22 + .22 * wt));   // 解開帶子時往下掉多少（chat_shadow 脫比基尼的動畫用）
           nipAt([c[0], c[1] + R[1] * .97, c[2] - r * .02], [0, 1, 0], { c, r: R });
         } else
         if (doll.braSupport && !SMALL_G.hemi[doll.cup]) {
