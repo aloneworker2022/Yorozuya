@@ -165,7 +165,7 @@
       // 2026-11-21 使用者：笑的時候胸部會跟著抖——身體一上一下，乳房慢半拍反著晃（根部不動、下半顆晃最多）
       const bounce = L < 0 ? 0 : [-.85, .75, -.7, .6, -.8, .65][L];
       if (pose === 'laugh_bend') return { ph: 0, br: .5 + (L >= 0 ? .3 * (L % 2) : 0), tilt: 3 * wa + (L >= 0 ? 2 * Math.sin(L * 2.1) : 0), nod: 14 * wa + (L >= 0 ? 4 * (L % 2) : 0), turn: 0, gest: 0,
-        ang: { kind: 'cross', w: wa, bounce }, bend: 24 * wa + (L >= 0 ? 3 * (L % 2) : 0), jolt: hop };
+        ang: { kind: 'cross', w: wa, bounce, laugh: true }, bend: 24 * wa + (L >= 0 ? 3 * (L % 2) : 0), jolt: hop };
       return { ph: 0, br: .5 + (L >= 0 ? .3 * (L % 2) : 0), tilt: 5 * wa + (L >= 0 ? 2 * Math.sin(L * 1.7) : 0), nod: -18 * wa - (L >= 0 ? 4 * (L % 2) : 0), turn: 6 * wa, gest: 0,
         ang: { kind: 'mouth', w: wa, bounce }, bend: -6 * wa, jolt: hop };
     }
@@ -582,7 +582,7 @@
         };
         const rest = BR[1].r > 4.1;   // D 以上：胸部放在手臂上
         // 2026-11-21 使用者：大於 C 抱胸，乳房明顯被托高（在手臂上），手臂大概在胸部下緣的位置 → 托高 1.4～3 格（照罩杯），手臂中心落在原本的下緣附近
-        const lift = rest ? (1.4 + 1.6 * big) * w : 0, ARM = 1.35;
+        const lift = rest && !m.ang.laugh ? (1.4 + 1.6 * big) * w : 0, ARM = 1.35;   // 笑彎腰：手臂在下面但不托（胸部往前垂，2026-11-22 使用者）
         const zA = Math.min(bottom(BR[0]), bottom(BR[1])) + lift - ARM - .05;   // 前臂上緣剛好頂著托高後的下緣
         const torsoP = bodyP.filter(p => p.part !== 'breast');
         // 2026-11-22 使用者：雙手抱胸怎麼感覺手在後背——大胸穿 T 恤時布從胸口直直垂下來、離肚子很遠，手臂貼著身體就藏在衣服裡面
@@ -594,10 +594,19 @@
         if (w > .3) crossBand = { zLo: zA - 3.2, zHi: zA + 1.6, xMax: Math.abs(BR[0].c[0]) + 4.5, y: Math.min(hands.armL ? hands.armL[1] : 99, hands.armR ? hands.armR[1] : 99) - ARM };   // 前臂橫的那條：衣服要被壓到手臂後面
         SOFT = { [-1]: [0, .35 * lift, lift], [1]: [0, .35 * lift, lift] };   // 托：下緣被手臂往上推、肉往上往前擠，根部不動（使用者：乳房很柔軟，根部不會動）
       }
-      if (m.ang.kind !== 'akimbo' && m.ang.bounce) {   // 笑：乳房跟著一抖一抖（疊在托高上）
+      // 2026-11-22 使用者：笑的時候往前彎，胸部自然往前垂、跟著笑一晃一晃——身體往前彎 θ，重力在身體裡變成往前（sinθ）：
+      //   乳房（根部不動）往前、往下垂，越大垂越多；笑的一抖一抖也順著往前垂的方向晃
+      const th = m.ang.laugh && m.bend > 0 ? m.bend * Math.PI / 180 : 0;
+      if (th) {
+        const BR2 = sh.prims.filter(p => p.part === 'breast' && !p.cloth && !p.nip && p.r), rr = BR2.length ? Math.max(...BR2.map(p => Math.max(...p.r))) : 3;
+        const d = rr * (.4 + .3 * big), hy = 1.6 * d * Math.sin(th), hz = -.6 * d * Math.sin(th);   // 正面看：往前垂的那段大多朝鏡頭，所以往下的量要給夠才看得出來
+        SOFT = SOFT || { [-1]: [0, 0, 0], [1]: [0, 0, 0] };
+        for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0], SOFT[sd][1] + hy, SOFT[sd][2] + hz];
+      }
+      if (m.ang.kind !== 'akimbo' && m.ang.bounce) {   // 笑：乳房跟著一抖一抖（疊在托高上；彎腰時順著往前垂的方向晃）
         const bz = m.ang.bounce * (.5 + 1.3 * big);
         SOFT = SOFT || { [-1]: [0, 0, 0], [1]: [0, 0, 0] };
-        for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0], SOFT[sd][1], SOFT[sd][2] + bz];
+        for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0], SOFT[sd][1] + (th ? .9 * bz * Math.sin(th) + .35 * bz : 0), SOFT[sd][2] + bz];
       }
       modePlan = { hands, poles, push: { [-1]: [0, 0, 0], [1]: [0, 0, 0] }, round: { [-1]: 0, [1]: 0 }, handDir: {} };
     }
