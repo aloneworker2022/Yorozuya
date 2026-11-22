@@ -445,7 +445,7 @@
       }
     }
     // 脫光後的動作（m.mode）：cover 一手遮胸、一手遮下體；fondle 兩手托著乳房揉；touch（坐著）右手摸陰唇
-    let modePlan = null, SOFT = null;   // SOFT：乳房軟變形（左右各一個位移；根部不動、越往下推越多，連同蓋在上面的衣服）——生氣說話的晃、抱胸托高
+    let modePlan = null, SOFT = null, crossBand = null;   // SOFT：乳房軟變形（左右各一個位移；根部不動、越往下推越多，連同蓋在上面的衣服）——生氣說話的晃、抱胸托高
     // 2026-11-22 使用者：脫比基尼上面、脫胸罩，帶子（扣子）解開的時候胸部會垂落——托著的布一鬆，乳房往下掉、晃兩下停住（根部不動、下半顆掉最多）
     if (anim && anim.kind === 'bra' && sh.supDrop && anim.u > .42) {
       const t = (anim.u - .42) * 35, D = sh.supDrop, dz = -D * (1 - Math.exp(-t / 2.2) * Math.cos(t * 1.25)), dy = -.25 * D * Math.min(1, t / 3);
@@ -585,9 +585,13 @@
         const lift = rest ? (1.4 + 1.6 * big) * w : 0, ARM = 1.35;
         const zA = Math.min(bottom(BR[0]), bottom(BR[1])) + lift - ARM - .05;   // 前臂上緣剛好頂著托高後的下緣
         const torsoP = bodyP.filter(p => p.part !== 'breast');
-        const torsoY = (x, z) => { for (let y = 22; y > -10; y -= .25) { for (const p of torsoP) if (H.primDist(p, x, y, z) < 0) return y; } return 4; };
-        if (A.armL) { hands.armL = lerp(A.armL.w0, [BR[1].c[0] * .95 + 1.2, torsoY(BR[1].c[0], zA) + ARM + .2, zA], w); poles.armL = [-1, -.1, -.55]; }
-        if (A.armR) { hands.armR = lerp(A.armR.w0, [BR[0].c[0] * .95 - 1.2, torsoY(BR[0].c[0], zA - .6) + ARM + 1.3, zA - .6], w); poles.armR = [1, -.1, -.55]; }   // 另一隻在外面、低一點（看得出交叉）
+        // 2026-11-22 使用者：雙手抱胸怎麼感覺手在後背——大胸穿 T 恤時布從胸口直直垂下來、離肚子很遠，手臂貼著身體就藏在衣服裡面
+        //   → 手臂貼在最外面（含外衣）的表面上
+        const clothP = sh.prims.filter(p => p.cloth && !p.under && p.mat === 0 && p.part !== 'armL' && p.part !== 'armR' && p.part !== 'head');
+        const torsoY = (x, z) => { for (let y = 22; y > -10; y -= .25) { for (const p of torsoP) if (H.primDist(p, x, y, z) < 0) return y; for (const p of clothP) if (H.primDist(p, x, y, z) < 0) return y; } return 4; };
+        if (A.armL) { hands.armL = lerp(A.armL.w0, [BR[1].c[0] * .95 + 1.2, torsoY(BR[1].c[0], zA) + ARM + .2, zA], w); poles.armL = [-.75, .65, -.45]; }   // 手肘往前（前臂平平地橫在身體前面，不是從身體側邊斜插進去）
+        if (A.armR) { hands.armR = lerp(A.armR.w0, [BR[0].c[0] * .95 - 1.2, torsoY(BR[0].c[0], zA - .6) + ARM + 1.3, zA - .6], w); poles.armR = [.75, .65, -.45]; }   // 另一隻在外面、低一點（看得出交叉）
+        if (w > .3) crossBand = { zLo: zA - 3.2, zHi: zA + 1.6, xMax: Math.abs(BR[0].c[0]) + 4.5, y: Math.min(hands.armL ? hands.armL[1] : 99, hands.armR ? hands.armR[1] : 99) - ARM };   // 前臂橫的那條：衣服要被壓到手臂後面
         SOFT = { [-1]: [0, .35 * lift, lift], [1]: [0, .35 * lift, lift] };   // 托：下緣被手臂往上推、肉往上往前擠，根部不動（使用者：乳房很柔軟，根部不會動）
       }
       if (m.ang.kind !== 'akimbo' && m.ang.bounce) {   // 笑：乳房跟著一抖一抖（疊在托高上）
@@ -722,6 +726,20 @@
     for (const [p, a] of acts) {
       p.off = [p.off[0] + a[0], p.off[1] + a[1], p.off[2] + a[2]];
       if (a[3]) p.xf = p.xf ? H.compose(a[3], p.xf) : a[3];
+    }
+    // 抱胸：前臂橫過去那一條，外衣（T 恤垂下來的布）被手臂壓到後面——不然大胸穿 T 恤時布垂在手臂前面，看起來像手在背後（2026-11-22 使用者）
+    //   T 恤從胸口垂下來的布是一條條直的長圓錐：只要跟這條重疊、又凸到手臂前面，就拿掉（手臂蓋住的地方，後面那層布還在）
+    if (crossBand) {
+      const lim = crossBand.y - .6;
+      const span = (p) => p.k === 1 ? [Math.min(p.a[2], p.a[2] + p.ba[2]) + p.off[2], Math.max(p.a[2], p.a[2] + p.ba[2]) + p.off[2]] : [p.bc[2] + p.off[2] - (p.r ? p.r[2] : p.br), p.bc[2] + p.off[2] + (p.r ? p.r[2] : p.br)];
+      const front = (p) => p.k === 1 ? Math.max(p.a[1], p.a[1] + p.ba[1]) + p.off[1] + Math.max(p.ra, p.rb) : p.bc[1] + p.off[1] + (p.r ? p.r[1] : p.br);
+      sh.prims = sh.prims.filter((p) => {
+        if (!p.cloth || p.under || p.sleeve || p.xf || p.part === 'armL' || p.part === 'armR') return true;
+        if (Math.abs(p.bc[0] + p.off[0]) > crossBand.xMax) return true;
+        const [lo, hi] = span(p); if (hi < crossBand.zLo || lo > crossBand.zHi) return true;
+        if (front(p) <= lim) return true;
+        overBreast.delete(p); return false;
+      });
     }
     // 腿軟／大腿打開（手指插入的反應）：上半身整個往下 drop、腳底不動 → 膝蓋往前往外彎；大腿往外打開 open（腳往外移一點）
     if (!anim && m.fg && (m.fg.drop || m.fg.dropFrac || m.fg.open)) {
