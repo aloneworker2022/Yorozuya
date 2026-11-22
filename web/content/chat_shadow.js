@@ -10,7 +10,7 @@
 (function () {
   'use strict';
   const DROOM_URL = new URL('../droom/room_doll_chest.js?v=26', (document.currentScript && document.currentScript.src) || location.href).href;
-  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12 }, FPS = { breathe: 4, talk: 7 };
+  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 10, laugh_back: 10, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
   const BEAT = {
@@ -132,6 +132,9 @@
         w0: { bend: 0, nod: -5, turn: 9, tilt: -4, drop: 0, open: .45, jolt: 0 },                                       // 迎合：腿微微打開
         w1: { bend: -6, nod: -22, turn: 6, tilt: -5, drop: 0, open: .55, jolt: .16 * Math.sin(3 * ph) },                // 有感：仰頭、身體抖
         w2: { bend: -8, nod: -26, turn: 4 * Math.sin(ph), tilt: -6, drop: 1.9 + .3 * s2, open: 1.25, jolt: .2 * s4, squirt: 1 },   // 高潮：腿軟、揉奶、大腿打開、噴水
+        // 噴水時的痙攣（2026-11-22 使用者：噴水要搭配身體痙攣）：一抽一抽（越來越小）——腰往前頂、頭往後甩、腿一軟一挺
+        rx: (() => { const J = [0, 1, -.5, .85, -.35, .6, -.2, .25][f % 8] || 0; return { bend: 12 + 10 * J, nod: 16 - 16 * J, turn: -16, tilt: 7, drop: 2.8 - 1.3 * J, open: 1.1, jolt: J }; })(),
+        wx: (() => { const J = [0, 1, -.5, .85, -.35, .6, -.2, .25][f % 8] || 0; return { bend: -8 - 9 * J, nod: -26 - 10 * J, turn: 4, tilt: -6, drop: 1.9 - 1.1 * J, open: 1.35, jolt: J }; })(),
       }[k] || { bend: 0, nod: 0, turn: 0, tilt: 0, drop: 0, open: 0, jolt: 0 };
       return { ph, br: .5 + .2 * s2, tilt: Q.tilt, nod: Q.nod, turn: Q.turn, gest: 0, bend: Q.bend, jolt: Q.jolt, fg: { kind: k, ph, drop: Q.drop, open: Q.open, squirt: !!Q.squirt } };
     }
@@ -468,7 +471,7 @@
       const big = BR[1] ? Math.max(.3, Math.min(1, (BR[1].r - 3.4) / 2.6)) : .5;
       const HP = sh.prims.filter(p => p.part === 'head' && !p.cloth && p.mat === 0), hc = HP.length ? mean(HP.map(W)) : [0, 2, S + 8];
       const faceY = HP.length ? Math.max(...HP.map(p => W(p)[1] + p.br * .6)) : hc[1] + 4;
-      const G = fgArm(sh, C), k = m.fg.kind, ph2 = m.fg.ph * 2;
+      const G = fgArm(sh, C), k = m.fg.kind === 'rx' ? 'r2' : m.fg.kind === 'wx' ? 'w2' : m.fg.kind, ph2 = m.fg.ph * 2;   // 痙攣：手跟高潮那段一樣
       const hands = {}, poles = {}, hd = {}, push = { [-1]: [0, 0, 0], [1]: [0, 0, 0] }, round = { [-1]: 0, [1]: 0 };
       // 最外面（含衣服）的表面：玩家的前臂在衣服外面，她的手要抓在前臂上（不然手會被衣服蓋住）；那個 x 打不到身體就往中線靠
       const outerP = sh.prims.filter(p => p.mat === 0 && !p.carve && p.part !== 'armL' && p.part !== 'armR' && p.part !== 'head' && !(p.cloth && p.under));
@@ -1211,11 +1214,14 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     }
     if (FG.st === 'in' && FG.pose && full(cur.sets[FG.pose], nOf(FG.pose))) FG.shown = FG.pose;   // 新的一段算好了才換（沒好之前照舊播上一段，不要掉回呼吸）
     const fgK = FG.st === 'in' && FG.shown && cur.sets[FG.shown] && full(cur.sets[FG.shown], nOf(FG.shown)) ? FG.shown : '';
-    if (fgK) {   // 手在褲子裡：她的反應一直循環（蓋過呼吸、說話、被摸）
+    if (fgK) {   // 手在褲子裡：她的反應一直循環（蓋過呼吸、說話、被摸）；噴水那一下播痙攣
       reactPlay = null; angPlay = null;
       FG.clock += dt * FG_FPS;
-      const i = Math.floor(FG.clock) % nOf(fgK);
-      if (canvas.dataset.f !== fgK + i) draw(cur.sets[fgK][i], fgK + i);
+      const spK = 'fg_' + fgK.charAt(3) + 'x', spI = FG.squirtAt ? Math.floor((t - FG.squirtAt) / FG_SP_MS) : -1;
+      let k = fgK, i = Math.floor(FG.clock) % nOf(fgK);
+      if (spI >= 0 && spI < nOf(spK) && cur.sets[spK] && full(cur.sets[spK], nOf(spK))) { k = spK; i = spI; }
+      FG.disp = { k, i };
+      if (canvas.dataset.f !== k + i) draw(cur.sets[k][i], k + i);
       raf = requestAnimationFrame(tick);
       return;
     }
@@ -1398,7 +1404,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   //   放開＝結束（手拿出來）回到原來畫面。她的反應一直循環（fg_r0～r2 抗拒、fg_w0～w2 迎合；熱戀以前抗拒、程度照她的感覺）。
   //   噴水不是常態：某一輪做完她到了最高那段才噴一次——往畫面前方、微微往上噴開（像開香檳）。
   const FG = { st: 'idle', p: 0, t: 0, S: 1, O: null, box0: null, holdT: 0, eatClick: false, mode: 'idle', roundAt: 0, loop: 0, last: 0, zoom: null, hand: null, geo: null, ui: null, pose: '', shown: '', clock: 0, pid: null, x0: 0, choice: null, squirtAt: 0, squirtCheck: 0, wasIn: false };
-  const FG_APPROACH = 1500, FG_REACH = 1700, FG_OUT = 700, FG_BACK = 700, FG_HOLD = 220, FG_FPS = 8, FG_ROUND = 1000, FG_SWIPE = 26, FG_SQUIRT = 1300;
+  const FG_APPROACH = 1500, FG_REACH = 1700, FG_OUT = 700, FG_BACK = 700, FG_HOLD = 220, FG_FPS = 8, FG_ROUND = 1000, FG_SWIPE = 26, FG_SQUIRT = 720, FG_SP_MS = 70;
   const fgEase = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
   /** 畫布像素 → zoom 層（沒放大時）的座標。畫布是 object-fit: contain、靠下置中。 */
   function fgLocal(px, py) {
@@ -1432,9 +1438,11 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const [w0, h0] = FG.box0, [ox, oy] = FG.O;
     z.style.position = 'absolute'; z.style.width = (w0 * scale) + 'px'; z.style.height = (h0 * scale) + 'px';
     // 她腿軟往下沉（反應的 drop）：鏡頭跟著往下，陰唇還是停在對話框上面
-    const fi = fgFrame(), dr = fi >= 0 ? (motion(FG.shown, fi, nOf(FG.shown)).fg || {}).drop || 0 : 0;
+    const fi = fgFrame(), dr = fi >= 0 ? (motion(FG.disp.k, fi, nOf(FG.disp.k)).fg || {}).drop || 0 : 0;
     const k = Math.min(canvas.offsetWidth / canvas.width, canvas.offsetHeight / canvas.height) || 1;
-    z.style.left = (ox - ox * scale) + 'px'; z.style.top = (oy - oy * scale - dr * SCALE * k) + 'px';
+    // 噴水／痙攣那一下：整個畫面跟著抖（越來越小）
+    const sq = FG.squirtAt ? (performance.now() - FG.squirtAt) / FG_SQUIRT : 9, shk = sq < 1 ? (1 - sq) * 5 : 0, tt = performance.now() / 1000;
+    z.style.left = (ox - ox * scale + shk * Math.sin(tt * 97)) + 'px'; z.style.top = (oy - oy * scale - dr * SCALE * k + shk * .7 * Math.cos(tt * 83)) + 'px';
   }
   function fgStart() {
     const g = fgGeo(); if (!g) return false;
@@ -1451,7 +1459,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   function fingerReset() {
     if (FG.wasIn) document.dispatchEvent(new CustomEvent('chat-shadow-finger', { detail: { on: false } }));   // 手收回來了：對話框、插入圖照舊
     FG.wasIn = false;
-    FG.st = 'idle'; FG.p = 0; FG.t = 0; FG.geo = null; FG.pose = ''; FG.shown = ''; FG.mode = 'idle';
+    FG.st = 'idle'; FG.p = 0; FG.t = 0; FG.geo = null; FG.pose = ''; FG.shown = ''; FG.disp = null; FG.mode = 'idle';
     fgApply(1); fgSwipe(false);
     if (FG.hand) { FG.hand.hidden = true; FG.hand.getContext('2d').clearRect(0, 0, FG.hand.width, FG.hand.height); }
     if (FG.loop) cancelAnimationFrame(FG.loop); FG.loop = 0;
@@ -1495,6 +1503,19 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (FG.st === 'approach') FG.st = 'back';
     else if (FG.st === 'reach' || FG.st === 'in') { const wasReach = FG.st === 'reach'; FG.st = 'out'; FG.t = wasReach ? FG.t : 1; window.RoomTouch?.finger?.end?.(); }
   }
+  /** 每一輪（2026-11-22 使用者）：半身立繪在畫面中央淡入淡出、半透明，整段大約一秒。 */
+  function fgPulse() {
+    const src = document.getElementById('portrait-img')?.getAttribute('src');
+    if (!src) return;
+    let el = document.getElementById('fg-pulse');
+    if (!el) {
+      el = document.createElement('img'); el.id = 'fg-pulse'; el.alt = '';
+      el.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);height:min(70svh,640px);width:auto;max-width:96vw;object-fit:contain;pointer-events:none;z-index:85;opacity:0';
+      document.getElementById('portrait-sheet')?.appendChild(el);
+    }
+    if (el.getAttribute('src') !== src) el.src = src;
+    try { el.getAnimations().forEach((a) => a.cancel()); el.animate([{ opacity: 0 }, { opacity: .5, offset: .4 }, { opacity: .5, offset: .6 }, { opacity: 0 }], { duration: 1000, easing: 'ease-in-out' }); } catch { /* 舊瀏覽器：不做 */ }
+  }
   function fgRun() { if (!FG.loop) { FG.last = 0; FG.loop = requestAnimationFrame(fgTick); } }
   function fgTick(now) {
     FG.loop = 0;
@@ -1510,7 +1531,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       // 按著往左右滑：選哪個；有選、上一輪做完（她那句出來了）、而且過了一秒 → 下一輪
       const want = FG.choice, busy = F ? F.busy() : false;
       if (want && !busy && now - FG.roundAt >= FG_ROUND) {
-        if (F && F.round(want)) { FG.mode = want === 'labia' ? 'rub' : 'dig'; FG.roundAt = now; FG.squirtCheck = now + 700; }
+        if (F && F.round(want)) { FG.mode = want === 'labia' ? 'rub' : 'dig'; FG.roundAt = now; FG.squirtCheck = now + 700; fgPulse(); }
         else FG.mode = 'idle';
       } else if (!want && !busy && now - FG.roundAt >= FG_ROUND) FG.mode = 'idle';
       // 這一輪做完她到了最高那段 → 噴一次（不是一直噴）
@@ -1523,8 +1544,8 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     FG.loop = requestAnimationFrame(fgTick);
   }
   /** 她現在畫的是反應的哪一格（手那一層要跟著她腿軟往下）。 */
-  function fgFrame() { return FG.st === 'in' && FG.shown && cur && cur.sets[FG.shown] && full(cur.sets[FG.shown], nOf(FG.shown)) ? Math.floor(FG.clock) % nOf(FG.shown) : -1; }
-  const FG_GRIP = { r0: [.08, .2], r2: [.15], w0: [.18], w1: [.18] };   // 她抓玩家前臂的地方（跟 deform 一樣）：那裡她的手蓋在上面
+  function fgFrame() { return FG.st === 'in' && FG.disp && cur && cur.sets[FG.disp.k] ? FG.disp.i : -1; }   // 現在畫的是哪一段的哪一格（FG.disp，tick 畫的時候記下）
+  const FG_GRIP = { r0: [.08, .2], r2: [.15], rx: [.15], w0: [.18], w1: [.18] };   // 她抓玩家前臂的地方（跟 deform 一樣）：那裡她的手蓋在上面
   /** 玩家的手（像素風，比她的身體深一點的暖灰、深色描邊）。整條手臂沿一條路走：畫面右下（畫面外）→ 褲頭右上方 → 從褲頭往下伸進去 → 陰唇。
    *  過了褲頭的那一段藏在布裡（淡淡的鼓起來）；全裸＝指尖過了陰唇就看不到（進去了）。摸陰唇＝指尖在陰唇上上下摸；扣子宮＝整根伸到最裡面、一下一下往裡扣。 */
   function fgDraw(now) {
@@ -1533,7 +1554,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     H.style.left = canvas.offsetLeft + 'px'; H.style.top = canvas.offsetTop + 'px'; H.style.width = canvas.offsetWidth + 'px'; H.style.height = canvas.offsetHeight + 'px';
     const c2 = H.getContext('2d'); c2.clearRect(0, 0, H.width, H.height);
     H.hidden = !showHand; if (!showHand) return;
-    const fi = fgFrame(), mf = fi >= 0 ? motion(FG.shown, fi, nOf(FG.shown)) : null, drop = mf && mf.fg ? mf.fg.drop : 0;
+    const fi = fgFrame(), mf = fi >= 0 ? motion(FG.disp.k, fi, nOf(FG.disp.k)) : null, drop = mf && mf.fg ? mf.fg.drop : 0;
     const A = g.arm, nude = g.band == null, sh0 = (q) => [q[0], q[1] - drop];
     const E = sh0(A.E), M = sh0(A.M), L = sh0(A.L), A0 = A.A0, Lz = g.gz - drop;
     const Q = [A0, M, E, L], seg = [], cum = [0];
@@ -1561,7 +1582,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     disc(dTip - FL > dLip ? layers[1] : layers[0], [b0[0] + nrmv[0] * 1.6, b0[1] + nrmv[1] * 1.6], 1.6);
     // 她的手抓在前臂上：那裡挖掉，讓她的手看起來蓋在上面
     // 她的手抓在前臂上：抓的地方附近，她那一格是皮膚（手）的像素就讓她的手蓋在上面
-    const grips = ((fi >= 0 && FG_GRIP[FG.shown.slice(3)]) || []).map((u) => fgPx(...sh0(A.at(u)))), fr = fi >= 0 ? cur.sets[FG.shown][fi] : null, GR = 5.5 * SCALE;
+    const grips = ((fi >= 0 && FG_GRIP[FG.disp.k.slice(3)]) || []).map((u) => fgPx(...sh0(A.at(u)))), fr = fi >= 0 ? cur.sets[FG.disp.k][fi] : null, GR = 5.5 * SCALE;
     const herHand = (x, y) => { if (!fr || !grips.some(([gx, gy]) => (x - gx) ** 2 + (y - gy) ** 2 < GR * GR)) return false; const j = (y * fr.width + x) * 4; if (!fr.data[j + 3]) return false; return fr.data[j] + fr.data[j + 1] + fr.data[j + 2] < 330; };
     const Wd = H.width, Hd = H.height, out = c2.createImageData(Wd, Hd), od = out.data;
     const srcs = layers.map((c) => c.getImageData(0, 0, Wd, Hd).data);
@@ -1617,7 +1638,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
         // 手伸進去：通知 summon（對話框字出完一秒收、圖只閃一秒）；三段反應先算
         FG.wasIn = true; document.dispatchEvent(new CustomEvent('chat-shadow-finger', { detail: { on: true } }));
         const sp = spec(), ty = fgPoseOf(sp).slice(3, 4), now0 = fgPoseOf(sp);
-        for (const k of ['fg_' + ty + '2', 'fg_' + ty + '1', 'fg_' + ty + '0', now0]) { ensureSet(cur, k); bump(cur, k); }
+        for (const k of ['fg_' + ty + '0', 'fg_' + ty + '1', 'fg_' + ty + '2', 'fg_' + ty + 'x', now0]) { ensureSet(cur, k); bump(cur, k); }   // 算的順序：現在這段 → 痙攣 → 高潮 → 有感 → 普通
       }, FG_HOLD);
     });
     canvas.addEventListener('pointermove', (ev) => {
@@ -1736,5 +1757,5 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   }
 
   window.ChatShadow = { sync, undress, shapeOf, areolaOf, motion, deform, shade, ready: (k) => !!(cur && full(cur.sets[k], nOf(k))), P: () => cur && cur.P,
-    test: { render: testRender, poses: () => ['breathe', 'talk', ...REACTS, ...ANGS, ...ANIMS, 'bikini', 'peak', 'fg_r0', 'fg_r1', 'fg_r2', 'fg_w0', 'fg_w1', 'fg_w2'] } };
+    test: { render: testRender, poses: () => ['breathe', 'talk', ...REACTS, ...ANGS, ...ANIMS, 'bikini', 'peak', 'fg_r0', 'fg_r1', 'fg_r2', 'fg_w0', 'fg_w1', 'fg_w2', 'fg_rx', 'fg_wx'] } };
 })();
