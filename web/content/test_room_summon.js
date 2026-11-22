@@ -405,7 +405,14 @@ function girlAngryNow(who) {
   if ((Number(who._angryUntil) || 0) > Date.now()) return true;
   try { const m = getMoodCarry(who); return !!(m && m.type === "angry" && (Number(m.level) || 0) >= 15); } catch { return false; }
 }
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers" } : null);
+/** 手伸進去時她的反應（2026-11-22 使用者）：熱戀以前抗拒、熱戀起迎合；程度照性奮：沒什麼～微微＝普通、興奮～想要＝有感、高潮（剛高潮、痙攣）＝高潮。 */
+function fingerMood(who) {
+  const idx = STAGE_INDEX[who?.stage || "stranger"] ?? 0;
+  const st = arousalStage(who?.bodyState?.arousal || 0);
+  const lvl = st === "climax" || inSpasm(who) ? 2 : st === "aroused" || st === "wantFill" ? 1 : 0;
+  return { fgWelcome: idx >= (STAGE_INDEX.passionate ?? 5), fgLevel: lvl };
+}
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl) } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
@@ -10461,20 +10468,23 @@ function touchZone(zone) {
 // 2026-11-22 使用者：手指插入改成按住黑影的陰唇——鏡頭慢慢靠近，停住後判斷可不可以玩弄；可以＝玩家的手從畫面右下伸過來、
 //   從褲子上方腰部伸進去（不是從下面）→ 插進去。插入手指／扣陰道／揉子宮口的按鈕取消（抽出照舊是按鈕）。
 const FINGER_HOLD_ACTS = new Set(["finger_in", "vagina_finger", "cervix_rub"]);
-/** 現在可不可以把手指插進去（已解鎖、不忙、一般聊天）。 */
-function fingerCan() {
+// 2026-11-22 使用者（第二版）：手伸進去以後先不動作——出現左右選項：左「摸陰唇」、中「抽出」、右「扣子宮」（揉子宮口）；按一下做一次。
+/** 現在可不可以做這個動作（已解鎖、不忙、一般聊天）。actId 沒給＝能不能把手伸進去（看「插入手指」解鎖沒）。 */
+function fingerCan(actId = "finger_in") {
   if (!girl || !sheetOpen() || talkBusy || sceneOpen()) return false;
   if (undressChatActive() || sexChatActive() || begDialogActive() || escortDialogActive()) return false;
   player = ensurePlayer(player);
-  return availableActs(girl, { canTease: canTease(player) }).some((a) => a.id === "finger_in");
+  if (actId === "pull_out") return true;
+  return availableActs(girl, { canTease: canTease(player) }).some((a) => a.id === actId);
 }
-/** 手伸進去了：送出「插入手指」。 */
-function fingerInsert() {
-  if (!fingerCan()) return false;
-  void sendTalkAct("finger_in");
+/** 手在褲子裡選了一個動作：送出（摸陰唇 labia／扣子宮 cervix_rub／抽出 pull_out）。 */
+function fingerAct(actId) {
+  if (!fingerCan(actId)) return false;
+  if (actId === "pull_out" && !(girl.bodyState?.organs?.vagina?.stuffed === "fingers")) return true;   // 裡面沒手指（只摸了陰唇）：手退出來就好，不用說話
+  void sendTalkAct(actId);
   return true;
 }
-window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES, finger: { can: fingerCan, insert: fingerInsert } };
+window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES, finger: { can: fingerCan, act: fingerAct, busy: () => !!talkBusy } };
 
 function undressPlayOpen() {
   if (undressChatActive()) return sheetOpen();
