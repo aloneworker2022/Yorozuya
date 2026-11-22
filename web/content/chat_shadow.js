@@ -1459,7 +1459,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (!FG.opts) {
       if (!show) return;
       const box = document.createElement('div'); box.id = 'fg-opts';
-      box.style.cssText = 'position:fixed;left:0;right:0;z-index:30;pointer-events:none;display:flex;justify-content:space-between;align-items:flex-end;padding:0 10px;box-sizing:border-box';
+      box.style.cssText = 'position:fixed;left:0;right:0;z-index:90;pointer-events:none;display:flex;justify-content:space-between;align-items:flex-end;padding:0 10px;box-sizing:border-box';
       const mk = (id, label, side) => { const b = document.createElement('button'); b.type = 'button'; b.dataset.fg = id; b.textContent = label;
         b.style.cssText = 'pointer-events:auto;font:inherit;font-size:1.05em;padding:.7em 1.1em;border-radius:10px;border:2px solid rgba(255,255,255,.85);background:rgba(20,18,36,.78);color:#fff6fb;box-shadow:0 4px 14px rgba(0,0,0,.35)' + (side === 'mid' ? ';font-size:.92em;padding:.5em .9em;opacity:.9' : '');
         b.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); fgChoose(id); }); return b; };
@@ -1467,8 +1467,11 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       document.getElementById('portrait-sheet')?.appendChild(box);
       FG.opts = box;
     }
-    const tb = document.getElementById('talk-box'), top = tb ? tb.getBoundingClientRect().top : innerHeight * .7;
-    FG.opts.style.bottom = Math.max(0, innerHeight - top + 12) + 'px';
+    // 放在對話框上面；主畫面的互動鍵列（#talk-acts，整條寬、蓋在對話框正上方）在的話再往上，不然會被它蓋住、按不到
+    const tb = document.getElementById('talk-box'), ta = document.getElementById('talk-acts');
+    let top = tb ? tb.getBoundingClientRect().top : innerHeight * .7;
+    if (ta && !ta.hidden) { const r = ta.getBoundingClientRect(); if (r.height > 0 && r.top < top + 4 && r.bottom > top - 80) top = Math.min(top, r.top); }
+    FG.opts.style.bottom = Math.max(0, innerHeight - top + 10) + 'px';
     const F = window.RoomTouch && window.RoomTouch.finger;
     for (const b of FG.opts.querySelectorAll('button')) { const ok = !F || F.can(b.dataset.fg); b.disabled = !ok; b.style.opacity = ok ? '' : '.45'; b.title = ok ? '' : '還不行'; }
     FG.opts.hidden = !show; FG.opts.style.display = show ? 'flex' : 'none';
