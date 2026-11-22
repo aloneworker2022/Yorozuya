@@ -235,8 +235,8 @@
     fill($('cst-hair'), tx(A.hair).length ? tx(A.hair) : ['及腰長直髮'], '及腰長直髮');
     fill($('cst-outfit'), ['白色 T 恤配胸罩和丁字褲', ...tx(A.style), ...tx(A.sleep_style), ...tx(A.erotic_style)], '白色 T 恤配胸罩和丁字褲');
   }
-  let timer = 0, token = 0;
-  function stop() { clearTimeout(timer); timer = 0; token++; }
+  let timer = 0, token = 0, pollT = 0, pollNow = null;
+  function stop() { clearTimeout(timer); timer = 0; token++; clearTimeout(pollT); pollT = 0; pollNow = null; }
   /** 表單 → 黑影的規格（spec）和動作。 */
   function formSpec() {
     const tier = $('cst-tier').value, pose = $('cst-pose').value;
@@ -274,33 +274,76 @@
     playFrames(res, my, pose);
   }
   // 2026-11-22 使用者：手機平板算圖又慢又燙 → 表單送後台（伺服器用 Node 算），算完傳回一張橫排的連續圖，前台切成格子播；顯示後台一格要幾秒
+  // 第二版（使用者：網頁版畫面移開回來就算圖失敗）：切到背景時瀏覽器會把等很久的連線斷掉 → 送出只拿工作編號，之後每隔一下問一次；
+  //   問失敗（在背景、斷線）就等一下再問，回到畫面馬上再問；工作編號記在這台瀏覽器，重新整理也接著等。
+  const JOB_KEY = 'cst-server-job';
+  const jobSave = (o) => { try { if (o) localStorage.setItem(JOB_KEY, JSON.stringify(o)); else localStorage.removeItem(JOB_KEY); } catch { /* 無痕模式 */ } };
+  const jobLoad = () => { try { return JSON.parse(localStorage.getItem(JOB_KEY) || 'null'); } catch { return null; } };
+  async function showServerResult(j, my, pose, t0) {
+    const img = new Image(); img.src = 'data:image/png;base64,' + j.png;
+    try { await img.decode(); } catch { $('cst-status').textContent = '後台傳回來的圖打不開'; return; }
+    if (my !== token) return;
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+    const frames = []; for (let i = 0; i < j.n; i++) frames.push(g.getImageData(i * j.w, 0, j.w, j.h));
+    const total = ((Date.now() - t0) / 1000).toFixed(1);
+    $('cst-status').textContent = (j.cached ? '後台之前算過（直接拿）：' : '後台好了：') + `${j.n} 格｜後台算 ${j.renderSec} 秒（平均一格 ${j.perFrame} 秒，${j.workers} 核心一起算；一個核心一格約 ${j.perFrameCore} 秒）｜從按下到播放 ${total} 秒｜${j.arch} ${j.cpu}`;
+    playFrames({ frames, seq: j.seq, pose: j.pose }, my, pose);
+  }
+  /** 一直問後台這個工作好了沒；問失敗不算失敗（手機在背景會斷線），等一下再問。 */
+  function pollServer(job, my) {
+    clearTimeout(pollT);
+    const ask = async () => {
+      pollT = 0; pollNow = null;
+      if (my !== token) return;
+      let j = null, gone = false;
+      try {
+        const r = await fetch('/api/shadow-render/' + encodeURIComponent(job.id), { cache: 'no-store' });
+        if (r.status === 404 || r.status === 410) { gone = true; j = await r.json().catch(() => ({})); }
+        else if (r.ok) j = await r.json();
+      } catch { j = null; }   // 在背景／斷線：等一下再問
+      if (my !== token) return;
+      if (gone) { jobSave(null); $('cst-status').textContent = '後台失敗：' + ((j && j.detail) || '找不到這個工作，再按一次'); return; }
+      if (j && j.status === 'done') { jobSave(null); await showServerResult(j, my, job.pose, job.t0); return; }
+      if (j && j.status === 'error') { jobSave(null); $('cst-status').textContent = '後台失敗：' + (j.error || ''); return; }
+      const sec = ((Date.now() - job.t0) / 1000).toFixed(0);
+      $('cst-status').textContent = j ? (j.status === 'queued' ? `後台排隊中…（${sec} 秒）` : `後台算圖中…（${sec} 秒）——可以切走，回來會接著等`) : `連不到後台，等一下再問…（${sec} 秒）`;
+      if (Date.now() - job.t0 > 40 * 60 * 1000) { jobSave(null); $('cst-status').textContent = '等太久了（40 分鐘），再按一次'; return; }
+      pollNow = ask; pollT = setTimeout(ask, j ? 1500 : 3000);
+    };
+    pollNow = ask; ask();
+  }
+  // 回到畫面：馬上問一次（不用等計時器，手機在背景時計時器會被暫停）
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && pollNow) { clearTimeout(pollT); pollNow(); } });
   async function playServer() {
     stop();
-    const my = token, { spec, pose } = formSpec(), t0 = performance.now();
-    $('cst-status').textContent = '送到後台算…（樹莓派可能要等一下）';
-    const tick = setInterval(() => { if (my === token) $('cst-status').textContent = `後台算圖中…（${((performance.now() - t0) / 1000).toFixed(0)} 秒）`; }, 1000);
+    const my = token, { spec, pose } = formSpec(), t0 = Date.now();
+    $('cst-status').textContent = '送到後台算…';
     let j;
     try {
       const r = await fetch('/api/shadow-render', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ spec, pose }) });
       if (!r.ok) { let msg = r.status + ''; try { const e = await r.json(); msg = e.detail || msg; } catch { msg = (await r.text().catch(() => '')) || msg; } throw new Error(r.status === 404 ? '伺服器還沒有這個功能（pull 最新版、重啟 uvicorn）' : msg); }
       j = await r.json();
-    } catch (e) { clearInterval(tick); if (my === token) $('cst-status').textContent = '後台失敗：' + (e.message || e); return; }
-    clearInterval(tick);
+    } catch (e) { if (my === token) $('cst-status').textContent = '後台失敗：' + (e.message || e); return; }
     if (my !== token) return;
-    const img = new Image(); img.src = 'data:image/png;base64,' + j.png;
-    try { await img.decode(); } catch { $('cst-status').textContent = '後台傳回來的圖打不開'; return; }
-    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
-    const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
-    const frames = []; for (let i = 0; i < j.n; i++) frames.push(g.getImageData(i * j.w, 0, j.w, j.h));
-    const total = ((performance.now() - t0) / 1000).toFixed(1);
-    $('cst-status').textContent = `後台好了：${j.n} 格｜後台算 ${j.renderSec} 秒（平均一格 ${j.perFrame} 秒，${j.workers} 核心一起算；一個核心一格約 ${j.perFrameCore} 秒）｜含傳輸共 ${total} 秒｜${j.arch} ${j.cpu}`;
-    playFrames({ frames, seq: j.seq, pose: j.pose }, my, pose);
+    const job = { id: j.id, pose, t0 };
+    jobSave(job);
+    pollServer(job, my);
+  }
+  /** 打開 testword 時，上次送出的工作還沒拿到結果（切走、重新整理）：接著等。 */
+  function resumeServer() {
+    const job = jobLoad();
+    if (!job || !job.id || Date.now() - (job.t0 || 0) > 40 * 60 * 1000) { jobSave(null); return; }
+    for (const d of document.querySelectorAll('details')) if (d.contains($('cst-status'))) d.open = true;
+    $('cst-status').textContent = '接著等上次送出的後台算圖…';
+    pollServer(job, token);
   }
   function boot() {
     const poses = (window.ChatShadow?.test?.poses?.() || Object.keys(POSE_ZH));
     $('cst-pose').innerHTML = poses.map((p) => `<option value="${p}">${POSE_ZH[p] || p}</option>`).join('');
     $('cst-play').addEventListener('click', play);
     $('cst-server').addEventListener('click', playServer);
+    resumeServer();
     $('cst-stop').addEventListener('click', stop);
     loadPools();
   }

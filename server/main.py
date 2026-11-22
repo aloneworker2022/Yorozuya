@@ -8190,30 +8190,92 @@ def discover_apk():
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 # 2026-11-22 後台算黑影（使用者：手機平板算圖又慢又燙 → testword 填表單送後台算、算完交給前台播；順便量這台一格要幾秒）
-#   用 Node 跑 server/shadow_render.mjs（讀 web/content/chat_shadow.js＋web/droom/room_doll_chest.js，所有核心一起算）
+#   用 Node 跑 server/shadow_render.mjs（讀 web/content/chat_shadow.js＋web/droom/room_doll_chest.js，所有核心一起算）。
+#   第二版（使用者：網頁版畫面移開回來就算圖失敗）：手機瀏覽器切到背景會把等很久的連線斷掉 → 改成「工作」：
+#   POST 馬上回工作編號、伺服器自己在背景算；前台每隔一下問一次（斷了就再問），算好的存在 data/shadow_cache（同樣的表單再按直接拿）。
+SHADOW_CACHE_DIR = ROOT / "data" / "shadow_cache"
+SHADOW_JOBS: dict = {}
+_shadow_sem = asyncio.Semaphore(1)   # 一次只算一個（樹莓派別一次塞爆）
+
+
 class ShadowRenderReq(BaseModel):
     spec: dict
     pose: str = "breathe"
 
 
+def _shadow_key(spec: dict, pose: str) -> str:
+    """同一張表單＋同一版算圖程式＝同一個結果（改了程式就重算）。"""
+    ver = "|".join(str(int(p.stat().st_mtime)) for p in (
+        WEB_DIR / "content" / "chat_shadow.js", WEB_DIR / "droom" / "room_doll_chest.js", Path(__file__).resolve().parent / "shadow_render.mjs") if p.exists())
+    raw = json.dumps({"spec": spec, "pose": pose, "ver": ver}, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:20]
+
+
+async def _shadow_run(job_id: str, spec: dict, pose: str, key: str) -> None:
+    job = SHADOW_JOBS[job_id]
+    try:
+        async with _shadow_sem:
+            job["status"] = "running"
+            job["started"] = time.time()
+            node = shutil.which("node")
+            proc = await asyncio.create_subprocess_exec(
+                node, str(Path(__file__).resolve().parent / "shadow_render.mjs"),
+                stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            try:
+                out, err = await asyncio.wait_for(proc.communicate(json.dumps({"spec": spec, "pose": pose}).encode()), timeout=1800)
+            except asyncio.TimeoutError:
+                proc.kill()
+                raise RuntimeError("算太久（超過 30 分鐘）")
+            if proc.returncode != 0:
+                raise RuntimeError("算圖失敗：" + err.decode("utf-8", "replace")[-600:])
+            SHADOW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            (SHADOW_CACHE_DIR / f"{key}.json").write_bytes(out)
+            job["status"] = "done"
+    except Exception as e:  # noqa: BLE001 — 失敗原因照實給前台
+        job["status"] = "error"
+        job["error"] = str(e)[-800:]
+
+
 @app.post("/api/shadow-render")
 async def shadow_render(req: ShadowRenderReq):
-    node = shutil.which("node")
-    if not node:
+    """開一個算圖工作，馬上回 {id, status}；算好的拿 GET /api/shadow-render/{id}。"""
+    if not shutil.which("node"):
         raise HTTPException(503, "伺服器沒有 Node.js（樹莓派：sudo apt install nodejs）")
     if not re.fullmatch(r"[a-z_0-9]{1,24}", req.pose or ""):
         raise HTTPException(400, "動作名稱不對")
-    script = Path(__file__).resolve().parent / "shadow_render.mjs"
-    proc = await asyncio.create_subprocess_exec(
-        node, str(script), stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-    try:
-        out, err = await asyncio.wait_for(proc.communicate(json.dumps({"spec": req.spec, "pose": req.pose}).encode()), timeout=900)
-    except asyncio.TimeoutError:
-        proc.kill()
-        raise HTTPException(504, "算太久（超過 15 分鐘）")
-    if proc.returncode != 0:
-        raise HTTPException(500, "算圖失敗：" + err.decode("utf-8", "replace")[-600:])
-    return json.loads(out)
+    key = _shadow_key(req.spec, req.pose)
+    for jid, j in SHADOW_JOBS.items():   # 同一張表單已經在算：接著等同一個
+        if j["key"] == key and j["status"] in ("queued", "running"):
+            return {"id": jid, "status": j["status"]}
+    job_id = uuid.uuid4().hex[:12]
+    if (SHADOW_CACHE_DIR / f"{key}.json").exists():
+        SHADOW_JOBS[job_id] = {"key": key, "status": "done", "created": time.time(), "cached": True}
+        return {"id": job_id, "status": "done", "cached": True}
+    SHADOW_JOBS[job_id] = {"key": key, "status": "queued", "created": time.time()}
+    for jid in [k for k, j in SHADOW_JOBS.items() if time.time() - j["created"] > 6 * 3600]:   # 舊的工作清掉
+        SHADOW_JOBS.pop(jid, None)
+    asyncio.create_task(_shadow_run(job_id, req.spec, req.pose, key))
+    return {"id": job_id, "status": "queued"}
+
+
+@app.get("/api/shadow-render/{job_id}")
+async def shadow_render_status(job_id: str):
+    """問算圖工作：queued／running（elapsed 秒）／done（附結果）／error（附原因）。"""
+    job = SHADOW_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "找不到這個工作（伺服器重開過？再按一次）")
+    out = {"id": job_id, "status": job["status"]}
+    if job["status"] == "running":
+        out["elapsed"] = round(time.time() - job.get("started", time.time()), 1)
+    elif job["status"] == "error":
+        out["error"] = job.get("error", "")
+    elif job["status"] == "done":
+        path = SHADOW_CACHE_DIR / f"{job['key']}.json"
+        if not path.exists():
+            raise HTTPException(410, "結果不見了，再按一次")
+        out.update(json.loads(path.read_bytes()))
+        out["cached"] = bool(job.get("cached"))
+    return out
 
 
 app.mount("/", StaticFiles(directory=WEB_DIR, html=True), name="web")
