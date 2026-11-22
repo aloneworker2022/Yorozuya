@@ -11223,6 +11223,7 @@ function showSheet() {
   if (!sheet) return;
   const wasHidden = sheet.hidden;
   sheet.hidden = false;
+  if (wasHidden) sheetShownAt = Date.now();   // 2026-11-22 使用者：點房間的她（放開那一下開聊天）→ 手機緊接著補一個 click 打在剛出現的背景上，聊天馬上被關掉（閃一下）
   lockSheetScroll();
   stopArousalOffChat();
   startIdleDecay();
@@ -13027,7 +13028,11 @@ bindOrganDevDebug();
 bindReckonDebug();
 onId("talk-input-row", "submit", (event) => { cancelMic(true); sendTalk(event); });
 onId("talk-mic", "click", () => { toggleMic(); });
+var sheetShownAt = 0;
+/** 剛打開聊天的那一下（手機放開手指後補的 click）不算點背景。 */
+const justOpened = () => Date.now() - sheetShownAt < 450;
 onId("portrait-backdrop", "click", () => {
+  if (justOpened()) return;
   if (sexMarathonLocked()) { nagMarathonLocked(); return; }
   if (peakBlockClose()) return;
   if (sceneOpen()) {
@@ -13037,6 +13042,7 @@ onId("portrait-backdrop", "click", () => {
   hideSheet();
 });
 onId("portrait-sheet", "click", (event) => {
+  if (justOpened()) return;
   if (sexMarathonLocked()) return;
   if (begDialog && peakBegNow() && !event.target.closest(".talk")) { peakBlockClose(); return; }
   if (sceneOpen()) return;

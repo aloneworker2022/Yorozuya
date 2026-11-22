@@ -1279,12 +1279,12 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   }
 
   // 2026-11-19 使用者：聊天先出現黑影；長按黑影的頭 → 半身立繪；長按立繪 → 回到黑影。每次打開聊天都從黑影開始。
-  let portraitMode = false, wasOpen = false, fadeT = 0, wifePick = 'fondle';
+  let portraitMode = false, wasOpen = false, fadeT = 0, wifePick = 'fondle', openedAt = 0;
   function sync() {
     const sheet = document.getElementById('portrait-sheet');
     if (!ensureEl()) return;
     const open = !!(sheet && !sheet.hidden);
-    if (open && !wasOpen) { portraitMode = false; wifePick = Math.random() < .5 ? 'fondle' : 'touch'; }
+    if (open && !wasOpen) { portraitMode = false; wifePick = Math.random() < .5 ? 'fondle' : 'touch'; openedAt = performance.now(); }
     wasOpen = open;
     // 脫衣對話開始／結束：開始時釘住目前的脫衣進度（坐下）；結束就照實際進度（站起來）
     const undressOn = open && !!sheet?.classList.contains('undress-chat');
@@ -1375,6 +1375,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     fingerBind();
     canvas.addEventListener('click', (ev) => {
       if (FG.eatClick) { FG.eatClick = false; return; }   // 按住下體（手指插入）放開時的那一下不算摸
+      if (performance.now() - openedAt < 450) return;   // 點房間的她打開聊天、手機緊接著補的那一下 click：不算摸她、也不算點背景（不然聊天一開就被關掉）
       const [x, y] = toCanvas(ev), f = cur && cur.sets[mode] && (cur.sets[mode].find(Boolean));
       if (!f) return;
       const xi = Math.round(x), yi = Math.round(y);
