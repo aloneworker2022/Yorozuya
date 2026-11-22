@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=27', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=28', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
@@ -809,11 +809,21 @@
       const o = SOFT[sd], ow = SOFTW && SOFTW[sd], g = Math.hypot(o[0], o[1], o[2]) + (ow ? Math.hypot(ow[0], ow[1], ow[2]) : 0);
       if (top - bot < 1 || g < .01) continue;
       softRoot[sd] = { root: [cx, cy, top], L: top - bot, o };
-      const put = (p) => { p.kw = { root: [cx - p.off[0], cy - p.off[1], top - p.off[2]], f: [0, 0, -1], L: top - bot, o, wv: ow || null }; p.br += g; };
+      // 2026-11-22 使用者：胸罩／比基尼不會變形——罩杯的布不跟著乳房軟變形（不拉長、不波浪），整片硬硬地跟著底下的肉走；
+      //   上胸波浪只到罩杯上緣為止（不然上胸的肉往前鼓、蓋掉三角形上半，看起來像罩杯變形）
+      const cup = [...overBreast].filter(([p, s2]) => s2 === sd && !p.xf && braPiece(p)).map(([p]) => p);
+      let wl = .55, cupO = null;
+      if (cup.length) {
+        let cTop = -1e9, cBot = 1e9;
+        for (const p of cup) { const z = p.bc[2] + p.off[2]; cTop = Math.max(cTop, z); cBot = Math.min(cBot, z); }
+        const L0 = top - bot, tTop = (top - cTop) / L0, tIn = Math.max(0, Math.min(1, (top - (cTop + (cBot - cTop) * .7)) / L0)), w = tIn * tIn * (3 - 2 * tIn);
+        wl = Math.max(.12, Math.min(.55, tTop));
+        cupO = [o[0] * w, o[1] * w, o[2] * w];   // 罩杯＝罩杯裡偏下那一點的肉移多少，整片就移多少
+      }
+      const put = (p) => { p.kw = { root: [cx - p.off[0], cy - p.off[1], top - p.off[2]], f: [0, 0, -1], L: top - bot, o, wv: ow || null, wl }; p.br += g; };
       for (const p of L) put(p);
-      // 2026-11-22 使用者：胸罩不會變形——胸罩／比基尼上面的布不跟著乳房軟變形（不拉長、不波浪），整片硬硬地跟著乳房動一點點；其他衣服照舊
       for (const [p, s2] of overBreast) if (s2 === sd && !p.xf) {
-        if (braPiece(p)) { p.off = [p.off[0] + o[0] * .55, p.off[1] + o[1] * .55, p.off[2] + o[2] * .55]; continue; }
+        if (cupO && braPiece(p)) { p.off = [p.off[0] + cupO[0], p.off[1] + cupO[1], p.off[2] + cupO[2]]; continue; }
         put(p);
       }
     }

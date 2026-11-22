@@ -190,7 +190,7 @@
       return u * u * (3 - 2 * u);
     }
     function waveW(kw, x, y, z) {
-      const t = ((x - kw.root[0]) * kw.f[0] + (y - kw.root[1]) * kw.f[1] + (z - kw.root[2]) * kw.f[2]) / kw.L, u = t / .55;
+      const t = ((x - kw.root[0]) * kw.f[0] + (y - kw.root[1]) * kw.f[1] + (z - kw.root[2]) * kw.f[2]) / kw.L, u = t / (kw.wl || .55);   // wl：波浪那段多長（chat_shadow 給到罩杯上緣為止）
       return u <= 0 || u >= 1 ? 0 : Math.sin(Math.PI * u);
     }
     function primDistRaw(p, x, y, z, fz) {
