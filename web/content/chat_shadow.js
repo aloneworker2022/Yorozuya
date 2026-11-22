@@ -604,9 +604,10 @@
         for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0], SOFT[sd][1] + hy, SOFT[sd][2] + hz];
       }
       if (m.ang.kind !== 'akimbo' && m.ang.bounce) {   // 笑：乳房跟著一抖一抖（疊在托高上；彎腰時順著往前垂的方向晃）
-        const bz = m.ang.bounce * (.5 + 1.3 * big);
+        // 2026-11-22 使用者：胸部沒有晃（量過只動 0～2 像素）→ 幅度加大到看得出來，C 也會晃、越大晃越多；左右兩顆往外一點點反著晃
+        const bz = m.ang.bounce * (1.4 + 2.6 * big);
         SOFT = SOFT || { [-1]: [0, 0, 0], [1]: [0, 0, 0] };
-        for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0], SOFT[sd][1] + (th ? .9 * bz * Math.sin(th) + .35 * bz : 0), SOFT[sd][2] + bz];
+        for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0] + sd * .18 * bz, SOFT[sd][1] + (th ? .9 * bz * Math.sin(th) + .35 * bz : 0), SOFT[sd][2] + bz];
       }
       modePlan = { hands, poles, push: { [-1]: [0, 0, 0], [1]: [0, 0, 0] }, round: { [-1]: 0, [1]: 0 }, handDir: {} };
     }
