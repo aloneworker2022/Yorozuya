@@ -444,7 +444,7 @@
         let d = [wrist[0] - elbow[0], wrist[1] - elbow[1], wrist[2] - elbow[2]];
         const n = hypot3(d[0], d[1], d[2]) || 1; d = d.map(v => v / n);
         const L = 3.8 * fr ** .7;
-        if (!FOOT_HD) { sh.cone(BODY, wrist, wrist.map((w, i) => w + d[i] * L), 1.65 * fr ** .5, 1.1 * fr ** .5); return; }
+        if (!FOOT_HD) { sh.cone(BODY, wrist, wrist.map((w, i) => w + d[i] * L), 1.65 * fr ** .5, 1.1 * fr ** .5); sh.prims[sh.prims.length - 1].hand = 1; return; }   // hand：聊天黑影拿掉、改貼像素手
         // 2026-10-30 pt76u：2× 才畫細手——掌心肉墊、手背、四指＋拇指、指縫／掌紋 MARK
         const side = shoulder[0] >= 0 ? 1 : -1, q = fr ** .5;
         const orth = (v) => { const k = v[0] * d[0] + v[1] * d[1] + v[2] * d[2]; let o = v.map((x, i) => x - k * d[i]); const m = hypot3(o[0], o[1], o[2]) || 1; return o.map(x => x / m); };
@@ -2170,7 +2170,7 @@
             const wrist = [s * (waist_out + (hip_out - waist_out) * .45 + 1.6), .3, tor.zW - .22 * tor.T];
             if (doll._mode) arm(sh, P, sh_j, elbow, wrist);   // 2026-11-20 聊天黑影脫光後的姿勢（手會被拉去遮下體／托胸）：畫完整的手掌、不畫插腰的拳頭
             else { arm(sh, P, sh_j, elbow, wrist, false);
-            { const pp = sh.part, wr = sh._arms[sh._arms.length - 1][2]; sh.part = s < 0 ? 'armL' : 'armR'; sh.ell(BODY, [wr[0] - s * .6, wr[1], wr[2] - .6], [1.8, 1.6, 2.1]); sh.part = pp; } }   // 插腰的拳頭也算那隻手（聊天黑影手被拉走時拳頭跟著走，不會留在腰上）
+            { const pp = sh.part, wr = sh._arms[sh._arms.length - 1][2]; sh.part = s < 0 ? 'armL' : 'armR'; sh.ell(BODY, [wr[0] - s * .6, wr[1], wr[2] - .6], [1.8, 1.6, 2.1]); sh.prims[sh.prims.length - 1].hand = 2; sh.part = pp; } }   // 插腰的拳頭也算那隻手（聊天黑影手被拉走時拳頭跟著走，不會留在腰上）
           } else {
             const elbow = [s * Math.max(waist_out + 2.8 * F(b, 'arm') + 1.6, arm_clear()), -1.0, tor.zW - 1];
             const wrist = [s * (hip_out + 1.5 * F(b, 'arm') + 1.1), .8, tor.C - 1];

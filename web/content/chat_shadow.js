@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=29', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=30', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
@@ -244,6 +244,11 @@
     const sm = (u) => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
     const nrm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
     const app = (X, q) => { const r = H.mulV(X.R, q); return [r[0] + X.t[0], r[1] + X.t[1], r[2] + X.t[2]]; };
+    // 2026-11-23 像素手（使用者選草稿）：手臂末端原本的圓頭（hand 1）、插腰拳頭（hand 2）拿掉，最後 drawFrame 照手腕位置、前臂方向貼像素手
+    //   handG＝每隻手用哪個手勢（flat 自然併攏／open 張開／grip 抓住／cup 托／fist 握拳）；姿勢裡有指定的照指定，手被拉走（IK）又沒指定的＝flat
+    const handG = { armL: 'flat', armR: 'flat' }, handSet = {};
+    for (const p of sh.prims) if (p.hand === 2) handG[p.part] = 'fist';
+    sh.prims = sh.prims.filter(p => !p.hand);
     /** 把方向 u 轉到 v（只轉 w 那麼多）的旋轉矩陣。 */
     const rotTo = (u, v, w) => {
       u = nrm(u); v = nrm(v);
@@ -517,6 +522,8 @@
       else if (k === 'w1') { grip('armR', .35, [1, .2, -.6]); if (BR[0]) { knead('armL', BR[0], -1, .7); poles.armL = [-.25, .45, -1]; } }   // 一手伸進衣服摸自己的奶（手肘往下，從衣服下襬伸進去）
       else if (k === 'w2' && BR[0] && BR[1]) { knead('armL', BR[0], -1, 1.2); knead('armR', BR[1], 1, 1.2); }   // 兩手揉自己的乳房（上下揉）
       modePlan = { hands, poles, push, round, handDir: hd };
+      { const G2 = { r0: ['grip', 'grip'], r1: ['open', 'open'], r2: ['open', 'grip'], w0: ['flat', 'grip'], w1: ['cup', 'grip'], w2: ['cup', 'cup'], cd: ['open', 'open'], cs: ['open', 'open'], cq: ['open', 'open'] }[k];
+        if (G2) { handG.armL = G2[0]; handG.armR = G2[1]; handSet.armL = handSet.armR = 1; } }
     } else if (rx) {
       // 被摸的反應：照關係帶擺手（hands＝手腕目標；從原本的位置照 w 過去再回來）
       const W = (p) => [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
@@ -636,6 +643,9 @@
         SOFT = SOFT || { [-1]: [0, 0, 0], [1]: [0, 0, 0] };
       }
       modePlan = { hands, poles, push: { [-1]: [0, 0, 0], [1]: [0, 0, 0] }, round: { [-1]: 0, [1]: 0 }, handDir: {} };
+      if (m.ang.kind === 'akimbo') { handG.armL = handG.armR = 'fist'; handSet.armL = handSet.armR = 1; }   // 叉腰：兩隻都握拳
+      else if (m.ang.kind === 'mouth') { handG.armL = 'flat'; handSet.armL = 1; }
+      else { handG.armL = handG.armR = 'none'; handSet.armL = handSet.armR = 1; }   // 抱胸、笑彎腰（手交叉）：手塞在另一隻手臂下面，看不到   // 摀嘴：手背、指尖朝上（照前臂方向轉）
     }
     for (const part of ['armL', 'armR']) {
       if (modePlan) {
@@ -881,6 +891,17 @@
         for (const p of sh.prims) if (p.part === 'armL' && !p.cloth && p !== armX.armL.upper && Wp(p)[2] > hem + .5) p.inCloth = 1;
       }
     }
+    // 像素手：前臂（a 點＝手肘的那根錐）變形後的世界座標 → 手腕 w、往指尖的方向 d；drawFrame 投影到畫面貼手
+    sh._hands = [];
+    for (const [shJ, el, wr] of sh._arms || []) {
+      const part = shJ[0] < 0 ? 'armL' : 'armR';
+      const fo = sh.prims.find(p => p.part === part && p.k === 1 && !p.cloth && Math.abs(p.a[0] - el[0]) + Math.abs(p.a[1] - el[1]) + Math.abs(p.a[2] - el[2]) < 1e-3);
+      if (!fo) continue;
+      const Wq = (q) => { const v = [q[0] + fo.off[0], q[1] + fo.off[1], q[2] + fo.off[2]]; return fo.xf ? app(fo.xf, v) : v; };
+      const w = Wq([fo.a[0] + fo.ba[0], fo.a[1] + fo.ba[1], fo.a[2] + fo.ba[2]]), e = Wq(fo.a);
+      const g = handSet[part] ? handG[part] : modePlan && modePlan.hands && modePlan.hands[part] ? 'flat' : handG[part];
+      sh._hands.push({ part, w, d: nrm([w[0] - e[0], w[1] - e[1], w[2] - e[2]]), g, r: fo.rb, hide: !!fo.inCloth });
+    }
   }
 
   /** droom 的部位標記色 → 房間黑影配色（白邊→深線；乳暈乳頭→淡淡的印子；摺線→身體色）。 */
@@ -945,7 +966,8 @@
     m.cup = doll.cup || null;   // deform 用：C 以下笑的時候不晃
     // 分三次畫：只有身體 → 身體＋內衣（胸罩、丁字褲）→ 身體＋外衣（T 恤），再一層層疊灰色上去
     // 先用全部零件變形（脫 T 恤時手要照 T 恤的下襬走——只畫身體那一層也要看得到 T 恤），再篩這一層要畫的
-    const run = (keep, bare) => F.render(doll, body, 0, 0, { scale, cv, shape, deform: (sh, P, H) => { deform(sh, P, H, m); sh.prims = sh.prims.filter(keep); if (bare && sh.areolaStamps) sh.areolaStamps.length = 0; } });   // bare：衣服那幾層不畫乳暈印子（印子會蓋在衣服上面）
+    const capH = {};   // 第一次 render 順便拿手腕資料（貼像素手用）
+    const run = (keep, bare) => F.render(doll, body, 0, 0, { scale, cv, shape, deform: (sh, P, H) => { deform(sh, P, H, m); if (!capH.h) capH.h = sh._hands; sh.prims = sh.prims.filter(keep); if (bare && sh.areolaStamps) sh.areolaStamps.length = 0; } });   // bare：衣服那幾層不畫乳暈印子（印子會蓋在衣服上面）
     const hasU = base.sh.prims.some(p => p.cloth && p.under), hasO = base.sh.prims.some(p => p.cloth && !p.under);
     const r = run(p => !p.cloth);
     shade(r.pixels);
@@ -997,7 +1019,45 @@
         px[j] = Math.min(255, px[j] * k); px[j + 1] = Math.min(255, px[j + 1] * k); px[j + 2] = Math.min(255, px[j + 2] * k);
       }
     }
+    if (capH.h) pasteHands(r, capH.h, scale, cv, !!(doll._mode || m.react || m.ang), hasO);
     return r;
+  }
+
+  // 2026-11-23 像素手（使用者看過草稿：不畫指縫深線、手指拉長；手臂縮短 12% 那版）：
+  //   每個手勢一張小像素圖（# ＝手），a＝手腕在圖上的位置、d＝圖上手指朝的方向；貼的時候照前臂在畫面上的方向轉（最近點取樣），
+  //   右手（畫面右邊那隻）左右翻；那一格前面有東西（身體比手腕更靠鏡頭）就不畫＝被擋住
+  const HAND_SPR = {
+    flat: { a: [3, 0], d: [0, 1], rows: ['.#####...', '.#####...', '#######..', '########.', '#########', '#######.#', '#######.#', '#######.#', '#######..', '#######..', '#.#.#.#..', '#.#.#.#..', '#.#.#.#..', '..#.#.#..', '..#.#.#..', '....#....'] },
+    open: { a: [4.5, 12.5], d: [0, -1], rows: ['.....#....', '...#.#.#..', '...#.#.#..', '.#.#.#.#..', '.#.#.#.#.#', '.#.#.#.#.#', '.#.#.#.#.#', '.#######.#', '.#########', '.########.', '..######..', '..#####...', '..#####...'] },
+    grip: { a: [0, 2.5], d: [1, 0], rows: ['.#######.....', '###########..', '############.', '#############', '.############', '..##.#.#.##..', '..#..#.#..#..', '..#..#.#..#..', '.....#.#.....'] },
+    cup: { a: [6.5, 10.5], d: [0, -1], rows: ['#...#...#..', '.#..#..#...', '.#..#..#..#', '..#.#.#..#.', '..#.#.#.#..', '..#######..', '#.#######..', '.########..', '..#######..', '...#####...', '...#####...'] },
+    fist: { a: [5, 9.5], d: [0, -1], rows: ['..#.#.#...', '.########.', '##########', '##########', '#########.', '##########', '.########.', '..######..', '...####...', '...####...'] },
+  };
+  function pasteHands(r, hands, scale, cv, dark, hasO) {
+    const W = r.width, Hh = r.height, px = r.pixels, dep = r.depth, k = scale / 2;   // 圖是照 scale 2 畫的
+    for (const h of hands) {
+      if ((h.hide && hasO) || h.g === 'none') continue;   // 伸進衣服裡／塞在手臂下面
+      const S = HAND_SPR[h.g] || HAND_SPR.flat, mir = h.part === 'armR', sw = Math.max(...S.rows.map(q => q.length));
+      const a = mir ? [sw - S.a[0], S.a[1]] : S.a, bd = mir ? [-S.d[0], S.d[1]] : S.d;
+      const wx = (cv.ax + 1.1 * h.w[0]) * scale, wy = (cv.ay - h.w[2]) * scale;   // 正面：畫面 x＝世界 x × GIRTH 1.1
+      let tx = h.d[0] * 1.1, ty = -h.d[2]; const tl = Math.hypot(tx, ty);
+      const th = tl < .25 ? 0 : Math.atan2(ty, tx) - Math.atan2(bd[1], bd[0]), c = Math.cos(th), sn = Math.sin(th);
+      const yF = h.w[1] + (h.r || 1.2) * .6 + (h.g === 'fist' || h.g === 'grip' ? 1.5 : 0);   // 手的前面（比手腕中心靠前一點；拳頭、抓握的手比較厚，叉腰的拳頭靠在腰側）
+      const R = Math.ceil(Math.hypot(sw, S.rows.length) * k) + 1;
+      for (let oy = Math.floor(wy - R); oy <= wy + R; oy++) for (let ox = Math.floor(wx - R); ox <= wx + R; ox++) {
+        if (ox < 0 || oy < 0 || ox >= W || oy >= Hh) continue;
+        const dx = (ox + .5 - wx) / k, dy = (oy + .5 - wy) / k;
+        const sx = Math.floor(a[0] + c * dx + sn * dy), sy = Math.floor(a[1] - sn * dx + c * dy);   // 反轉回圖上
+        if (sy < 0 || sy >= S.rows.length) continue;
+        const row = S.rows[sy], cx = mir ? sw - 1 - sx : sx;
+        if (cx < 0 || cx >= row.length || row[cx] !== '#') continue;
+        const i = oy * W + ox, j = i * 4;
+        const hd = (1.65 * yF - ((oy + .5) / scale - cv.ay)) / 32;   // 跟 render 的 depth 同一套
+        if (Number.isFinite(dep[i]) && dep[i] > hd + .03) continue;   // 前面有身體（乳房等）擋住
+        const q = dark && px[j + 3] ? [34, 30, 42, 234] : [51, 45, 64, 204];
+        px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2]; px[j + 3] = q[3];
+      }
+    }
   }
 
   // ---------------------------------------------------------------- droom 人偶＋worker
@@ -1012,7 +1072,7 @@
       new Function('globalThis', 'module', src)(box, undefined);   // 兩個人偶檔都叫 RoomDoll → 另外裝，不蓋掉房間用的
       F = box.RoomDoll;
       try {
-        const code = `const F=(${F.factorySource})();const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const clothAt=${clothAt};const veil=${veil};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
+        const code = `const F=(${F.factorySource})();const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const clothAt=${clothAt};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
 onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},j.cv);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
         const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
         for (let i = 0; i < POOL; i++) {
@@ -1039,7 +1099,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
 
   // ---------------------------------------------------------------- 算好的格子存在手機裡（IndexedDB，PNG）
   //   鑰匙＝程式版本（動作／變形／畫法的原始碼雜湊＋人偶檔）＋身形＋第幾格；程式一改就自動作廢（開頁時清掉舊版本的）。
-  const CODE_HASH = (() => { const t = DROOM_URL + SCALE + String(motion) + String(fgArmPts) + String(fgArm) + String(braPiece) + String(pantyPiece) + String(deform) + String(drawFrame) + String(shade) + String(veil) + String(clothAt); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36); })();
+  const CODE_HASH = (() => { const t = DROOM_URL + SCALE + String(motion) + String(fgArmPts) + String(fgArm) + String(braPiece) + String(pantyPiece) + String(deform) + String(drawFrame) + String(pasteHands) + JSON.stringify(HAND_SPR) + String(shade) + String(veil) + String(clothAt); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36); })();
   let dbP = null;
   function db() {
     if (!dbP) dbP = new Promise((res) => {
