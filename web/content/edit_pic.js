@@ -549,7 +549,11 @@ function drawBust() {
   if (!hd) return;
   const blocks = (set, gg) => { for (const k of set) { const x = k % W, y = Math.floor(k / W); gg.fillRect((x - c.x) * Z, (y - c.y) * Z, Z, Z); } };
   const copy = (set) => { for (const k of set) { const x = k % W, y = Math.floor(k / W); g.drawImage(src, x, y, 1, 1, (x - c.x) * Z, (y - c.y) * Z, Z, Z); } };
-  if (FACE.img) {   // ② AI 的臉：照模板比例縮回，裁成肉臉的形狀
+  // 2026-11-23 使用者：下巴不要照黑影的形狀裁——AI 的臉往下延伸到脖子一段（ext 格）再直直切，下面才是黑影的脖子
+  const ext = Number($("face-neck").value) || 0, cut = hd.chin + ext;
+  const faceMask = new Set(hd.mask), neckLow = new Set();
+  for (const k of hd.neck) (Math.floor(k / W) < cut ? faceMask : neckLow).add(k);
+  if (FACE.img) {   // ② AI 的臉：照模板比例縮回，裁成肉臉（＋上段脖子）的形狀
     const sq = tplSquare(hd), kk = Number($("face-k").value) / 100, dx = Number($("face-dx").value), dy = Number($("face-dy").value);
     const S = sq.S * kk, X = (sq.x + sq.S / 2 - S / 2 + dx - c.x) * Z, Y = (sq.y + sq.S / 2 - S / 2 + dy - c.y) * Z;
     const lay = document.createElement("canvas"); lay.width = cv.width; lay.height = cv.height;
@@ -559,21 +563,21 @@ function drawBust() {
     lg.filter = "none";
     if (!$("face-nomask").checked) {
       const m = document.createElement("canvas"); m.width = cv.width; m.height = cv.height;
-      const mg = m.getContext("2d"); mg.fillStyle = "#000"; blocks(hd.mask, mg);
+      const mg = m.getContext("2d"); mg.fillStyle = "#000"; blocks(faceMask, mg);
       lg.globalCompositeOperation = "destination-in"; lg.drawImage(m, 0, 0);
     }
     g.drawImage(lay, 0, 0);
     copy(FACE.hair);   // ③ 蓋上頭髮
-    copy(hd.neck);     // ④ 蓋上脖子
+    copy(neckLow);     // ④ 蓋上脖子（切口以下）
   }
   if ($("face-frame").checked) {   // 肉臉的邊（桃紅）
     g.strokeStyle = "rgba(255,79,216,.9)"; g.lineWidth = 1;
-    for (const k of hd.mask) {
+    for (const k of faceMask) {
       const x = k % W, y = Math.floor(k / W), X = (x - c.x) * Z, Y = (y - c.y) * Z;
-      if (!hd.mask.has(k - 1)) { g.beginPath(); g.moveTo(X + .5, Y); g.lineTo(X + .5, Y + Z); g.stroke(); }
-      if (!hd.mask.has(k + 1)) { g.beginPath(); g.moveTo(X + Z - .5, Y); g.lineTo(X + Z - .5, Y + Z); g.stroke(); }
-      if (!hd.mask.has(k - W)) { g.beginPath(); g.moveTo(X, Y + .5); g.lineTo(X + Z, Y + .5); g.stroke(); }
-      if (!hd.mask.has(k + W)) { g.beginPath(); g.moveTo(X, Y + Z - .5); g.lineTo(X + Z, Y + Z - .5); g.stroke(); }
+      if (!faceMask.has(k - 1)) { g.beginPath(); g.moveTo(X + .5, Y); g.lineTo(X + .5, Y + Z); g.stroke(); }
+      if (!faceMask.has(k + 1)) { g.beginPath(); g.moveTo(X + Z - .5, Y); g.lineTo(X + Z - .5, Y + Z); g.stroke(); }
+      if (!faceMask.has(k - W)) { g.beginPath(); g.moveTo(X, Y + .5); g.lineTo(X + Z, Y + .5); g.stroke(); }
+      if (!faceMask.has(k + W)) { g.beginPath(); g.moveTo(X, Y + Z - .5); g.lineTo(X + Z, Y + Z - .5); g.stroke(); }
     }
   }
 }
@@ -664,7 +668,7 @@ function wire() {
   $("face-stage")?.addEventListener("change", () => { if (FACE.frame) renderBust().catch((e) => setStatus("face-status", e.message, true)); });
   $("btn-face-prompt")?.addEventListener("click", () => faceBasePrompt().catch((e) => setStatus("face-status", e.message, true)));
   $("btn-face-gen")?.addEventListener("click", () => genFace());
-  for (const id of ["face-k", "face-dx", "face-dy"]) $(id)?.addEventListener("input", () => { $(id + "-v").textContent = id === "face-k" ? $(id).value + "%" : $(id).value; drawBust(); });
+  for (const id of ["face-k", "face-dx", "face-dy", "face-neck"]) $(id)?.addEventListener("input", () => { $(id + "-v").textContent = id === "face-k" ? $(id).value + "%" : $(id).value; drawBust(); });
   for (const id of ["face-frame", "face-dark", "face-nomask"]) $(id)?.addEventListener("change", drawBust);
 
   $("btn-ref-up")?.addEventListener("click", () => $("ref-file").click());
