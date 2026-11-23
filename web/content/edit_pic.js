@@ -606,9 +606,14 @@ async function faceBasePrompt() {
     rating: "sfw", style: $("ig-style").value, framing: "head", extra: "", negative: "", prompt: "",
   });
   const tr = j.trace || {};
-  const base = String(tr.comfy_prompt || "").trim();
-  $("face-prompt").value = [base, "close-up, head only, front view, facing viewer, straight-on, centered face, symmetrical face, neutral expression, simple background, white background"].filter(Boolean).join(", ");
-  $("face-negative").value = [String(tr.comfy_negative || "").trim(), "body, shoulders, breasts, cleavage, hands, from side, profile, looking away, tilted head, multiple views, text, watermark"].filter(Boolean).join(", ");
+  // 2026-11-23 使用者：告訴 AI 不要頭髮、光頭（頭髮之後由黑影蓋上去）→ 人設裡跟頭髮有關的 tag 拿掉，正向加光頭、負向加頭髮
+  const HAIR_TAG = /hair|bangs|curl|wavy|ponytail|twintail|braid|bun\b|buns|bob cut|ahoge|sidelocks|hime cut|drill|ringlets|updo/i;
+  // 只生臉：身材、衣服的 tag 也用不到（還會跟負向的 breasts 打架）→ 一起拿掉；膚色留著
+  const BODY_TAG = /breast|chest|cleavage|thigh|waist|hips?\b|butt|ass\b|legs?\b|skinny|slender|plump|chubby|curvy|petite|muscular|toned|abs\b|navel|belly|clothed|clothes|t-shirt|shirt|bra\b|thong|panties|underwear|lingerie|bikini|dress|skirt|nude|naked|nipples?|areola|pussy/i;
+  const keep = (t) => t && !(HAIR_TAG.test(t) && !/^\(?(bald|hairless|no hair)/i.test(t)) && !BODY_TAG.test(t);
+  const base = String(tr.comfy_prompt || "").split(",").map((t) => t.trim()).filter(keep).join(", ");
+  $("face-prompt").value = [base, "bald, no hair, hairless, bald head, close-up, head only, front view, facing viewer, straight-on, centered face, symmetrical face, neutral expression, simple background, white background"].filter(Boolean).join(", ");
+  $("face-negative").value = [String(tr.comfy_negative || "").trim(), "hair, long hair, short hair, bangs, ponytail, twintails, braid, hair bun, hair ornament, hairband, hat, headwear, body, shoulders, breasts, cleavage, hands, from side, profile, looking away, tilted head, multiple views, text, watermark"].filter(Boolean).join(", ");
   setStatus("face-status", "✓ 已帶入臉部 prompt（可改）");
 }
 
