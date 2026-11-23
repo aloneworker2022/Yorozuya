@@ -42,7 +42,7 @@ async function apiJson(url, method, body) {
 }
 
 /** 同 t_d：POST /api/imggen 再輪詢至 done／error。 */
-async function waitImg(body, ms = 360000) {
+async function waitImg(body, ms = 360000, statusId = "gen-status") {
   let key = body.key;
   let r = await apiJson("/api/imggen", "POST", { ...body, retry: body.retry !== false });
   if (r.key) key = r.key;
@@ -50,7 +50,7 @@ async function waitImg(body, ms = 360000) {
   while (Date.now() - t0 < ms) {
     if (r.status === "done" || r.status === "error") return r;
     const sec = Math.round((Date.now() - t0) / 1000);
-    setStatus("gen-status", `生成中… ${sec}s · comfy`);
+    setStatus(statusId, `生成中… ${sec}s · comfy`);
     await new Promise((x) => setTimeout(x, 1500));
     r = await apiJson("/api/imggen", "POST", { ...body, key, retry: false });
     if (r.key) key = r.key;
@@ -441,6 +441,184 @@ async function uploadRef(file) {
   }
 }
 
+// ---------------------------------------------------------------- 6. 臉模型（實驗，2026-11-23 使用者）
+// 黑影上半身（chat_shadow.js 同一套）→ 抓「臉的空間」（頭髮包住、瀏海下緣到下巴那塊身體色）→
+// 模板：黑影的頭放大成正方形（頭髮暗、臉亮、模糊一點）當 pose_ref 圖生圖，模型把臉生在模板的臉框裡 →
+// 生出來的圖整張＝模板那個正方形，照同一個比例縮回黑影上，只露出臉框（像素格子）。
+const FACE = { frame: null, crop: null, space: null, img: null, imgUrl: "" };
+const SKIN = [51, 45, 64], HAIR_MAX = 40;   // 黑影的身體色；頭髮比較暗（R < 40）
+
+function faceSpec() {
+  const g = currentGirl;
+  if (!g) throw new Error("先選或抽一隻魅子");
+  return { look: g.look || null, outfit: g.outfitName || "", undressStage: Number($("face-stage").value) || 0, tier: "stranger" };
+}
+
+/** 從黑影那一格（ImageData）抓臉的空間：{mask: Set(index), x0,x1,y0,y1, top}。 */
+function findFaceSpace(fr) {
+  const { width: W, height: H, data: d } = fr;
+  const A = (x, y) => d[(y * W + x) * 4 + 3];
+  const isSkin = (x, y) => { const i = (y * W + x) * 4; return d[i + 3] && Math.abs(d[i] - SKIN[0]) <= 4 && Math.abs(d[i + 1] - SKIN[1]) <= 4 && Math.abs(d[i + 2] - SKIN[2]) <= 4; };
+  let top = -1;
+  for (let y = 0; y < H && top < 0; y++) for (let x = 0; x < W; x++) if (A(x, y)) { top = y; break; }
+  if (top < 0) throw new Error("黑影是空的");
+  let sx = 0, n = 0;
+  for (let y = top; y < top + 6; y++) for (let x = 0; x < W; x++) if (A(x, y)) { sx += x; n++; }
+  const cx = Math.round(sx / n);
+  let fTop = -1;
+  for (let y = top; y < top + 50; y++) if (isSkin(cx, y)) { fTop = y; break; }
+  if (fTop < 0) throw new Error("找不到臉（頭頂往下 50 格都不是身體色）");
+  // 從臉中間往外填身體色；下巴：最寬那列之後寬度掉到 6 成以下（接脖子）就停
+  const seen = new Set(), q = [[cx, fTop + 1]], yMax = fTop + 45;
+  while (q.length) {
+    const [x, y] = q.pop(), k = y * W + x;
+    if (x < 0 || y < fTop || x >= W || y > yMax || seen.has(k) || !isSkin(x, y)) continue;
+    seen.add(k); q.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+  }
+  const rows = {};
+  for (const k of seen) { const y = Math.floor(k / W); rows[y] = (rows[y] || 0) + 1; }
+  let maxW = 0, maxY = fTop, chin = yMax;
+  for (let y = fTop; y <= yMax; y++) { const w = rows[y] || 0; if (w > maxW) { maxW = w; maxY = y; } else if (y > maxY + 3 && w < maxW * .6) { chin = y; break; } }
+  const mask = new Set([...seen].filter(k => Math.floor(k / W) < chin));
+  let x0 = W, x1 = 0;
+  for (const k of mask) { const x = k % W; x0 = Math.min(x0, x); x1 = Math.max(x1, x); }
+  return { mask, x0, x1, y0: fTop, y1: chin - 1, top, cx };
+}
+
+/** 模板的正方形（黑影座標）：以臉框中心、邊長＝臉框寬高大的那邊 × 2.2（頭髮、一點脖子都在裡面）。 */
+function tplSquare(sp) {
+  const fw = sp.x1 - sp.x0 + 1, fh = sp.y1 - sp.y0 + 1, S = Math.round(Math.max(fw, fh) * 2.2);
+  const cx = (sp.x0 + sp.x1 + 1) / 2, cy = (sp.y0 + sp.y1 + 1) / 2 - fh * .08;   // 稍微往上（額頭、瀏海多留一點）
+  return { x: cx - S / 2, y: cy - S / 2, S };
+}
+
+/** 臉框模板（1024×1024 PNG）：背景淺、頭髮深灰、臉和脖子膚色、身體衣服淺灰；最後糊一點讓模型只當構圖參考。 */
+function makeTemplate(fr, sp, size = 1024) {
+  const { width: W, data: d } = fr, sq = tplSquare(sp), k = size / sq.S;
+  const raw = document.createElement("canvas"); raw.width = raw.height = size;
+  const g = raw.getContext("2d");
+  g.fillStyle = "#f3efe9"; g.fillRect(0, 0, size, size);
+  for (let y = Math.floor(sq.y); y < sq.y + sq.S; y++) for (let x = Math.floor(sq.x); x < sq.x + sq.S; x++) {
+    if (x < 0 || y < 0 || x >= W || y >= fr.height) continue;
+    const i = (y * W + x) * 4; if (!d[i + 3]) continue;
+    const skinLike = Math.abs(d[i] - SKIN[0]) <= 4 && Math.abs(d[i + 1] - SKIN[1]) <= 4 && Math.abs(d[i + 2] - SKIN[2]) <= 4;
+    g.fillStyle = sp.mask.has(y * W + x) ? "#f2d3c0" : skinLike ? "#ecc9b5" : d[i] < HAIR_MAX ? "#3b3038" : "#cfc8d6";
+    g.fillRect((x - sq.x) * k, (y - sq.y) * k, k + 1, k + 1);
+  }
+  const out = document.createElement("canvas"); out.width = out.height = size;
+  const o = out.getContext("2d"); o.filter = `blur(${Math.round(size / 90)}px)`; o.drawImage(raw, 0, 0);
+  return out;
+}
+
+const BUST_Z = 4;
+function drawBust() {
+  const cv = $("face-bust"), fr = FACE.frame;
+  if (!fr) return;
+  const sp = FACE.space, top = sp ? sp.top : 0, c = { x: 0, y: Math.max(0, top - 4), w: fr.width, h: Math.min(fr.height - Math.max(0, top - 4), 112) };
+  FACE.crop = c;
+  cv.width = c.w * BUST_Z; cv.height = c.h * BUST_Z;
+  const g = cv.getContext("2d"); g.imageSmoothingEnabled = false;
+  const src = document.createElement("canvas"); src.width = fr.width; src.height = fr.height; src.getContext("2d").putImageData(fr, 0, 0);
+  g.fillStyle = "#efe8dc"; g.fillRect(0, 0, cv.width, cv.height);
+  g.drawImage(src, c.x, c.y, c.w, c.h, 0, 0, cv.width, cv.height);
+  if (!sp) return;
+  const Z = BUST_Z, W = fr.width;
+  if (FACE.img) {
+    const sq = tplSquare(sp), kk = Number($("face-k").value) / 100, dx = Number($("face-dx").value), dy = Number($("face-dy").value);
+    const S = sq.S * kk, X = (sq.x + sq.S / 2 - S / 2 + dx - c.x) * Z, Y = (sq.y + sq.S / 2 - S / 2 + dy - c.y) * Z;
+    const lay = document.createElement("canvas"); lay.width = cv.width; lay.height = cv.height;
+    const lg = lay.getContext("2d");
+    if ($("face-dark").checked) lg.filter = "grayscale(1) sepia(.35) hue-rotate(220deg) brightness(.62) contrast(1.15)";
+    lg.drawImage(FACE.img, X, Y, S * Z, S * Z);
+    lg.filter = "none";
+    if (!$("face-nomask").checked) {   // 只留臉框（像素格子）
+      const m = document.createElement("canvas"); m.width = cv.width; m.height = cv.height;
+      const mg = m.getContext("2d"); mg.fillStyle = "#000";
+      for (const k of sp.mask) { const x = k % W, y = Math.floor(k / W); mg.fillRect((x - c.x) * Z, (y - c.y) * Z, Z, Z); }
+      lg.globalCompositeOperation = "destination-in"; lg.drawImage(m, 0, 0);
+    }
+    g.drawImage(lay, 0, 0);
+  }
+  if ($("face-frame").checked) {   // 臉框邊線
+    g.strokeStyle = "rgba(255,79,216,.9)"; g.lineWidth = 1;
+    for (const k of sp.mask) {
+      const x = k % W, y = Math.floor(k / W), X = (x - c.x) * Z, Y = (y - c.y) * Z;
+      if (!sp.mask.has(k - 1)) { g.beginPath(); g.moveTo(X + .5, Y); g.lineTo(X + .5, Y + Z); g.stroke(); }
+      if (!sp.mask.has(k + 1)) { g.beginPath(); g.moveTo(X + Z - .5, Y); g.lineTo(X + Z - .5, Y + Z); g.stroke(); }
+      if (!sp.mask.has(k - W)) { g.beginPath(); g.moveTo(X, Y + .5); g.lineTo(X + Z, Y + .5); g.stroke(); }
+      if (!sp.mask.has(k + W)) { g.beginPath(); g.moveTo(X, Y + Z - .5); g.lineTo(X + Z, Y + Z - .5); g.stroke(); }
+    }
+  }
+}
+
+async function renderBust() {
+  const CS = window.ChatShadow;
+  if (!CS || !CS.test) throw new Error("chat_shadow.js 沒載到");
+  setStatus("face-status", "算黑影半身…（第一次要幾秒）");
+  const out = await CS.test.render(faceSpec(), "breathe");
+  const fr = out.frames && out.frames[0];
+  if (!fr) throw new Error("黑影沒算出來");
+  FACE.frame = fr;
+  FACE.space = findFaceSpace(fr);
+  const sp = FACE.space;
+  const tpl = makeTemplate(fr, sp, 256);
+  const tc = $("face-tpl-cv"); tc.getContext("2d").drawImage(tpl, 0, 0, tc.width, tc.height);
+  drawBust();
+  setStatus("face-status", `✓ 臉框 ${sp.x1 - sp.x0 + 1}×${sp.y1 - sp.y0 + 1} 格（黑影座標 x ${sp.x0}～${sp.x1}、y ${sp.y0}～${sp.y1}）`);
+}
+
+async function faceBasePrompt() {
+  if (!currentGirl) throw new Error("先選或抽一隻魅子");
+  setStatus("face-status", "抓臉部 prompt…");
+  const j = await apiJson("/api/imggen/preview", "POST", {
+    provider: "comfy", character: currentGirl, name: currentGirl.name || "",
+    rating: "sfw", style: $("ig-style").value, framing: "head", extra: "", negative: "", prompt: "",
+  });
+  const tr = j.trace || {};
+  const base = String(tr.comfy_prompt || "").trim();
+  $("face-prompt").value = [base, "close-up, head only, front view, facing viewer, straight-on, centered face, symmetrical face, neutral expression, simple background, white background"].filter(Boolean).join(", ");
+  $("face-negative").value = [String(tr.comfy_negative || "").trim(), "body, shoulders, breasts, cleavage, hands, from side, profile, looking away, tilted head, multiple views, text, watermark"].filter(Boolean).join(", ");
+  setStatus("face-status", "✓ 已帶入臉部 prompt（可改）");
+}
+
+async function uploadPng(canvas, name) {
+  const blob = await new Promise((ok) => canvas.toBlob(ok, "image/png"));
+  const fd = new FormData(); fd.append("file", blob, name);
+  const r = await fetch("/api/pose-refs", { method: "POST", body: fd });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.url) throw new Error("模板上傳失敗：" + (data.detail || r.status));
+  return data.url;
+}
+
+async function genFace() {
+  const btn = $("btn-face-gen"); btn.disabled = true;
+  try {
+    if (!currentGirl) throw new Error("先選或抽一隻魅子");
+    if (!FACE.space) await renderBust();
+    if (!$("face-prompt").value.trim()) await faceBasePrompt();
+    let pose = "";
+    if ($("face-tpl").checked) { setStatus("face-status", "上傳臉框模板…"); pose = await uploadPng(makeTemplate(FACE.frame, FACE.space, 1024), "face_tpl.png"); }
+    const body = {
+      key: `editpic-face:${Date.now().toString(36)}`, provider: "comfy", character: currentGirl, name: currentGirl.name || "",
+      rating: "sfw", style: $("ig-style").value, framing: "head",
+      prompt: $("face-prompt").value.trim(), negative: $("face-negative").value.trim(), extra: "",
+      pose_ref: pose, pose_denoise: pose ? Number($("face-denoise").value || .75) : 0,
+      width: 1024, height: 1024, seed: Number($("ig-seed")?.value || 0),
+      ckpt: $("ig-ckpt")?.value || currentGirl.comfyCkpt || "", comfy_url: $("ig-comfy")?.value.trim() || "", retry: true,
+    };
+    const t0 = Date.now();
+    const r = await waitImg(body, 360000, "face-status");
+    if (r.status !== "done" || !r.result) throw new Error(r.error || "生圖失敗");
+    const url = String(r.result) + "?t=" + Date.now();
+    const img = new Image(); img.crossOrigin = "anonymous";
+    await new Promise((ok, no) => { img.onload = ok; img.onerror = () => no(new Error("圖讀不到")); img.src = url; });
+    FACE.img = img; FACE.imgUrl = url; $("face-img").src = url;
+    drawBust();
+    setStatus("face-status", `✓ ${((Date.now() - t0) / 1000).toFixed(1)}s · ${pose ? "臉框模板圖生圖" : "文生圖頭像"} · ${r.result}`);
+  } catch (e) { setStatus("face-status", e.message, true); }
+  btn.disabled = false;
+}
+
 function wire() {
   document.querySelectorAll('input[name="girl-mode"]').forEach((el) => {
     el.addEventListener("change", updateModeUi);
@@ -455,6 +633,12 @@ function wire() {
   $("btn-ig-ping")?.addEventListener("click", () => pingImgEngine());
   $("btn-preview-prompt")?.addEventListener("click", () => previewBasePrompt());
   $("btn-gen")?.addEventListener("click", () => runGen());
+  $("btn-face-bust")?.addEventListener("click", () => renderBust().catch((e) => setStatus("face-status", e.message, true)));
+  $("face-stage")?.addEventListener("change", () => { if (FACE.frame) renderBust().catch((e) => setStatus("face-status", e.message, true)); });
+  $("btn-face-prompt")?.addEventListener("click", () => faceBasePrompt().catch((e) => setStatus("face-status", e.message, true)));
+  $("btn-face-gen")?.addEventListener("click", () => genFace());
+  for (const id of ["face-k", "face-dx", "face-dy"]) $(id)?.addEventListener("input", () => { $(id + "-v").textContent = id === "face-k" ? $(id).value + "%" : $(id).value; drawBust(); });
+  for (const id of ["face-frame", "face-dark", "face-nomask"]) $(id)?.addEventListener("change", drawBust);
 
   $("btn-ref-up")?.addEventListener("click", () => $("ref-file").click());
   $("ref-file")?.addEventListener("change", async (e) => {
