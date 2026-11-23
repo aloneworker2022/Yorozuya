@@ -967,7 +967,7 @@
     // 分三次畫：只有身體 → 身體＋內衣（胸罩、丁字褲）→ 身體＋外衣（T 恤），再一層層疊灰色上去
     // 先用全部零件變形（脫 T 恤時手要照 T 恤的下襬走——只畫身體那一層也要看得到 T 恤），再篩這一層要畫的
     const capH = {};   // 第一次 render 順便拿手腕資料（貼像素手用）
-    const run = (keep, bare) => F.render(doll, body, 0, 0, { scale, cv, shape, deform: (sh, P, H) => { deform(sh, P, H, m); if (!capH.h) capH.h = sh._hands; sh.prims = sh.prims.filter(keep); if (bare && sh.areolaStamps) sh.areolaStamps.length = 0; } });   // bare：衣服那幾層不畫乳暈印子（印子會蓋在衣服上面）
+    const run = (keep, bare) => F.render(doll, body, 0, 0, { scale, cv, shape, deform: (sh, P, H) => { deform(sh, P, H, m); if (!capH.h) capH.h = sh._hands; sh.prims = sh.prims.filter(doll._noHair ? (p) => p.mat !== 1 && keep(p) : keep); if (bare && sh.areolaStamps) sh.areolaStamps.length = 0; } });   // bare：衣服那幾層不畫乳暈印子（印子會蓋在衣服上面）
     const hasU = base.sh.prims.some(p => p.cloth && p.under), hasO = base.sh.prims.some(p => p.cloth && !p.under);
     const r = run(p => !p.cloth);
     shade(r.pixels);
@@ -1182,6 +1182,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
    *  mode：脫光後的姿勢（cover／fondle／touch），沒給就照關係（妻子以下 cover、妻子 wifePick）。 */
   function dollOf(s, st, undressing, mode) {
     const doll = F.lookToDoll(s.look || null, { outfit: s.outfit, undressStage: st, belly: s.belly });
+    if (s.noHair) doll._noHair = 1;   // 2026-11-23 edit_pic 臉模型：同一個姿勢另外算一張光頭（肉臉），AI 畫臉、再蓋回頭髮
     Object.assign(doll, shapeOf(s.look?.breast_shape));
     if (/外擴/.test(String(s.look?.breast_splay || ''))) doll.splay = 'wide';   // 外擴是另一個維度（2026-11-21 使用者：例如木瓜型＋外擴、母乳型＋外擴）
     doll.areola = areolaOf(s.look?.areola);

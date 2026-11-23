@@ -181,14 +181,14 @@
 
 <section>
   <h2>6. 臉模型（實驗）</h2>
-  <p class="mini">用上面選的魅子（外觀、髮型）畫黑影上半身，抓出黑影臉的空間（瀏海下緣到下巴那塊）。
-    「只生臉」會把黑影的頭放大成模板（頭髮暗、臉亮）當參考圖做圖生圖，讓模型把臉生在模板的臉框裡，算完照同一個比例縮回黑影的頭上、只露出臉框。
+  <p class="mini">用上面選的魅子畫黑影上半身，同時算一張光頭的＝「肉臉」（頭頂到下巴整顆頭都是肉）。
+    「只生臉」把肉臉放大成模板當參考圖做圖生圖，讓 AI 在肉臉上畫臉；算完照同一個比例縮回黑影的頭上，再蓋上頭髮、蓋上脖子。
     沒勾模板＝文生圖頭像，再用下面的縮放／位移對準。用的是第 2 區的 checkpoint、Comfy URL、seed。</p>
   <div class="row">
     <button class="cy" type="button" id="btn-face-bust">畫黑影半身</button>
     <span class="fix0"><label>衣著進度</label>
       <select id="face-stage"><option value="0">白 T</option><option value="1">胸罩</option><option value="2">只剩內褲</option><option value="3">全裸</option></select></span>
-    <label style="display:inline-flex;gap:.35em;align-items:center;margin:0 0 .5em;font-size:.85em;color:#d8d0ec"><input type="checkbox" id="face-tpl" checked style="width:auto"> 用臉框模板（圖生圖）</label>
+    <label style="display:inline-flex;gap:.35em;align-items:center;margin:0 0 .5em;font-size:.85em;color:#d8d0ec"><input type="checkbox" id="face-tpl" checked style="width:auto"> 用肉臉模板（圖生圖）</label>
     <span class="fix0"><label>模板 denoise</label>
       <input id="face-denoise" type="number" min="0.4" max="0.95" step="0.05" value="0.75"></span>
   </div>
@@ -205,20 +205,20 @@
     <canvas id="face-bust" width="168" height="120"></canvas>
     <div class="face-side">
       <div class="face-thumbs">
-        <figure><canvas class="small" id="face-tpl-cv" width="256" height="256"></canvas><figcaption>臉框模板</figcaption></figure>
+        <figure><canvas class="small" id="face-tpl-cv" width="256" height="256"></canvas><figcaption>肉臉模板</figcaption></figure>
         <figure><img id="face-img" alt=""><figcaption>生出來的臉</figcaption></figure>
       </div>
       <div class="rng">縮放 <input type="range" id="face-k" min="70" max="140" value="100"><span class="v" id="face-k-v">100%</span></div>
       <div class="rng">左右 <input type="range" id="face-dx" min="-8" max="8" step="0.5" value="0"><span class="v" id="face-dx-v">0</span></div>
       <div class="rng">上下 <input type="range" id="face-dy" min="-8" max="8" step="0.5" value="0"><span class="v" id="face-dy-v">0</span></div>
-      <label style="display:inline-flex;gap:.35em;align-items:center;margin:0;font-size:.85em;color:#d8d0ec"><input type="checkbox" id="face-frame" checked style="width:auto"> 顯示臉框</label>
+      <label style="display:inline-flex;gap:.35em;align-items:center;margin:0;font-size:.85em;color:#d8d0ec"><input type="checkbox" id="face-frame" checked style="width:auto"> 顯示肉臉的邊</label>
       <label style="display:inline-flex;gap:.35em;align-items:center;margin:0;font-size:.85em;color:#d8d0ec"><input type="checkbox" id="face-dark" style="width:auto"> 臉也染成黑影色</label>
-      <label style="display:inline-flex;gap:.35em;align-items:center;margin:0;font-size:.85em;color:#d8d0ec"><input type="checkbox" id="face-nomask" style="width:auto"> 不裁臉框（整張蓋上去看位置）</label>
+      <label style="display:inline-flex;gap:.35em;align-items:center;margin:0;font-size:.85em;color:#d8d0ec"><input type="checkbox" id="face-nomask" style="width:auto"> 不裁成肉臉（整張蓋上去看位置）</label>
     </div>
   </div>
 </section>
 
-<script src="/content/chat_shadow.js?v=76"></script>
-<script type="module" src="/content/edit_pic.js?v=3"></script>
+<script src="/content/chat_shadow.js?v=77"></script>
+<script type="module" src="/content/edit_pic.js?v=4"></script>
 </body>
 </html>
