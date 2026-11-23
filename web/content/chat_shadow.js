@@ -623,7 +623,9 @@
       if (m.ang.kind !== 'akimbo' && m.ang.bounce) {   // 笑：乳房跟著一抖一抖（疊在托高上；彎腰時順著往前垂的方向晃）
         // 2026-11-22 使用者：胸部沒有晃（量過只動 0～2 像素）→ 幅度加大到看得出來，C 也會晃、越大晃越多；左右兩顆往外一點點反著晃
         // 2026-11-23 仰頭笑：笑得比較開，上下晃大一點、往外甩多一點（攤開的方向）
-        const bz = jig * m.ang.bounce * (1.4 + 2.6 * big) * (tb ? 1.3 : 1);
+        // 2026-11-23 使用者：小胸部（C 以下）笑的時候乳房、胸罩都不會晃
+        const still = m.cup && 'ABC'.includes(m.cup[0]);
+        const bz = still ? 0 : jig * m.ang.bounce * (1.4 + 2.6 * big) * (tb ? 1.3 : 1);
         SOFT = SOFT || { [-1]: [0, 0, 0], [1]: [0, 0, 0] };
         for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0] + sd * (tb ? .3 : .18) * bz, SOFT[sd][1] + (th ? .9 * bz * Math.sin(th) + .35 * bz : 0), SOFT[sd][2] + bz];
       }
@@ -869,6 +871,16 @@
       }
       for (const st of sh.areolaStamps || []) { const w = wOf(st.q[2]); if (w > 0) st.q = app(T(w), st.q); }
     }
+    // 2026-11-23 使用者：手在後面就不要疊出來——一手伸進衣服摸奶（fg w1）：衣襬以上那段前臂和手在 T 恤裡面，
+    //   外衣那層不畫它（drawFrame 看 inCloth），不然手從布面穿出來一條條深色；上臂、衣襬下面那段照舊在外面
+    if (!anim && m.fg && m.fg.kind === 'w1' && armX.armL) {
+      const Wp = (p) => { const q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]]; return p.xf ? app(p.xf, q) : q; };
+      const top = sh.prims.filter(p => p.cloth && !p.under && !p.bik && p.garm !== 'bot' && !p.sleeve && p.part !== 'armL' && p.part !== 'armR' && p.part !== 'legs' && p.part !== 'head');
+      if (top.length) {
+        let hem = 1e9; for (const p of top) hem = Math.min(hem, Wp(p)[2]);
+        for (const p of sh.prims) if (p.part === 'armL' && !p.cloth && p !== armX.armL.upper && Wp(p)[2] > hem + .5) p.inCloth = 1;
+      }
+    }
   }
 
   /** droom 的部位標記色 → 房間黑影配色（白邊→深線；乳暈乳頭→淡淡的印子；摺線→身體色）。 */
@@ -930,6 +942,7 @@
     const base = cache.base;
     const shape = () => ({ P: base.P, sh: Object.assign({}, base.sh, { prims: base.sh.prims.map(p => Object.assign({}, p)), areolaStamps: (base.sh.areolaStamps || []).map(q => Object.assign({}, q)) }) });
     const m = motion(pose, f, n, body === 'mermaid', doll._mode || null, doll._tier || null);
+    m.cup = doll.cup || null;   // deform 用：C 以下笑的時候不晃
     // 分三次畫：只有身體 → 身體＋內衣（胸罩、丁字褲）→ 身體＋外衣（T 恤），再一層層疊灰色上去
     // 先用全部零件變形（脫 T 恤時手要照 T 恤的下襬走——只畫身體那一層也要看得到 T 恤），再篩這一層要畫的
     const run = (keep, bare) => F.render(doll, body, 0, 0, { scale, cv, shape, deform: (sh, P, H) => { deform(sh, P, H, m); sh.prims = sh.prims.filter(keep); if (bare && sh.areolaStamps) sh.areolaStamps.length = 0; } });   // bare：衣服那幾層不畫乳暈印子（印子會蓋在衣服上面）
@@ -938,7 +951,8 @@
     shade(r.pixels);
     if (doll._mode || m.react || m.ang) {   // 脫光後的姿勢、被摸的反應、生氣說話：手臂疊在身體前面的地方加深（使用者：半透明的影子疊兩層＝比較深；不用淺色）
       const isArm = (p) => !p.cloth && (p.part === 'armL' || p.part === 'armR');
-      const arms = run(isArm), body = run(p => !p.cloth && !isArm(p)), px = r.pixels, ad = arms.depth, bd = body.depth;
+      // 2026-11-23 使用者：手跟身體重疊要分前後，手在後面就不要加深（例如在乳房／罩杯下面、衣服裡面）→ 比前後時連衣服（袖子以外）一起算，手臂要在最前面才加深
+      const arms = run(isArm), body = run(p => !isArm(p) && !p.sleeve && !(p.cloth && (p.part === 'armL' || p.part === 'armR'))), px = r.pixels, ad = arms.depth, bd = body.depth;
       for (let i = 0, n = px.length / 4; i < n; i++) {
         if (!arms.pixels[i * 4 + 3] || !body.pixels[i * 4 + 3] || !(ad[i] > bd[i])) continue;   // 手臂在身體前面
         const j = i * 4; if (px[j] === 31 || px[j] === 78) continue;   // 頭髮蓋在手上：照舊
@@ -948,7 +962,7 @@
     // 衣服那幾層不畫皮膚上的標記（乳房輪廓弧線等 mat 2／摺線、乳暈印子、乳頭：浮在皮膚表面或直接印上去，會穿出衣服、在衣服上留一圈；T 恤做形狀時也不跟著乳頭凸起）
     if (hasU) veil(r.pixels, run(p => (!p.cloth || p.under) && p.mat !== 2 && !p.crease && !p.nip, true).pixels);
     if (hasO) {
-      const o = run(p => (!p.cloth || !p.under) && p.mat !== 2 && !p.crease && !p.nip, true), px = r.pixels, od = o.depth;
+      const o = run(p => (!p.cloth || !p.under) && p.mat !== 2 && !p.crease && !p.nip && !p.inCloth, true), px = r.pixels, od = o.depth;   // inCloth：伸進衣服裡的手，外衣那層蓋住
       // T 恤上被底下的東西（乳暈、胸罩邊）穿出來的小洞：上下左右 7 格人偶單位內都碰得到布 → 也當成布（外衣是不透明的）
       { const Wo = o.width, Ho = o.height, op = o.pixels, R0 = Math.max(6, Math.round(7 * scale)), isC = (x, y) => { if (x < 0 || y < 0 || x >= Wo || y >= Ho) return false; const c = clothAt(op, (y * Wo + x) * 4); return c === 1 || c === 3; };
         const fill = [];
