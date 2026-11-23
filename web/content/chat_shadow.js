@@ -820,11 +820,27 @@
         wl = Math.max(.12, Math.min(.55, tTop));
         cupO = [o[0] * w, o[1] * w, o[2] * w];   // 罩杯＝罩杯裡偏下那一點的肉移多少，整片就移多少
       }
+      softRoot[sd].wl = wl;
       const put = (p) => { p.kw = { root: [cx - p.off[0], cy - p.off[1], top - p.off[2]], f: [0, 0, -1], L: top - bot, o, wv: ow || null, wl }; p.br += g; };
       for (const p of L) put(p);
       for (const [p, s2] of overBreast) if (s2 === sd && !p.xf) {
         if (cupO && braPiece(p)) { p.off = [p.off[0] + cupO[0], p.off[1] + cupO[1], p.off[2] + cupO[2]]; continue; }
         put(p);
+      }
+    }
+    // 2026-11-23 使用者：中間的乳溝也會晃——胸罩托出來的乳溝線、內側上乳弧（braLine）、乳溝縫（MARK 線）原本黏在軀幹上不動
+    //   → 跟著乳房同一個軟變形：靠中線的取兩顆的平均，偏一邊的跟那一顆
+    if (softRoot[-1] || softRoot[1]) {
+      const any = softRoot[-1] || softRoot[1], avg = (a, b) => a && b ? [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2] : a || b;
+      for (const p of sh.prims) {
+        if (p.kw || p.xf || p.cloth || p.mat !== 2 || !(p.braLine || p.crease === 3)) continue;
+        const x = p.bc[0] + p.off[0], z = p.bc[2] + p.off[2];
+        if (z > any.root[2] + 1.5 || z < any.root[2] - any.L - 1) continue;
+        const sd = Math.abs(x) < .6 ? 0 : Math.sign(x), sr = sd ? softRoot[sd] || any : any;
+        const o = sd ? sr.o : avg(softRoot[-1] && softRoot[-1].o, softRoot[1] && softRoot[1].o);
+        const ow = !SOFTW ? null : sd ? SOFTW[sd] : avg(SOFTW[-1], SOFTW[1]);
+        p.kw = { root: [sr.root[0] - p.off[0], sr.root[1] - p.off[1], sr.root[2] - p.off[2]], f: [0, 0, -1], L: sr.L, o, wv: ow || null, wl: sr.wl };
+        p.br += Math.hypot(o[0], o[1], o[2]) + (ow ? Math.hypot(ow[0], ow[1], ow[2]) : 0);
       }
     }
     for (const st of sh.areolaStamps || []) {
