@@ -171,7 +171,7 @@
       if (pose === 'laugh_bend') return { ph: 0, br: .5 + .2 * sh2, tilt: 3 * wa + 2 * Math.sin(ph3 / 3), nod: 14 * wa + 3 * sh2, turn: 0, gest: 0,
         ang: { kind: 'cross', w: wa, bounce, wave, laugh: true }, bend: 24 * wa + 2.5 * sh2, jolt: hop };
       return { ph: 0, br: .5 + .2 * sh2, tilt: 5 * wa + 2 * Math.sin(ph3 / 3), nod: -18 * wa - 3 * sh2, turn: 6 * wa, gest: 0,
-        ang: { kind: 'mouth', w: wa, bounce, wave }, bend: -6 * wa, jolt: hop };
+        ang: { kind: 'mouth', w: wa, bounce, wave, back: true }, bend: -10 * wa - 1.5 * sh2 * wa, jolt: hop };   // 2026-11-23 仰頭笑多往後仰一點
     }
     if (pose === 'ang_akimbo' || pose === 'ang_cross') {
       // 生氣說話：叉腰（f0–3 左手也叉到腰上、f4「哼」身體往上一抖、f5 落下，乳房慢半拍上下晃、越晃越小；f12–19 叉腰講話循環）
@@ -612,11 +612,20 @@
         SOFT = SOFT || { [-1]: [0, 0, 0], [1]: [0, 0, 0] };
         for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0], SOFT[sd][1] + hy, SOFT[sd][2] + hz];
       }
+      // 2026-11-23 使用者：仰頭笑的乳搖也改——身體往後仰 θ，重力在身體裡變成往後（往胸口貼）：乳房根部不動，往兩側攤開、往身體貼回去、下緣稍微上提，越大越明顯
+      const tb = m.ang.back && m.bend < 0 ? -m.bend * Math.PI / 180 : 0;
+      if (tb) {
+        const BR2 = sh.prims.filter(p => p.part === 'breast' && !p.cloth && !p.nip && p.r), rr = BR2.length ? Math.max(...BR2.map(p => Math.max(...p.r))) : 3;
+        const d = jig ** .5 * rr * (.5 + .4 * big) * Math.sin(tb) * 2.2;
+        SOFT = SOFT || { [-1]: [0, 0, 0], [1]: [0, 0, 0] };
+        for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0] + sd * .5 * d, SOFT[sd][1] - .3 * d, SOFT[sd][2] + .3 * d];
+      }
       if (m.ang.kind !== 'akimbo' && m.ang.bounce) {   // 笑：乳房跟著一抖一抖（疊在托高上；彎腰時順著往前垂的方向晃）
         // 2026-11-22 使用者：胸部沒有晃（量過只動 0～2 像素）→ 幅度加大到看得出來，C 也會晃、越大晃越多；左右兩顆往外一點點反著晃
-        const bz = jig * m.ang.bounce * (1.4 + 2.6 * big);
+        // 2026-11-23 仰頭笑：笑得比較開，上下晃大一點、往外甩多一點（攤開的方向）
+        const bz = jig * m.ang.bounce * (1.4 + 2.6 * big) * (tb ? 1.3 : 1);
         SOFT = SOFT || { [-1]: [0, 0, 0], [1]: [0, 0, 0] };
-        for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0] + sd * .18 * bz, SOFT[sd][1] + (th ? .9 * bz * Math.sin(th) + .35 * bz : 0), SOFT[sd][2] + bz];
+        for (const sd of [-1, 1]) SOFT[sd] = [SOFT[sd][0] + sd * (tb ? .3 : .18) * bz, SOFT[sd][1] + (th ? .9 * bz * Math.sin(th) + .35 * bz : 0), SOFT[sd][2] + bz];
       }
       // 上胸波浪：大奶（D 以上）只穿胸罩／比基尼——罩杯撐住下半顆，露出來的上胸慢半拍晃一下（外衣蓋著就不明顯，不做）
       if (cupped && !outerTop && big >= .45 && m.ang.wave) {
