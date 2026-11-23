@@ -213,6 +213,8 @@
       <div class="rng">上下 <input type="range" id="face-dy" min="-8" max="8" step="0.5" value="0"><span class="v" id="face-dy-v">0</span></div>
       <div class="rng">脖子延伸 <input type="range" id="face-neck" min="0" max="10" step="1" value="4"><span class="v" id="face-neck-v">4</span></div>
       <label style="display:inline-flex;gap:.35em;align-items:center;margin:0;font-size:.85em;color:#d8d0ec"><input type="checkbox" id="face-frame" checked style="width:auto"> 顯示肉臉的邊</label>
+      <label style="display:inline-flex;gap:.35em;align-items:center;margin:0;font-size:.85em;color:#d8d0ec"><input type="checkbox" id="face-flesh" checked style="width:auto"> 身體改肉色（不要陰影）<input type="color" id="face-flesh-c" value="#f2d3c0" style="width:2.4em;height:1.6em;padding:0;margin-left:.3em"></label>
+      <div class="mini" id="face-flesh-note">生出臉以後自動從兩頰取色</div>
       <label style="display:inline-flex;gap:.35em;align-items:center;margin:0;font-size:.85em;color:#d8d0ec"><input type="checkbox" id="face-dark" style="width:auto"> 臉也染成黑影色</label>
       <label style="display:inline-flex;gap:.35em;align-items:center;margin:0;font-size:.85em;color:#d8d0ec"><input type="checkbox" id="face-nomask" style="width:auto"> 不裁成肉臉（整張蓋上去看位置）</label>
     </div>
@@ -220,6 +222,6 @@
 </section>
 
 <script src="/content/chat_shadow.js?v=77"></script>
-<script type="module" src="/content/edit_pic.js?v=7"></script>
+<script type="module" src="/content/edit_pic.js?v=13"></script>
 </body>
 </html>

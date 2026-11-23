@@ -111,6 +111,7 @@ function lookSummary(g) {
 }
 
 function renderGirlCard() {
+  if (typeof FACE !== "undefined" && FACE.frame && currentGirl) renderBust().catch((e) => setStatus("face-status", e.message, true));   // 換魅子：半身畫過的話跟著重畫
   const meta = $("girl-meta");
   const port = $("girl-port");
   if (!currentGirl) {
@@ -503,10 +504,15 @@ function findHead(fr) {
   return { mask, neck, chin, x0, x1, y0: yy0, y1: yy1, top, cx };
 }
 
-/** 頭髮＝有頭髮那張跟光頭那張不一樣的像素（頭髮、頭髮的輪廓線）。 */
+/** 頭髮＝有頭髮那張跟光頭那張不一樣、而且是頭髮的像素：光頭那張是空的（頭髮外圈、輪廓線），或是頭髮色 (31,24,42)。
+ *  手臂加深等其他差一點點的（兩張的深度不同）不算。 */
 function hairPixels(fr, bare) {
   const out = new Set(), a = fr.data, b = bare.data;
-  for (let i = 0, n = a.length / 4; i < n; i++) { const j = i * 4; if (a[j] !== b[j] || a[j + 1] !== b[j + 1] || a[j + 2] !== b[j + 2] || a[j + 3] !== b[j + 3]) if (a[j + 3]) out.add(i); }
+  for (let i = 0, n = a.length / 4; i < n; i++) {
+    const j = i * 4; if (!a[j + 3]) continue;
+    if (a[j] === b[j] && a[j + 1] === b[j + 1] && a[j + 2] === b[j + 2] && a[j + 3] === b[j + 3]) continue;
+    if (!b[j + 3] || (Math.abs(a[j] - 31) <= 3 && Math.abs(a[j + 1] - 24) <= 3 && Math.abs(a[j + 2] - 42) <= 3)) out.add(i);
+  }
   return out;
 }
 
@@ -534,6 +540,32 @@ function makeTemplate(bare, hd, size = 1024) {
   return out;
 }
 
+// 2026-11-23 使用者：身體改成肉色（不要陰影）看接上的效果——身體色、手臂加深色都換成同一個平的肉色，輪廓線深一點的肉色；頭髮、衣服不動
+const hex2rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+function fleshFrame(fr, skip) {   // skip：頭髮的像素（含頭髮輪廓線）不換色
+  const out = new ImageData(new Uint8ClampedArray(fr.data), fr.width, fr.height), d = out.data;
+  const fl = hex2rgb($("face-flesh-c").value), dk = fl.map((v) => Math.round(v * .82));
+  const near = (i, c, t) => Math.abs(d[i] - c[0]) <= t && Math.abs(d[i + 1] - c[1]) <= t && Math.abs(d[i + 2] - c[2]) <= t;
+  for (let i = 0; i < d.length; i += 4) {
+    if (!d[i + 3] || (skip && skip.has(i / 4))) continue;
+    const q = near(i, SKIN, 4) || near(i, [34, 30, 42], 4) ? fl : near(i, [78, 66, 98], 5) ? dk : null;   // 胸罩的黑 (22,19,28) 很接近深輪廓色，不換
+    if (q) { d[i] = q[0]; d[i + 1] = q[1]; d[i + 2] = q[2]; d[i + 3] = 255; }
+  }
+  return out;
+}
+/** 從 AI 的臉兩頰取膚色（模板座標對回圖上：肉臉中線左右 0.22 寬、頭高 74% 那一列＝眼睛下面、鼻子兩旁）；只收像皮膚的顏色。 */
+function sampleCheeks(img, hd) {
+  const sq = tplSquare(hd), N = 256, c = document.createElement("canvas"); c.width = c.height = N;
+  const g = c.getContext("2d"); g.drawImage(img, 0, 0, N, N);
+  let px; try { px = g.getImageData(0, 0, N, N).data; } catch { return null; }
+  const hw = hd.x1 - hd.x0 + 1, hh = hd.y1 - hd.y0 + 1, cy = hd.y0 + hh * .74, acc = [0, 0, 0]; let n = 0;
+  for (const cx of [hd.cx - hw * .22, hd.cx + hw * .22]) {
+    const u = Math.round((cx - sq.x) / sq.S * N), v = Math.round((cy - sq.y) / sq.S * N);
+    for (let y = v - 4; y <= v + 4; y++) for (let x = u - 4; x <= u + 4; x++) { if (x < 0 || y < 0 || x >= N || y >= N) continue; const i = (y * N + x) * 4, r = px[i], gg = px[i + 1], b = px[i + 2]; if (!(r >= gg && gg >= b * .75 && r > 110)) continue; acc[0] += r; acc[1] += gg; acc[2] += b; n++; }
+  }
+  return n >= 12 ? "#" + acc.map((v) => Math.round(v / n).toString(16).padStart(2, "0")).join("") : null;
+}
+
 const BUST_Z = 4;
 function drawBust() {
   const cv = $("face-bust"), fr = FACE.frame, hd = FACE.head;
@@ -543,12 +575,12 @@ function drawBust() {
   const Z = BUST_Z, W = fr.width;
   cv.width = c.w * Z; cv.height = c.h * Z;
   const g = cv.getContext("2d"); g.imageSmoothingEnabled = false;
-  const src = document.createElement("canvas"); src.width = fr.width; src.height = fr.height; src.getContext("2d").putImageData(fr, 0, 0);
+  const src = document.createElement("canvas"); src.width = fr.width; src.height = fr.height; src.getContext("2d").putImageData($("face-flesh").checked ? fleshFrame(fr, FACE.hair) : fr, 0, 0);
   g.fillStyle = "#efe8dc"; g.fillRect(0, 0, cv.width, cv.height);
-  g.drawImage(src, c.x, c.y, c.w, c.h, 0, 0, cv.width, cv.height);   // ① 黑影
+  g.drawImage(src, c.x, c.y, c.w, c.h, 0, 0, cv.width, cv.height);   // ① 黑影（或肉色身體）
   if (!hd) return;
   const blocks = (set, gg) => { for (const k of set) { const x = k % W, y = Math.floor(k / W); gg.fillRect((x - c.x) * Z, (y - c.y) * Z, Z, Z); } };
-  const copy = (set) => { for (const k of set) { const x = k % W, y = Math.floor(k / W); g.drawImage(src, x, y, 1, 1, (x - c.x) * Z, (y - c.y) * Z, Z, Z); } };
+  const copy = (set) => { g.fillStyle = "#efe8dc"; for (const k of set) { const x = k % W, y = Math.floor(k / W); g.fillRect((x - c.x) * Z, (y - c.y) * Z, Z, Z); g.drawImage(src, x, y, 1, 1, (x - c.x) * Z, (y - c.y) * Z, Z, Z); } };   // 先墊底色：黑影的頭髮是半透明的，不然下面的臉會透出來
   // 2026-11-23 使用者：下巴不要照黑影的形狀裁——AI 的臉往下延伸到脖子一段（ext 格）再直直切，下面才是黑影的脖子
   const ext = Number($("face-neck").value) || 0, cut = hd.chin + ext;
   const faceMask = new Set(hd.mask), neckLow = new Set();
@@ -582,11 +614,14 @@ function drawBust() {
   }
 }
 
+let bustTok = 0;
 async function renderBust() {
   const CS = window.ChatShadow;
   if (!CS || !CS.test) throw new Error("chat_shadow.js 沒載到");
   setStatus("face-status", "算黑影半身（有頭髮＋光頭兩張）…第一次要幾秒");
-  const a = await CS.test.render(faceSpec(false), "breathe"), b = await CS.test.render(faceSpec(true), "breathe");
+  const my = ++bustTok, sa = faceSpec(false), sb = faceSpec(true);   // 換魅子／換衣著時連續重畫：只採用最後一次（兩張一定是同一隻、同一個衣著）
+  const a = await CS.test.render(sa, "breathe"), b = await CS.test.render(sb, "breathe");
+  if (my !== bustTok) return;
   const fr = a.frames && a.frames[0], bare = b.frames && b.frames[0];
   if (!fr || !bare) throw new Error("黑影沒算出來");
   FACE.frame = fr; FACE.bare = bare;
@@ -650,6 +685,8 @@ async function genFace() {
     const img = new Image(); img.crossOrigin = "anonymous";
     await new Promise((ok, no) => { img.onload = ok; img.onerror = () => no(new Error("圖讀不到")); img.src = url; });
     FACE.img = img; FACE.imgUrl = url; $("face-img").src = url;
+    const sk = sampleCheeks(img, FACE.head);
+    if (sk) { $("face-flesh-c").value = sk; $("face-flesh-note").textContent = `肉色 ${sk}（從 AI 臉的兩頰取的）`; }
     drawBust();
     setStatus("face-status", `✓ ${((Date.now() - t0) / 1000).toFixed(1)}s · ${pose ? "肉臉模板圖生圖" : "文生圖頭像"} · ${r.result}`);
   } catch (e) { setStatus("face-status", e.message, true); }
@@ -675,7 +712,8 @@ function wire() {
   $("btn-face-prompt")?.addEventListener("click", () => faceBasePrompt().catch((e) => setStatus("face-status", e.message, true)));
   $("btn-face-gen")?.addEventListener("click", () => genFace());
   for (const id of ["face-k", "face-dx", "face-dy", "face-neck"]) $(id)?.addEventListener("input", () => { $(id + "-v").textContent = id === "face-k" ? $(id).value + "%" : $(id).value; drawBust(); });
-  for (const id of ["face-frame", "face-dark", "face-nomask"]) $(id)?.addEventListener("change", drawBust);
+  for (const id of ["face-frame", "face-dark", "face-nomask", "face-flesh"]) $(id)?.addEventListener("change", drawBust);
+  $("face-flesh-c")?.addEventListener("input", drawBust);
 
   $("btn-ref-up")?.addEventListener("click", () => $("ref-file").click());
   $("ref-file")?.addEventListener("change", async (e) => {
