@@ -454,7 +454,7 @@ function faceSpec() {
   return { look: g.look || null, outfit: g.outfitName || "", undressStage: Number($("face-stage").value) || 0, tier: "stranger" };
 }
 
-/** 從黑影那一格（ImageData）抓臉的空間：{mask: Set(index), x0,x1,y0,y1, top}。 */
+/** 從黑影那一格（ImageData）抓臉的空間：{mask: Set(index), x0,x1,y0,y1, top}；y1＝下巴最後一列。 */
 function findFaceSpace(fr) {
   const { width: W, height: H, data: d } = fr;
   const A = (x, y) => d[(y * W + x) * 4 + 3];
@@ -468,18 +468,28 @@ function findFaceSpace(fr) {
   let fTop = -1;
   for (let y = top; y < top + 50; y++) if (isSkin(cx, y)) { fTop = y; break; }
   if (fTop < 0) throw new Error("找不到臉（頭頂往下 50 格都不是身體色）");
-  // 從臉中間往外填身體色；下巴：最寬那列之後寬度掉到 6 成以下（接脖子）就停
-  const seen = new Set(), q = [[cx, fTop + 1]], yMax = fTop + 45;
+  // 從臉中間往外填身體色（往下一路填到脖子）
+  const seen = new Set(), q = [[cx, fTop + 1]], yMax = fTop + 50;
   while (q.length) {
     const [x, y] = q.pop(), k = y * W + x;
     if (x < 0 || y < fTop || x >= W || y > yMax || seen.has(k) || !isSkin(x, y)) continue;
     seen.add(k); q.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
   }
-  const rows = {};
-  for (const k of seen) { const y = Math.floor(k / W); rows[y] = (rows[y] || 0) + 1; }
-  let maxW = 0, maxY = fTop, chin = yMax;
-  for (let y = fTop; y <= yMax; y++) { const w = rows[y] || 0; if (w > maxW) { maxW = w; maxY = y; } else if (y > maxY + 3 && w < maxW * .6) { chin = y; break; } }
+  // 2026-11-23 使用者：臉框要往下到下巴——下巴＝臉往下收到跟脖子一樣寬的那一列。
+  //   脖子寬＝臉最寬那列往下 4～14 列裡最窄的（再往下是衣領，V 領會更窄，不算）；頭髮蓋住臉頰、短髮脖子貼背景都照樣抓得到
+  const isLine = (x, y) => { if (x < 0 || x >= W) return false; const i = (y * W + x) * 4; return d[i + 3] && Math.abs(d[i] - 78) <= 5 && Math.abs(d[i + 1] - 66) <= 5 && Math.abs(d[i + 2] - 98) <= 5; };
+  const rowL = {}, rowR = {}, rows = {};
+  for (const k of seen) { const x = k % W, y = Math.floor(k / W); rows[y] = (rows[y] || 0) + 1; rowL[y] = Math.min(rowL[y] ?? W, x); rowR[y] = Math.max(rowR[y] ?? 0, x); }
+  let maxW = 0, maxY = fTop;
+  for (let y = fTop; y <= yMax; y++) if ((rows[y] || 0) > maxW) { maxW = rows[y]; maxY = y; }
+  let neckW = maxW;
+  for (let y = maxY + 4; y <= Math.min(yMax, maxY + 14); y++) if (rows[y]) neckW = Math.min(neckW, rows[y]);
+  let chin = yMax + 1;
+  for (let y = maxY + 1; y <= yMax; y++) { const w = rows[y] || 0; if (!w || w <= neckW + 1) { chin = y; break; } }
+  if (rows[chin] && isLine(rowL[chin] - 1, chin) && isLine(rowR[chin] + 1, chin)) chin++;   // 下顎線兩邊收到這一列才接脖子＝這列還是下巴
   const mask = new Set([...seen].filter(k => Math.floor(k / W) < chin));
+  // 下顎那圈輪廓線也算臉（臉才會填到下巴邊）
+  for (let y = fTop; y < chin; y++) { if (!rows[y]) continue; if (isLine(rowL[y] - 1, y)) mask.add(y * W + rowL[y] - 1); if (isLine(rowR[y] + 1, y)) mask.add(y * W + rowR[y] + 1); }
   let x0 = W, x1 = 0;
   for (const k of mask) { const x = k % W; x0 = Math.min(x0, x); x1 = Math.max(x1, x); }
   return { mask, x0, x1, y0: fTop, y1: chin - 1, top, cx };
