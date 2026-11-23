@@ -111,6 +111,10 @@ function lookSummary(g) {
 }
 
 function renderGirlCard() {
+  if (typeof FACE !== "undefined" && currentGirl && $("face-mold-iris")) {
+    $("face-mold-iris").value = irisOf(currentGirl);   // 眼珠顏色照魅子
+    if (faceSrc() === "mold") loadMold().catch(() => {});
+  }
   if (typeof FACE !== "undefined" && FACE.frame && currentGirl) renderBust().catch((e) => setStatus("face-status", e.message, true));   // 換魅子：半身畫過的話跟著重畫
   const meta = $("girl-meta");
   const port = $("girl-port");
@@ -452,9 +456,15 @@ const FACE = { frame: null, bare: null, crop: null, head: null, hair: null, neck
 //   v2_front/{鼻子}_{嘴巴}.png＝v2 features.py 拿掉眼睛那層出的正面（眉毛、鼻子、嘴巴；背景透明），
 //   頭頂 y 40、下巴 y 212、中線 x 128 → 對到光頭黑影的頭頂、下巴、中線
 const MOLD = { top: 40, chin: 212, cx: 128, size: 256, skin: "#f2ccb1" };
+/** 魅子的眼睛顏色（look.eye_color 中文）→ 臉模 v2 的眼珠顏色。 */
+function irisOf(g) {
+  const t = String(g?.look?.eye_color || g?.look?.eyes || "");
+  return /綠|翠/.test(t) ? "green" : /藍|碧|青|冰/.test(t) ? "aqua" : /金|琥珀|黃/.test(t) ? "gold" : /紅|赤|酒/.test(t) ? "red" : /粉|桃|紫/.test(t) ? "pink" : /黑|墨|灰/.test(t) ? "black" : /橘|橙/.test(t) ? "orange" : "brown";
+}
 const faceSrc = () => (document.querySelector('input[name="face-src"]:checked') || {}).value || "ai";
 async function loadMold() {
-  const url = `/droom/face_mold/v2_front/${$("face-mold-nose").value}_${$("face-mold-mouth").value}.png`;
+  const base = `${$("face-mold-nose").value}_${$("face-mold-mouth").value}`;
+  const url = $("face-mold-eye").checked ? `/droom/face_mold/v2_front/eye/${base}_${$("face-mold-iris").value}.png` : `/droom/face_mold/v2_front/${base}.png`;   // eye/：加眼睛（v2 預設眼眶 A3、瞳孔 1，8 種眼珠顏色）
   const img = new Image();
   await new Promise((ok, no) => { img.onload = ok; img.onerror = () => no(new Error("臉模圖讀不到：" + url)); img.src = url; });
   FACE.mold = img;
@@ -737,7 +747,7 @@ function wire() {
   for (const id of ["face-frame", "face-dark", "face-nomask", "face-flesh"]) $(id)?.addEventListener("change", drawBust);
   const moldNow = () => loadMold().then(drawBust).catch((e) => setStatus("face-status", e.message, true));
   document.querySelectorAll('input[name="face-src"]').forEach((el) => el.addEventListener("change", () => { if (faceSrc() === "mold") moldNow(); else drawBust(); }));
-  for (const id of ["face-mold-nose", "face-mold-mouth"]) $(id)?.addEventListener("change", () => { if (faceSrc() === "mold") moldNow(); });
+  for (const id of ["face-mold-nose", "face-mold-mouth", "face-mold-eye", "face-mold-iris"]) $(id)?.addEventListener("change", () => { if (faceSrc() === "mold") moldNow(); });
   $("face-flesh-c")?.addEventListener("input", drawBust);
 
   $("btn-ref-up")?.addEventListener("click", () => $("ref-file").click());

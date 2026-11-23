@@ -195,9 +195,11 @@
   <div class="mode-row" style="margin-top:.6em">
     <span class="mini" style="margin:0;align-self:center">臉來源：</span>
     <label><input type="radio" name="face-src" value="ai" checked> AI 生的</label>
-    <label><input type="radio" name="face-src" value="mold"> 臉模 v2（沒有眼睛）</label>
+    <label><input type="radio" name="face-src" value="mold"> 臉模 v2</label>
     <select id="face-mold-nose" style="width:auto"><option value="std">鼻子：正常</option><option value="up">鼻子：翹頭尖鼻</option><option value="round">鼻子：圓頭</option></select>
     <select id="face-mold-mouth" style="width:auto"><option value="closed">嘴巴：閉嘴</option><option value="open">嘴巴：微張</option></select>
+    <label><input type="checkbox" id="face-mold-eye" checked> 眼睛</label>
+    <select id="face-mold-iris" style="width:auto"><option value="orange">眼珠：橘</option><option value="aqua">眼珠：水藍</option><option value="green">眼珠：亮綠</option><option value="gold">眼珠：金黃</option><option value="red">眼珠：紅</option><option value="pink">眼珠：粉紅</option><option value="black">眼珠：黑</option><option value="brown" selected>眼珠：棕</option></select>
   </div>
   <label>臉部 prompt（按「帶入臉部 prompt」從人設組；可改）</label>
   <textarea id="face-prompt" placeholder="portrait, face focus, looking at viewer, front view…"></textarea>
@@ -229,6 +231,6 @@
 </section>
 
 <script src="/content/chat_shadow.js?v=77"></script>
-<script type="module" src="/content/edit_pic.js?v=16"></script>
+<script type="module" src="/content/edit_pic.js?v=17"></script>
 </body>
 </html>
