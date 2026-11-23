@@ -334,7 +334,7 @@
       return { H, b, head_h, zc, chin, S, C, T: S - C, knee: C * 0.6, hipz: C + 3.4, ankle: 3.3 };
     }
     const F = (b, k) => b[k] * b.frame;
-    let FOOT_HD = false, TIPTOE = 0;   // pt39u：赤腳走路微墊腳（腳跟抬高量）   // pt38u：build 時 opts.scale≥2 才開
+    let FOOT_HD = false, TIPTOE = 0, ARM_K = 1;   // pt39u：赤腳走路微墊腳（腳跟抬高量）   // pt38u：build 時 opts.scale≥2 才開
     /** 2026-11-19 大腿模組（坐姿用；使用者參考圖「横座り」）：大腿從根部扭轉——給大腿「正面」朝哪（front），
      *  根部外鼓、股四頭肌、膝蓋骨、小腿肚都照這個方向放（不像 legRaw 假設站著、外側固定是 ±x）。膝關節跟著斜。
      *  side：−1 右腿／＋1 左腿；toe：腳尖方向。坐在地上時 sh.floor 會把貼地那面切平（大腿躺地被壓扁）。 */
@@ -421,7 +421,18 @@
       sh.cone(BODY, [ax - tx * 1.0, ay - ty * 1.0 - .4, az + 3.5], [heel[0], heel[1], heel[2] + 1.0], .8 * q, 1.0 * q);   // 阿基里斯腱
     }
     // 2026-10-30 pt77u：手腳零件標 limb（上衣算軀幹表面時排除），手臂關節記下來給袖子用
-    function arm(sh, P, shoulder, elbow, wrist, hand = true) { (sh._arms = sh._arms || []).push([shoulder, elbow, wrist, sh.off]); sh.limb = 1; const pp = sh.part; sh.part = shoulder[0] < 0 ? 'armL' : 'armR'; try { return armRaw(sh, P, shoulder, elbow, wrist, hand); } finally { sh.limb = 0; sh.part = pp; } }
+    // 2026-11-23 聊天黑影（使用者選 C）：手臂縮短 ARM_K（build 的 opts.armK，黑影給 0.88；房間的人偶不傳＝1 不變）
+    //   幾乎打直的手（垂下來）整條等比例縮；彎著、手放在某個地方的，搆得到就手腕留在原地、重算手肘，搆不到就整條等比例縮（arm 之後用 sh._arms 最後一筆拿新的手腕）
+    function armShorten(shoulder, elbow, wrist) {
+      const sub = (a, b2) => [a[0] - b2[0], a[1] - b2[1], a[2] - b2[2]], len = (v) => hypot3(v[0], v[1], v[2]);
+      const l1 = len(sub(elbow, shoulder)), l2 = len(sub(wrist, elbow)), d = len(sub(wrist, shoulder)), k = ARM_K;
+      const scaled = () => { const e = shoulder.map((s0, i) => s0 + (elbow[i] - s0) * k); return [e, e.map((e0, i) => e0 + (wrist[i] - elbow[i]) * k)]; };
+      if (d > .9 * (l1 + l2)) return scaled();
+      const L1 = l1 * k, L2 = l2 * k, mid = shoulder.map((s0, i) => (s0 + wrist[i]) / 2), pole = sub(elbow, mid);
+      if (d <= L1 + L2 - .05) return [ik(shoulder, wrist, L1, L2, pole), wrist];
+      return scaled();   // 搆不到（叉腰）：整條等比例縮，手肘一樣往外、手放到腰上高一點
+    }
+    function arm(sh, P, shoulder, elbow, wrist, hand = true) { if (ARM_K !== 1) [elbow, wrist] = armShorten(shoulder, elbow, wrist); (sh._arms = sh._arms || []).push([shoulder, elbow, wrist, sh.off]); sh.limb = 1; const pp = sh.part; sh.part = shoulder[0] < 0 ? 'armL' : 'armR'; try { return armRaw(sh, P, shoulder, elbow, wrist, hand); } finally { sh.limb = 0; sh.part = pp; } }
     function leg(sh, ...a) { (sh._legs = sh._legs || []).push([a[2], a[3], a[4], a[1], sh.off]); sh.limb = 1; const pp = sh.part; sh.part = 'legs'; try { return legRaw(sh, ...a); } finally { sh.limb = 0; sh.part = pp; } }
     function armRaw(sh, P, shoulder, elbow, wrist, hand = true) {
       const b = P.b, wA = F(b, 'arm'), fr = b.frame;
@@ -2135,6 +2146,7 @@
     }
     function build(doll, pose, frame, yaw, opts = {}) {
       FOOT_HD = (opts.scale || 1) >= 2;
+      ARM_K = opts.armK || 1;
       const P = proportions(doll), sh = makeShape(), b = P.b;
       const hip_x = 5.1 * F(b, 'hip') * (1 + .3 * (F(b, 'thigh') - 1));
       const kx = () => 2.75 + .65 * F(b, 'thigh');   // 2026-10-31：膝蓋微微靠攏（參考圖 Good 2；原 3.2）
@@ -2158,7 +2170,7 @@
             const wrist = [s * (waist_out + (hip_out - waist_out) * .45 + 1.6), .3, tor.zW - .22 * tor.T];
             if (doll._mode) arm(sh, P, sh_j, elbow, wrist);   // 2026-11-20 聊天黑影脫光後的姿勢（手會被拉去遮下體／托胸）：畫完整的手掌、不畫插腰的拳頭
             else { arm(sh, P, sh_j, elbow, wrist, false);
-            { const pp = sh.part; sh.part = s < 0 ? 'armL' : 'armR'; sh.ell(BODY, [wrist[0] - s * .6, wrist[1], wrist[2] - .6], [1.8, 1.6, 2.1]); sh.part = pp; } }   // 插腰的拳頭也算那隻手（聊天黑影手被拉走時拳頭跟著走，不會留在腰上）
+            { const pp = sh.part, wr = sh._arms[sh._arms.length - 1][2]; sh.part = s < 0 ? 'armL' : 'armR'; sh.ell(BODY, [wr[0] - s * .6, wr[1], wr[2] - .6], [1.8, 1.6, 2.1]); sh.part = pp; } }   // 插腰的拳頭也算那隻手（聊天黑影手被拉走時拳頭跟著走，不會留在腰上）
           } else {
             const elbow = [s * Math.max(waist_out + 2.8 * F(b, 'arm') + 1.6, arm_clear()), -1.0, tor.zW - 1];
             const wrist = [s * (hip_out + 1.5 * F(b, 'arm') + 1.1), .8, tor.C - 1];
