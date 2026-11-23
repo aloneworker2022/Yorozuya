@@ -447,7 +447,27 @@ async function uploadRef(file) {
 //   同一個姿勢算兩張黑影：有頭髮（原本的）＋光頭（noHair，身體位置完全一樣）。
 //   光頭那張 → 肉臉＝頭頂到下巴整顆頭；模板＝光頭放大（頭、脖子膚色，衣服淺灰，糊一點）→ pose_ref 圖生圖。
 //   合成：黑影 → AI 的臉（照模板比例縮回、裁成肉臉的形狀）→ 頭髮（兩張不一樣的像素）→ 脖子。
-const FACE = { frame: null, bare: null, crop: null, head: null, hair: null, neck: null, img: null, imgUrl: "" };
+const FACE = { frame: null, bare: null, crop: null, head: null, hair: null, neck: null, img: null, imgUrl: "", mold: null };
+// 2026-11-23 使用者：把上次做的臉模（分支 ccr-7517159a-8s0nzp 的 face_mold/v2，256×256 像素畫）除了眼睛以外加進來看看
+//   v2_front/{鼻子}_{嘴巴}.png＝v2 features.py 拿掉眼睛那層出的正面（眉毛、鼻子、嘴巴；背景透明），
+//   頭頂 y 40、下巴 y 212、中線 x 128 → 對到光頭黑影的頭頂、下巴、中線
+const MOLD = { top: 40, chin: 212, cx: 128, size: 256, skin: "#f2ccb1" };
+const faceSrc = () => (document.querySelector('input[name="face-src"]:checked') || {}).value || "ai";
+async function loadMold() {
+  const url = `/droom/face_mold/v2_front/${$("face-mold-nose").value}_${$("face-mold-mouth").value}.png`;
+  const img = new Image();
+  await new Promise((ok, no) => { img.onload = ok; img.onerror = () => no(new Error("臉模圖讀不到：" + url)); img.src = url; });
+  FACE.mold = img;
+  $("face-flesh-c").value = MOLD.skin; $("face-flesh-note").textContent = `肉色 ${MOLD.skin}（臉模的肉色）`;
+}
+/** 臉那一層的正方形（黑影座標）：AI＝模板的正方形；臉模＝照頭頂、下巴、中線對位。 */
+function faceRect(hd) {
+  if (faceSrc() === "mold") {
+    const k = (hd.y1 + 1 - hd.y0) / (MOLD.chin - MOLD.top), cxH = (hd.x0 + hd.x1 + 1) / 2;
+    return { x: cxH - MOLD.cx * k, y: hd.y0 - MOLD.top * k, S: MOLD.size * k };
+  }
+  return tplSquare(hd);
+}
 const SKIN = [51, 45, 64], HAIR_MAX = 40;   // 黑影的身體色；頭髮比較暗（R < 40）
 
 function faceSpec(noHair) {
@@ -509,7 +529,7 @@ function findHead(fr) {
 function hairPixels(fr, bare) {
   const out = new Set(), a = fr.data, b = bare.data;
   for (let i = 0, n = a.length / 4; i < n; i++) {
-    const j = i * 4; if (!a[j + 3]) continue;
+    const j = i * 4; if (a[j + 3] < 128) continue;   // 幾乎透明的邊緣不算（貼的時候先墊底色，會變一塊背景色）
     if (a[j] === b[j] && a[j + 1] === b[j + 1] && a[j + 2] === b[j + 2] && a[j + 3] === b[j + 3]) continue;
     if (!b[j + 3] || (Math.abs(a[j] - 31) <= 3 && Math.abs(a[j + 1] - 24) <= 3 && Math.abs(a[j + 2] - 42) <= 3)) out.add(i);
   }
@@ -585,13 +605,15 @@ function drawBust() {
   const ext = Number($("face-neck").value) || 0, cut = hd.chin + ext;
   const faceMask = new Set(hd.mask), neckLow = new Set();
   for (const k of hd.neck) (Math.floor(k / W) < cut ? faceMask : neckLow).add(k);
-  if (FACE.img) {   // ② AI 的臉：照模板比例縮回，裁成肉臉（＋上段脖子）的形狀
-    const sq = tplSquare(hd), kk = Number($("face-k").value) / 100, dx = Number($("face-dx").value), dy = Number($("face-dy").value);
+  const faceImg = faceSrc() === "mold" ? FACE.mold : FACE.img;
+  if (faceImg) {   // ② 臉（AI 生的照模板比例縮回；臉模照頭頂、下巴、中線對位），裁成肉臉（＋上段脖子）的形狀
+    const sq = faceRect(hd), kk = Number($("face-k").value) / 100, dx = Number($("face-dx").value), dy = Number($("face-dy").value);
     const S = sq.S * kk, X = (sq.x + sq.S / 2 - S / 2 + dx - c.x) * Z, Y = (sq.y + sq.S / 2 - S / 2 + dy - c.y) * Z;
     const lay = document.createElement("canvas"); lay.width = cv.width; lay.height = cv.height;
     const lg = lay.getContext("2d");
     if ($("face-dark").checked) lg.filter = "grayscale(1) sepia(.35) hue-rotate(220deg) brightness(.62) contrast(1.15)";
-    lg.drawImage(FACE.img, X, Y, S * Z, S * Z);
+    lg.imageSmoothingEnabled = faceSrc() !== "mold";   // 臉模是像素畫：最近點縮放
+    lg.drawImage(faceImg, X, Y, S * Z, S * Z);
     lg.filter = "none";
     if (!$("face-nomask").checked) {
       const m = document.createElement("canvas"); m.width = cv.width; m.height = cv.height;
@@ -713,6 +735,9 @@ function wire() {
   $("btn-face-gen")?.addEventListener("click", () => genFace());
   for (const id of ["face-k", "face-dx", "face-dy", "face-neck"]) $(id)?.addEventListener("input", () => { $(id + "-v").textContent = id === "face-k" ? $(id).value + "%" : $(id).value; drawBust(); });
   for (const id of ["face-frame", "face-dark", "face-nomask", "face-flesh"]) $(id)?.addEventListener("change", drawBust);
+  const moldNow = () => loadMold().then(drawBust).catch((e) => setStatus("face-status", e.message, true));
+  document.querySelectorAll('input[name="face-src"]').forEach((el) => el.addEventListener("change", () => { if (faceSrc() === "mold") moldNow(); else drawBust(); }));
+  for (const id of ["face-mold-nose", "face-mold-mouth"]) $(id)?.addEventListener("change", () => { if (faceSrc() === "mold") moldNow(); });
   $("face-flesh-c")?.addEventListener("input", drawBust);
 
   $("btn-ref-up")?.addEventListener("click", () => $("ref-file").click());
