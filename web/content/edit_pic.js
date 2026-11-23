@@ -603,17 +603,18 @@ async function faceBasePrompt() {
   setStatus("face-status", "抓臉部 prompt…");
   const j = await apiJson("/api/imggen/preview", "POST", {
     provider: "comfy", character: currentGirl, name: currentGirl.name || "",
-    rating: "sfw", style: $("ig-style").value, framing: "head", extra: "", negative: "", prompt: "",
+    rating: "sfw", style: "pixel", framing: "head", extra: "", negative: "", prompt: "",
   });
   const tr = j.trace || {};
-  // 2026-11-23 使用者：告訴 AI 不要頭髮、光頭（頭髮之後由黑影蓋上去）→ 人設裡跟頭髮有關的 tag 拿掉，正向加光頭、負向加頭髮
+  // 2026-11-23 使用者：不是光頭，是「只要臉」、像素風格（頭髮之後由黑影蓋上去）→ 人設裡跟頭髮有關的 tag 不帶（免得模型特地畫頭髮），正向加只要臉＋pixel art；風格固定 pixel
   const HAIR_TAG = /hair|bangs|curl|wavy|ponytail|twintail|braid|bun\b|buns|bob cut|ahoge|sidelocks|hime cut|drill|ringlets|updo/i;
   // 只生臉：身材、衣服的 tag 也用不到（還會跟負向的 breasts 打架）→ 一起拿掉；膚色留著
-  const BODY_TAG = /breast|chest|cleavage|thigh|waist|hips?\b|butt|ass\b|legs?\b|skinny|slender|plump|chubby|curvy|petite|muscular|toned|abs\b|navel|belly|clothed|clothes|t-shirt|shirt|bra\b|thong|panties|underwear|lingerie|bikini|dress|skirt|nude|naked|nipples?|areola|pussy/i;
+  const BODY_TAG = /breast|chest|slim|athletic|fat\b|thin\b|cleavage|thigh|waist|hips?\b|butt|ass\b|legs?\b|skinny|slender|plump|chubby|curvy|petite|muscular|toned|abs\b|navel|belly|clothed|clothes|t-shirt|shirt|bra\b|thong|panties|underwear|lingerie|bikini|dress|skirt|nude|naked|nipples?|areola|pussy/i;
   const keep = (t) => t && !(HAIR_TAG.test(t) && !/^\(?(bald|hairless|no hair)/i.test(t)) && !BODY_TAG.test(t);
   const base = String(tr.comfy_prompt || "").split(",").map((t) => t.trim()).filter(keep).join(", ");
-  $("face-prompt").value = [base, "bald, no hair, hairless, bald head, close-up, head only, front view, facing viewer, straight-on, centered face, symmetrical face, neutral expression, simple background, white background"].filter(Boolean).join(", ");
-  $("face-negative").value = [String(tr.comfy_negative || "").trim(), "hair, long hair, short hair, bangs, ponytail, twintails, braid, hair bun, hair ornament, hairband, hat, headwear, body, shoulders, breasts, cleavage, hands, from side, profile, looking away, tilted head, multiple views, text, watermark"].filter(Boolean).join(", ");
+  const uniq = (str) => [...new Set(str.split(",").map((t) => t.trim()).filter(Boolean))].join(", ");   // 後台 pixel 風格自己也會加 pixel art，去掉重複
+  $("face-prompt").value = uniq([base, "face only, extreme close-up, face focus, cropped face, front view, facing viewer, straight-on, centered face, symmetrical face, neutral expression, pixel art, simple background, white background"].join(", "));
+  $("face-negative").value = [String(tr.comfy_negative || "").trim(), "hair ornament, hat, headwear, body, shoulders, breasts, cleavage, hands, from side, profile, looking away, tilted head, multiple views, text, watermark"].filter(Boolean).join(", ");
   setStatus("face-status", "✓ 已帶入臉部 prompt（可改）");
 }
 
@@ -636,7 +637,7 @@ async function genFace() {
     if ($("face-tpl").checked) { setStatus("face-status", "上傳臉框模板…"); pose = await uploadPng(makeTemplate(FACE.bare, FACE.head, 1024), "face_tpl.png"); }
     const body = {
       key: `editpic-face:${Date.now().toString(36)}`, provider: "comfy", character: currentGirl, name: currentGirl.name || "",
-      rating: "sfw", style: $("ig-style").value, framing: "head",
+      rating: "sfw", style: "pixel", framing: "head",
       prompt: $("face-prompt").value.trim(), negative: $("face-negative").value.trim(), extra: "",
       pose_ref: pose, pose_denoise: pose ? Number($("face-denoise").value || .75) : 0,
       width: 1024, height: 1024, seed: Number($("ig-seed")?.value || 0),
