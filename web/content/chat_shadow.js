@@ -1213,7 +1213,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   }
 
   // ---------------------------------------------------------------- 畫面
-  let wrap = null, canvas = null, ctx = null, waitEl = null;
+  let wrap = null, canvas = null, ctx = null;
   let cur = null;          // { key, sets: { breathe: ImageData[], talk: ImageData[] }, dead }
   let talkUntil = 0, raf = 0, clock = 0, lastT = 0, mode = 'breathe';
 
@@ -1239,12 +1239,6 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     FG.zoom.append(canvas, FG.hand);
     wrap.appendChild(FG.zoom);
     talk.insertBefore(wrap, talk.firstChild);
-    waitEl = document.createElement('div');   // 黑影還沒算好的提示（立繪上方）
-    waitEl.id = 'chat-shadow-wait';
-    waitEl.textContent = '黑影準備中…還不能摸她';
-    waitEl.hidden = true;
-    waitEl.style.cssText = 'position:fixed;top:30%;left:50%;transform:translateX(-50%);z-index:30;pointer-events:none;font-size:.78em;color:#fff;background:rgba(30,26,40,.55);padding:.25em .8em;border-radius:1em;white-space:nowrap';
-    talk.appendChild(waitEl);
     return wrap;
   }
 
@@ -1635,12 +1629,11 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const on = want && (ready || (open && !wrap.hidden && !wrap.classList.contains('cs-out')));
     sheet?.classList.toggle('portrait-mode', open && portraitMode);
     // 使用者：點房間的她先跑出立繪才生字不對 → 一打開先藏立繪 0.4 秒（手機裡存過的黑影來得及出來，不會閃）；
-    // 2026-11-24 使用者：黑影還沒算好（RP5 還在算）→ 顯示上半身立繪、不能互動（摸、手指插入都在黑影上，立繪上摸不到），上面一行小字
+    // 2026-11-24 使用者：黑影還沒算好（RP5 還在算）→ 顯示上半身立繪、不能互動（摸、手指插入都在黑影上，立繪上摸不到）；不要出「準備中」那行字
     const grace = open && performance.now() - openedAt < 400;
     sheet?.classList.toggle('has-shadow', want && (on || grace));
     const waiting = open && want && !on && !grace && !undressOn;
     sheet?.classList.toggle('shadow-wait', waiting);
-    if (waitEl) waitEl.hidden = !waiting;
     if (on && (wrap.hidden || wrap.classList.contains('cs-out'))) {
       clearTimeout(fadeT); fadeT = 0;
       if (wrap.hidden) canvas.dataset.f = '';
