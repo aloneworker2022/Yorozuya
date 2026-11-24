@@ -132,17 +132,17 @@
     if (pose === 'col_d' || pose === 'col_s' || pose === 'col_q') {
       if (pose === 'col_d') {
         const E = [0, .04, .3, .78, 1.1, .94, 1.03, .99, 1, 1][Math.min(9, f)], J = [0, 0, 0, 0, .45, -.25, .15, -.06, 0, 0][Math.min(9, f)];   // 第 4 格屁股撞地
-        return { ph, br: .25, tilt: 6 * E, nod: -6 - 18 * Math.min(1, E) - 10 * Math.max(0, J), turn: -4 * E, gest: 0, bend: -6 * Math.min(1, E), jolt: 0,
+        return { ph, br: .25, tilt: 6 * E, nod: -8 - 24 * Math.min(1, E) - 10 * Math.max(0, J), turn: -4 * E, gest: 0, bend: -28 * Math.min(1, E), jolt: 0,   // 2026-11-24 使用者：身體往後靠、頭往上仰
           fg: { kind: 'cd', ph, drop: 0, dropFrac: E, open: .5 + 2.1 * Math.min(1, E), squirt: false } };
       }
       if (pose === 'col_q') {   // 一邊噴一邊抖：身體一抽一抽、腿跟著顫、頭往上仰
         const J = [.55, -.45, .5, -.4, .55, -.35, .45, -.5][f % 8];   // 抖的幅度放在頭、背、腿（身體往上抽太大，上衣和褲頭中間會裂開）
-        return { ph, br: .25, tilt: 6 + 4 * J, nod: -28 - 8 * J, turn: -4 + 5 * J, gest: 0, bend: -5, jolt: 0,   // 抖在頭、肩、腿（不用 jolt、不加 bend、不另外沉：上半身一動，腿張開時褲頭和褲管會分開）
+        return { ph, br: .25, tilt: 6 + 4 * J, nod: -32 - 8 * J, turn: -4 + 5 * J, gest: 0, bend: -28 - 2 * J, jolt: 0,   // 抖在頭、肩、腿（不用 jolt、不加 bend、不另外沉：上半身一動，腿張開時褲頭和褲管會分開）
           fg: { kind: 'cq', ph, drop: 0, dropFrac: 1, open: 2.45 + .15 * J, squirt: false } };   // 腿不要比癱坐張更開（褲子胯下那條縫會裂開）
       }
       const s3 = Math.sin(3 * ph);   // 癱坐：喘、偶爾抖一下，頭還是往上仰
       return { ph, br: .25 + .1 * Math.sin(2 * ph), tilt: 6 + 1.5 * s3,   // 呼吸起伏放小（腿張開時上半身抬太多，褲頭和褲管會分開）
-        nod: -20 + 3 * Math.sin(ph), turn: -4, gest: 0, bend: -5, jolt: 0,
+        nod: -28 + 3 * Math.sin(ph), turn: -4, gest: 0, bend: -28, jolt: 0,
         fg: { kind: 'cs', ph, drop: 0, dropFrac: 1, open: 2.6 + .05 * Math.sin(2 * ph), squirt: false } };
     }
     if (pose.slice(0, 3) === 'fg_') {
@@ -512,7 +512,14 @@
       if ((k === 'cd' || k === 'cs' || k === 'cq') && sh.prims.some(p => p.cloth && p.garm === 'bot')) sh.prims = sh.prims.filter(p => !(p.cloth && p.under && p.pk));   // 癱坐腿張很開：褲子胯下會裂開一點，裡面的黑色丁字褲不要露出來（看到的是皮膚的影子）
       if (k === 'cd' || k === 'cs' || k === 'cq') {   // 癱坐：兩手軟軟地垂到地上（身體往下沉之前的座標：最後的位置＋沉下去的量）
         const A2 = { armL: armPts('armL'), armR: armPts('armR') }, dMax = Math.max(0, (P.hipz - .9) - P.ankle - 7), dN = (m.fg.drop || 0) + (m.fg.dropFrac || 0) * dMax, e = Math.min(1, m.fg.dropFrac || 0);
-        for (const [part, sd] of [['armL', -1], ['armR', 1]]) if (A2[part]) { const fl = [G.cx + sd * 8.5, -1.5, P.ankle + 3 + dN]; hands[part] = lerp(A2[part].w0, fl, e); poles[part] = [sd, -.2, .3]; }
+        // 2026-11-24 使用者：手往後撐在地上、身體往後靠——要落在屁股後面的地上（世界座標），
+        //   但之後上半身會往下沉 dN、再繞腰往後轉 bend（手臂整隻跟著轉）→ 目標先倒轉回去、再加回 dN
+        const piv = [0, 0, zW - 1 - dN], Tinv = H.about(H.rotX(m.bend || 0), piv);
+        for (const [part, sd] of [['armL', -1], ['armR', 1]]) if (A2[part]) {
+          const wld = [G.cx + sd * 13, -5, 1.6], pre = app(Tinv, wld), fl = [pre[0], pre[1], pre[2] + dN];
+          hands[part] = lerp(A2[part].w0, fl, e); poles[part] = [sd, -.9, .25];   // 手肘往後外
+        }
+        handG.armL = handG.armR = 'open'; handSet.armL = handSet.armR = 1;   // 手掌撐地（張開）
       } else
       if (k === 'r0') { grip('armR', .2, [1, .2, -.6]); grip('armL', .8, [-.6, .6, -.6]); }
       else if (k === 'r1') {   // 隔著褲子抓住玩家的手掌
@@ -805,12 +812,28 @@
         const shift = (X, v) => ({ R: X.R, t: [X.t[0] + v[0], X.t[1] + v[1], X.t[2] + v[2]] });
         const legs = L.map((g) => {
           // 癱坐（dropFrac）：M 字腿——腳往前放到屁股前面、膝蓋往上往外立起來（不是青蛙腿往兩邊攤平）
-          const km = Math.min(1, m.fg.dropFrac || 0);
-          const sd = Math.sign(g.h[0] - cx0) || 1, h2 = [g.h[0] + sd * .2 * op, g.h[1], g.h[2] - d], a2 = [g.a[0] + sd * 1.1 * op * (1 - .45 * km), g.a[1] + 10 * km, g.a[2]];
-          const l1 = len(sub(g.k, g.h)), l2 = len(sub(g.a, g.k)), D = sub(a2, h2), dl = Math.max(Math.abs(l1 - l2) + .1, Math.min(l1 + l2 - .02, len(D))), dir = nrm(D);
-          const aa = (l1 * l1 - l2 * l2 + dl * dl) / (2 * dl), hh = Math.sqrt(Math.max(0, l1 * l1 - aa * aa)), pole = nrm([sd * ((.35 + op) * (1 - km) + .75 * km), 1 - .5 * km, 1.4 * km]);
-          const pd = pole[0] * dir[0] + pole[1] * dir[1] + pole[2] * dir[2], n = nrm([pole[0] - dir[0] * pd, pole[1] - dir[1] * pd, pole[2] - dir[2] * pd]);
-          const k2 = [h2[0] + dir[0] * aa + n[0] * hh, h2[1] + dir[1] * aa + n[1] * hh, h2[2] + dir[2] * aa + n[2] * hh];
+          const km = Math.min(1, m.fg.dropFrac || 0), kneel = km > 0 && m.sitK === 'kneel';
+          // 2026-11-24 使用者：M 字坐（腳放身體前面兩側、膝蓋往外上立開）／跪坐（鴨子坐：膝蓋跪在前面地上、小腿往後外摺）各一組
+          const sd = Math.sign(g.h[0] - cx0) || 1, h2 = [g.h[0] + sd * .2 * op, g.h[1], g.h[2] - d];
+          const l1 = len(sub(g.k, g.h)), l2 = len(sub(g.a, g.k));
+          let k2, a2;
+          if (kneel) {
+            // 膝蓋：從站著（照 IK 彎）慢慢到跪在前面的地上；小腿沿地板往後外摺（腳在屁股兩側）
+            const kz = 2.6, dzK = Math.max(-l1 + .5, kz - h2[2]), hor = Math.sqrt(Math.max(0, l1 * l1 - dzK * dzK)), hd = nrm([sd * .3, 1, 0]);
+            const kK = [h2[0] + hd[0] * hor, h2[1] + hd[1] * hor, h2[2] + dzK], aK = [kK[0] + sd * l2 * .5, kK[1] - l2 * .86, kz - .6];
+            const kS = [g.k[0], g.k[1], g.k[2] - d * .5], aS = g.a;   // 站著還沒坐下去那一端（往下沉一半時膝蓋先往前彎）
+            const u = km * km * (3 - 2 * km);
+            k2 = [kS[0] + (kK[0] - kS[0]) * u, kS[1] + (kK[1] - kS[1]) * u, kS[2] + (kK[2] - kS[2]) * u];
+            const dK = nrm(sub(k2, h2)); k2 = [h2[0] + dK[0] * l1, h2[1] + dK[1] * l1, h2[2] + dK[2] * l1];   // 大腿長度不變
+            const at = [aS[0] + (aK[0] - aS[0]) * u, aS[1] + (aK[1] - aS[1]) * u, aS[2] + (aK[2] - aS[2]) * u], dA = nrm(sub(at, k2));
+            a2 = [k2[0] + dA[0] * l2, k2[1] + dA[1] * l2, k2[2] + dA[2] * l2];
+          } else {
+            a2 = [g.a[0] + sd * (1.1 * op * (1 - .45 * km) + 2.5 * km), g.a[1] + 6.5 * km, g.a[2]];   // M 字：腳放到屁股前面兩側（近一點，膝蓋才立得起來）
+            const D = sub(a2, h2), dl = Math.max(Math.abs(l1 - l2) + .1, Math.min(l1 + l2 - .02, len(D))), dir = nrm(D);
+            const aa = (l1 * l1 - l2 * l2 + dl * dl) / (2 * dl), hh = Math.sqrt(Math.max(0, l1 * l1 - aa * aa)), pole = nrm([sd * ((.35 + op) * (1 - km) + .8 * km), 1 - .6 * km, 1.5 * km]);   // 膝蓋往上立、再往外開
+            const pd = pole[0] * dir[0] + pole[1] * dir[1] + pole[2] * dir[2], n = nrm([pole[0] - dir[0] * pd, pole[1] - dir[1] * pd, pole[2] - dir[2] * pd]);
+            k2 = [h2[0] + dir[0] * aa + n[0] * hh, h2[1] + dir[1] * aa + n[1] * hh, h2[2] + dir[2] * aa + n[2] * hh];
+          }
           const thigh = shift(H.about(rotTo(sub(g.k, g.h), sub(k2, h2), 1), g.h), sub(h2, g.h));
           const shin = shift(H.about(rotTo(sub(g.a, g.k), sub(a2, k2), 1), g.k), sub(k2, g.k));
           return { sd, g, thigh, shin, foot: { R: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: sub(a2, g.a) } };
@@ -882,10 +905,13 @@
     }
     // 彎腰／往後仰（m.bend 度，正＝往前彎）：腰以上整個上半身（含手、頭、頭髮、衣服、乳房）繞腰轉；從腰往上 7 格內漸增，腿不動
     if (m.bend) {
-      const piv = [0, 0, zW - 1], wOf = (z) => sm((z - (zW - 4)) / 7), T = (w) => H.about(H.rotX(-m.bend * w), piv);
+      // 2026-11-24 癱坐往後靠：身體已經往下沉 dS → 轉軸跟著下來；手臂（撐地）整隻跟著上半身轉（不然上下段轉得不一樣會斷開）
+      const colK = m.fg && (m.fg.kind === 'cd' || m.fg.kind === 'cs' || m.fg.kind === 'cq');
+      const dS = colK ? (m.fg.drop || 0) + (m.fg.dropFrac || 0) * Math.max(0, (P.hipz - .9) - P.ankle - 7) : 0;
+      const piv = [0, 0, zW - 1 - dS], wOf = (z) => sm((z - (zW - dS - 4)) / 7), T = (w) => H.about(H.rotX(-m.bend * w), piv);
       for (const p of sh.prims) {
         if (p.part === 'legs') continue;
-        const w = wOf(p.bc[2] + p.off[2]); if (w <= 0) continue;
+        const w = colK && (p.part === 'armL' || p.part === 'armR') ? 1 : wOf(p.bc[2] + p.off[2] - (colK && p.xf ? dS : 0)); if (w <= 0) continue;
         const X = T(w); p.xf = p.xf ? H.compose(X, p.xf) : X;
       }
       for (const st of sh.areolaStamps || []) { const w = wOf(st.q[2]); if (w > 0) st.q = app(T(w), st.q); }
@@ -974,6 +1000,7 @@
     const m = motion(pose, f, n, body === 'mermaid', doll._mode || null, doll._tier || null);
     m.cup = doll.cup || null;   // deform 用：C 以下笑的時候不晃
     m.stance = doll._stance || null;   // 抱胸／放背後：手掌看不到（不貼）
+    m.sitK = doll._sit || 'm';   // 2026-11-24 癱坐的腿：m＝M 字坐、kneel＝跪坐（鴨子坐）
     if (m.stance === 'cross' || m.stance === 'back') m.gest = 0;   // 抱胸／手放背後：說話不比手勢
     // 分三次畫：只有身體 → 身體＋內衣（胸罩、丁字褲）→ 身體＋外衣（T 恤），再一層層疊灰色上去
     // 先用全部零件變形（脫 T 恤時手要照 T 恤的下襬走——只畫身體那一層也要看得到 T 恤），再篩這一層要畫的
@@ -982,7 +1009,7 @@
     const hasU = base.sh.prims.some(p => p.cloth && p.under), hasO = base.sh.prims.some(p => p.cloth && !p.under);
     const r = run(p => !p.cloth);
     shade(r.pixels);
-    const armDark = !!(doll._mode || m.react || m.ang || doll._stance === 'cross');
+    const armDark = !!(doll._mode || m.react || m.ang || doll._stance === 'cross' || (m.fg && /^c[dsq]$/.test(m.fg.kind)));   // 癱坐：撐地的手臂在身體兩側，要看得出來
     if (armDark) {   // 脫光後的姿勢、被摸的反應、生氣說話、站姿抱胸（2026-11-24）：手臂疊在身體前面的地方加深（使用者：半透明的影子疊兩層＝比較深；不用淺色）
       const isArm = (p) => !p.cloth && (p.part === 'armL' || p.part === 'armR');
       // 2026-11-23 使用者：手跟身體重疊要分前後，手在後面就不要加深（例如在乳房／罩杯下面、衣服裡面）→ 比前後時連衣服（袖子以外）一起算，手臂要在最前面才加深
