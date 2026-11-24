@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=30', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=31', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
@@ -27,7 +27,8 @@
   //   接著循環講話那 8 格；講完 1.2 秒手放下（進場的手部那幾格倒著播）
   // 開心笑（2026-11-21 使用者）：笑彎腰（抱胸、彎腰低頭，笑得一抖一抖）、摀嘴仰頭笑（一手遮嘴、頭往後仰）：進場 4 格 → 笑的循環 6 格 → 放下
   const ANGS = ['ang_akimbo', 'ang_cross', 'laugh_bend', 'laugh_back'];
-  const EMO_OF = { angry: ['ang_akimbo', 'ang_cross'], happy: ['laugh_bend', 'laugh_back'] };
+  const EMO_OF = { angry: ['ang_akimbo', 'ang_akimbo'], happy: ['laugh_bend', 'laugh_back'] };   // 2026-11-24 使用者：生氣＝兩手用力插腰、身體頓一下（不再抽到抱胸）
+  const ANGS_PLAY = ['ang_akimbo', 'laugh_bend', 'laugh_back'];   // 遊戲裡會播的（抱胸 ang_cross 留給 testword）
   const ANG = {
     ang_akimbo: { enter: 12, loop: [12, 19], exit: [3, 2, 1, 0], ms: (i) => (i < 4 ? 75 : i === 4 ? 60 : i < 12 ? 75 : 150) },
     ang_cross: { enter: 5, loop: [5, 12], exit: [4, 3, 2, 1, 0], ms: (i) => (i < 5 ? 85 : 155) },
@@ -179,10 +180,10 @@
       const sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }, ak = pose === 'ang_akimbo';
       let wa, jolt = 0, bounce = 0, wave = 0, tilt, nod, turn, br;
       if (ak) {
-        wa = sm(f / 3);
-        jolt = f === 4 ? .9 : f === 5 ? -.3 : 0;
-        const BT = [0, 0, 0, 0, -1, .9, -.6, .4, -.25, .15, -.08, 0]; bounce = BT[f] || 0; wave = BT[f - 1] || 0;   // 乳房相對身體的上下（身體往上它晚到＝往下）
-        if (f < 12) { tilt = -2 * wa; nod = 4 * wa - (f === 4 ? 4 : 0); turn = -10 * wa; br = f >= 4 && f < 8 ? .8 : .3; }
+        wa = sm(f / 2.5);   // 用力：兩手 2.5 格內插到腰上
+        jolt = f === 3 ? 1.15 : f === 4 ? -.4 : 0;   // 插到位的那一下身體往上頓一下、落下
+        const BT = [0, 0, 0, -1.1, 1, -.65, .42, -.26, .15, -.08, 0, 0]; bounce = BT[f] || 0; wave = BT[f - 1] || 0;   // 乳房相對身體的上下（身體往上它晚到＝往下）
+        if (f < 12) { tilt = -2 * wa; nod = 4 * wa - (f === 3 ? 4 : 0); turn = -10 * wa; br = f >= 4 && f < 8 ? .8 : .3; }
         else { const q = 2 * Math.PI * (f - 12) / 8; tilt = -2 + 2.5 * Math.sin(q); nod = 4 + 3 * Math.max(0, Math.sin(2 * q)); turn = -10 + 3 * Math.sin(q); br = .45 + .25 * Math.sin(2 * q); }
       } else {
         wa = sm(f / 4);
@@ -581,7 +582,9 @@
         const mq = headX ? app(headX, [mo[0], mo[1] - .7 * Jm, mo[2] + hl + 1.6 * Jm]) : mo;
         if (A.armL) { hands.armL = lerp(A.armL.w0, mq, w); poles.armL = [-.25, .35, -1]; }   // 手肘往下垂、前臂從胸前斜上來（不要橫過臉）
       } else if (m.ang.kind === 'akimbo') {
-        if (A.armL && A.armR) { const r = A.armR.w0; hands.armL = lerp(A.armL.w0, [-r[0], r[1], r[2]], w); poles.armL = [-1, -.4, .15]; }
+        // 2026-11-24 使用者：生氣兩手用力插腰（站姿不一定叉腰了）→ 兩手都從原本的位置插到腰側（軀幹在那個高度的側邊外 1.6）
+        const hipZ = zW - .22 * P.T, side = (sd) => { const TP = sh.prims.filter(p => p.mat === 0 && !p.cloth && !p.carve && !['armL', 'armR', 'head', 'breast'].includes(p.part)); for (let x = sd * 16; Math.abs(x) > 1; x -= sd * .25) for (const p of TP) if (H.primDist(p, x, .3, hipZ) < 0) return x; return sd * 6; };
+        for (const [part, sd] of [['armL', -1], ['armR', 1]]) if (A[part]) { hands[part] = lerp(A[part].w0, [side(sd) + sd * 1.6, .3, hipZ], w); poles[part] = [sd, -.4, .15]; }
         SOFT = { [-1]: [0, 0, jig * m.ang.bounce * (.5 + 1.3 * big)], [1]: [0, 0, jig * m.ang.bounce * (.5 + 1.3 * big)] };   // 晃：根部不動、下半顆晃得最多（穿衣服晃得少）
       } else if (BR[0] && BR[1]) {
         // 2026-11-21 使用者：大於 C 的抱胸不是把胸壓扁，是手臂把胸撐起來、胸部放在手臂上——
@@ -775,6 +778,12 @@
     }
     // 抱胸：前臂橫過去那一條，外衣（T 恤垂下來的布）被手臂壓到後面——不然大胸穿 T 恤時布垂在手臂前面，看起來像手在背後（2026-11-22 使用者）
     //   T 恤從胸口垂下來的布是一條條直的長圓錐：只要跟這條重疊、又凸到手臂前面，就拿掉（手臂蓋住的地方，後面那層布還在）
+    // 2026-11-24 站姿抱胸（手沒被其他動作拉走）：穿 T 恤時前臂在布裡面 → 跟生氣抱胸一樣，前臂那一條凸到手臂前面的外衣拿掉
+    if (!crossBand && !modePlan && !anim && m.stance === 'cross' && sh._arms && sh._arms.length === 2) {
+      const W = sh._arms.map(([, , wr, o]) => [wr[0] + (o ? o[0] : 0), wr[1] + (o ? o[1] : 0), wr[2] + (o ? o[2] : 0)]), E = sh._arms.map(([, el, , o]) => [el[0] + (o ? o[0] : 0), el[2] + (o ? o[2] : 0)]);
+      const zA = (W[0][2] + W[1][2]) / 2;
+      crossBand = { zLo: zA - 3.2, zHi: zA + 1.6, xMax: Math.max(Math.abs(E[0][0]), Math.abs(E[1][0])) + 1.5, y: Math.min(W[0][1], W[1][1]) - 1.35 };
+    }
     if (crossBand) {
       const lim = crossBand.y - .6;
       const span = (p) => p.k === 1 ? [Math.min(p.a[2], p.a[2] + p.ba[2]) + p.off[2], Math.max(p.a[2], p.a[2] + p.ba[2]) + p.off[2]] : [p.bc[2] + p.off[2] - (p.r ? p.r[2] : p.br), p.bc[2] + p.off[2] + (p.r ? p.r[2] : p.br)];
@@ -899,7 +908,7 @@
       if (!fo) continue;
       const Wq = (q) => { const v = [q[0] + fo.off[0], q[1] + fo.off[1], q[2] + fo.off[2]]; return fo.xf ? app(fo.xf, v) : v; };
       const w = Wq([fo.a[0] + fo.ba[0], fo.a[1] + fo.ba[1], fo.a[2] + fo.ba[2]]), e = Wq(fo.a);
-      const g = handSet[part] ? handG[part] : modePlan && modePlan.hands && modePlan.hands[part] ? 'flat' : handG[part];
+      const g = handSet[part] ? handG[part] : modePlan && modePlan.hands && modePlan.hands[part] ? 'flat' : m.stance === 'cross' || m.stance === 'back' ? 'none' : handG[part];   // 站姿抱胸／放背後：手塞在手臂下／身體後面
       sh._hands.push({ part, w, d: nrm([w[0] - e[0], w[1] - e[1], w[2] - e[2]]), g, r: fo.rb, hide: !!fo.inCloth });
     }
   }
@@ -964,6 +973,8 @@
     const shape = () => ({ P: base.P, sh: Object.assign({}, base.sh, { prims: base.sh.prims.map(p => Object.assign({}, p)), areolaStamps: (base.sh.areolaStamps || []).map(q => Object.assign({}, q)) }) });
     const m = motion(pose, f, n, body === 'mermaid', doll._mode || null, doll._tier || null);
     m.cup = doll.cup || null;   // deform 用：C 以下笑的時候不晃
+    m.stance = doll._stance || null;   // 抱胸／放背後：手掌看不到（不貼）
+    if (m.stance === 'cross' || m.stance === 'back') m.gest = 0;   // 抱胸／手放背後：說話不比手勢
     // 分三次畫：只有身體 → 身體＋內衣（胸罩、丁字褲）→ 身體＋外衣（T 恤），再一層層疊灰色上去
     // 先用全部零件變形（脫 T 恤時手要照 T 恤的下襬走——只畫身體那一層也要看得到 T 恤），再篩這一層要畫的
     const capH = {};   // 第一次 render 順便拿手腕資料（貼像素手用）
@@ -971,7 +982,8 @@
     const hasU = base.sh.prims.some(p => p.cloth && p.under), hasO = base.sh.prims.some(p => p.cloth && !p.under);
     const r = run(p => !p.cloth);
     shade(r.pixels);
-    if (doll._mode || m.react || m.ang) {   // 脫光後的姿勢、被摸的反應、生氣說話：手臂疊在身體前面的地方加深（使用者：半透明的影子疊兩層＝比較深；不用淺色）
+    const armDark = !!(doll._mode || m.react || m.ang || doll._stance === 'cross');
+    if (armDark) {   // 脫光後的姿勢、被摸的反應、生氣說話、站姿抱胸（2026-11-24）：手臂疊在身體前面的地方加深（使用者：半透明的影子疊兩層＝比較深；不用淺色）
       const isArm = (p) => !p.cloth && (p.part === 'armL' || p.part === 'armR');
       // 2026-11-23 使用者：手跟身體重疊要分前後，手在後面就不要加深（例如在乳房／罩杯下面、衣服裡面）→ 比前後時連衣服（袖子以外）一起算，手臂要在最前面才加深
       const arms = run(isArm), body = run(p => !isArm(p) && !p.sleeve && !(p.cloth && (p.part === 'armL' || p.part === 'armR'))), px = r.pixels, ad = arms.depth, bd = body.depth;
@@ -1019,7 +1031,7 @@
         px[j] = Math.min(255, px[j] * k); px[j + 1] = Math.min(255, px[j + 1] * k); px[j + 2] = Math.min(255, px[j + 2] * k);
       }
     }
-    if (capH.h) pasteHands(r, capH.h, scale, cv, !!(doll._mode || m.react || m.ang), hasO);
+    if (capH.h) pasteHands(r, capH.h, scale, cv, armDark, hasO);
     return r;
   }
 
@@ -1248,9 +1260,16 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
 
   /** 身形＋衣著＋姿勢 → droom 人偶（聊天和 testword 測試台共用）。st：脫衣進度 0～3；undressing：脫衣對話（美人魚坐姿）；
    *  mode：脫光後的姿勢（cover／fondle／touch），沒給就照關係（妻子以下 cover、妻子 wifePick）。 */
+  /** 站姿手勢：照外觀（同一個魅子永遠一樣）三選一。 */
+  function stanceOf(look) {
+    const t = JSON.stringify([look?.hair, look?.face, look?.eyes, look?.eye_color, look?.height_cm, look?.cup, look?.build]);
+    let h = 7; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+    return ['down', 'back', 'cross'][h % 3];
+  }
   function dollOf(s, st, undressing, mode) {
     const doll = F.lookToDoll(s.look || null, { outfit: s.outfit, undressStage: st, belly: s.belly });
-    if (s.noHair) doll._noHair = 1;   // 2026-11-23 edit_pic 臉模型：同一個姿勢另外算一張光頭（肉臉），AI 畫臉、再蓋回頭髮
+    if (s.noHair) doll._noHair = 1;
+    doll._stance = stanceOf(s.look);   // 2026-11-24 使用者：平常站著手抱胸／放背後／自然放下，每個魅子固定一種   // 2026-11-23 edit_pic 臉模型：同一個姿勢另外算一張光頭（肉臉），AI 畫臉、再蓋回頭髮
     Object.assign(doll, shapeOf(s.look?.breast_shape));
     if (/外擴/.test(String(s.look?.breast_splay || ''))) doll.splay = 'wide';   // 外擴是另一個維度（2026-11-21 使用者：例如木瓜型＋外擴、母乳型＋外擴）
     doll.areola = areolaOf(s.look?.areola);
@@ -1302,7 +1321,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       if (cvOf(doll) === CV) for (const r of REACTS) { job.sets[r] = []; for (let f = 0; f < NA_OF[r]; f++) todo.push([r, f]); }
       for (let f = 1; f < N; f++) todo.push(['breathe', f]);
       for (let f = 0; f < N; f++) todo.push(['talk', f]);
-      if (cvOf(doll) === CV && !doll._mode) for (const a of ANGS) { job.sets[a] = []; for (let f = 0; f < NA_OF[a]; f++) todo.push([a, f]); }   // 生氣說話（站著、還沒脫光）
+      if (cvOf(doll) === CV && !doll._mode) for (const a of ANGS_PLAY) { job.sets[a] = []; for (let f = 0; f < NA_OF[a]; f++) todo.push([a, f]); }   // 生氣說話（站著、還沒脫光）
       if (doll._mode === 'touch') { job.sets.peak = []; for (let f = 0; f < NA_OF.peak; f++) todo.push(['peak', f]); }   // 忽然仰頭（偶爾播）
       if (cvOf(doll) === CV && doll._mode !== 'touch') for (const c of ['col_d', 'col_q', 'col_s']) { job.sets[c] = []; for (let f = 0; f < NA_OF[c]; f++) todo.push([c, f]); }   // 噴水後癱坐（2026-11-22）：先在背景算好（算過的存起來，下次直接拿），放開時才坐得下去
     }
@@ -1346,7 +1365,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       const d0 = dollOf(s, st, false, md);
       list.push([d0, 'breathe'], [d0, 'talk']);
       if (stand(d0)) for (const r of REACTS) list.push([d0, r]);
-      if (stand(d0) && !d0._mode) for (const a of ANGS) list.push([d0, a]);
+      if (stand(d0) && !d0._mode) for (const a of ANGS_PLAY) list.push([d0, a]);
       if (d0._mode === 'touch') list.push([d0, 'peak']);
       if (stand(d0) && d0._mode !== 'touch') for (const c of ['col_d', 'col_q', 'col_s']) list.push([d0, c]);
       if (stand(d0)) for (const f of ['fg_r0', 'fg_w0', 'fg_r1', 'fg_w1', 'fg_r2', 'fg_w2', 'fg_rx', 'fg_wx']) list.push([d0, f]);

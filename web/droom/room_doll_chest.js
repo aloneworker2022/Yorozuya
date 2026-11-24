@@ -2163,9 +2163,36 @@
         sh.off = o;
         const tor = torso(sh, P, doll);
         skirt(sh, P, doll, tor);
-        for (const s of [-1, 1]) {
+        // 2026-11-24 聊天黑影（使用者）：平常站著手不是抱胸、就是放背後、或自然放下（每個魅子固定一種，doll._stance），不是叉腰
+        const ST = doll._stance;
+        if (ST === 'back' || ST === 'cross') for (const s of [-1, 1]) {
           const sh_j = [s * 8.3 * F(b, 'sh'), -.4, tor.S - SHJ_DZ];
-          if (s === w) {
+          // 手臂長度照垂手那一版（縮短 ARM_K 後），自己擺：上臂先往外往下到乳房外側（不然整隻躲在身體／乳房後面），前臂再伸向目標
+          const eH = [s * Math.max(waist_out + 2.8 * F(b, 'arm') + 1.6, arm_clear()), -1.0, tor.zW - 1], wH = [s * (hip_out + 1.5 * F(b, 'arm') + 1.1), .8, tor.C - 1];
+          const dist = (a, c) => hypot3(a[0] - c[0], a[1] - c[1], a[2] - c[2]), L1 = dist(eH, sh_j) * ARM_K, L2 = dist(wH, eH) * ARM_K;
+          const toward = (o, t, L) => { const d = [t[0] - o[0], t[1] - o[1], t[2] - o[2]], n = hypot3(d[0], d[1], d[2]) || 1, k = Math.min(L, n) / n; return [o[0] + d[0] * k, o[1] + d[1] * k, o[2] + d[2] * k]; };
+          let target, ed;
+          if (ST === 'back') {   // 手放背後：上臂沿身體外側往下、手肘往後，前臂往後腰中間
+            const zH = tor.zW - .12 * tor.T, by = backSurfaceY(sh, s * 2, zH);
+            target = [s * 2, (by === null ? -5 : by) - 1.3, zH];
+            ed = [eH[0] - sh_j[0] + s * .8, -3.2, eH[2] - sh_j[2]];
+          } else {   // 抱胸：前臂橫在乳房下面、手腕到另一邊（右手在外面低一點）
+            const r = tor.cupr || 3, wx = -s * (1.6 + r * .7);
+            let zBot = 1e9;   // 乳房真正的最低點（下垂的大胸比 zB−r 低很多；前臂要在它下面）
+            for (const p of sh.prims) if (p.part === 'breast' && !p.cloth && p.k === 0 && p.r) zBot = Math.min(zBot, p.c[2] + p.off[2] - p.r[2]);
+            if (zBot > 1e8) zBot = tor.zB - r;
+            const zA = Math.min(zBot - 1.3, tor.zB - r * .6) - (s > 0 ? .7 : 0);
+            const fys = [wx, 0, -wx].map((x) => frontSurfaceY(sh, x, zA)).filter((v) => v !== null);   // 前臂橫過整個肚子：取最凸的（中間）那點，不然中段埋進肚子
+            const y = (fys.length ? Math.max(...fys) : tor.yl(zA)) + 1.8 + (s > 0 ? .9 : 0);
+            target = [wx, y, zA];
+            ed = [s * Math.max(waist_out + 1.2, r * .7 + 3) - sh_j[0], (y - 1.2 - sh_j[1]) / .9, zA - 1.2 - sh_j[2]];   // 手肘在乳房下面、肚子前面（往內收也不會被乳房擋）
+          }
+          const elbow = toward(sh_j, [sh_j[0] + ed[0] * 9, sh_j[1] + ed[1] * 9, sh_j[2] + ed[2] * 9], L1), wrist = toward(elbow, target, L2);
+          const k0 = ARM_K; ARM_K = 1; try { arm(sh, P, sh_j, elbow, wrist); } finally { ARM_K = k0; }   // 長度已經是縮短後的，不再縮
+        }
+        else for (const s of [-1, 1]) {
+          const sh_j = [s * 8.3 * F(b, 'sh'), -.4, tor.S - SHJ_DZ];
+          if (s === w && ST !== 'down') {
             const elbow = [s * Math.max(waist_out + 2.8 * F(b, 'arm') + 6.2, hip_out + 2.2), -1.8, tor.zW + 2.5];
             const wrist = [s * (waist_out + (hip_out - waist_out) * .45 + 1.6), .3, tor.zW - .22 * tor.T];
             if (doll._mode) arm(sh, P, sh_j, elbow, wrist);   // 2026-11-20 聊天黑影脫光後的姿勢（手會被拉去遮下體／托胸）：畫完整的手掌、不畫插腰的拳頭
