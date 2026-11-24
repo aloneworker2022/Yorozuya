@@ -1213,7 +1213,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   }
 
   // ---------------------------------------------------------------- 畫面
-  let wrap = null, canvas = null, ctx = null;
+  let wrap = null, canvas = null, ctx = null, waitEl = null;
   let cur = null;          // { key, sets: { breathe: ImageData[], talk: ImageData[] }, dead }
   let talkUntil = 0, raf = 0, clock = 0, lastT = 0, mode = 'breathe';
 
@@ -1239,6 +1239,12 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     FG.zoom.append(canvas, FG.hand);
     wrap.appendChild(FG.zoom);
     talk.insertBefore(wrap, talk.firstChild);
+    waitEl = document.createElement('div');   // 黑影還沒算好的提示（立繪上方）
+    waitEl.id = 'chat-shadow-wait';
+    waitEl.textContent = '黑影準備中…還不能摸她';
+    waitEl.hidden = true;
+    waitEl.style.cssText = 'position:fixed;top:30%;left:50%;transform:translateX(-50%);z-index:30;pointer-events:none;font-size:.78em;color:#fff;background:rgba(30,26,40,.55);padding:.25em .8em;border-radius:1em;white-space:nowrap';
+    talk.appendChild(waitEl);
     return wrap;
   }
 
@@ -1326,6 +1332,39 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     for (const [p] of job.todo) if (!order.includes(p)) order.push(p);
     job.todo = [];
     order.forEach((p, i) => srvLoad(job, p, Math.min(9, 2 + i)));
+  }
+  // 2026-11-24 使用者：要用有空的時間做——魅子在房間裡（還沒打開聊天）就把她可能用到的整套動作用最低的順序送 RP5，
+  //   伺服器沒有急件時才算；打開聊天時 prepare 會把同一組的順序提高。只送單、不等（不輪詢），好了就在 RP5 的圖庫裡。
+  let warmKey = '';
+  function prewarm() {
+    if (SRV.off) return;
+    const s = spec();
+    if (!s) return;
+    if (!F) { loadDroom().then(prewarm).catch(() => {}); return; }
+    const st = Math.max(0, Math.min(3, Number(s.undressStage) || 0));
+    const k = JSON.stringify([s.look, s.outfit, st, s.tier, s.wife, s.belly]);
+    if (k === warmKey) return;
+    warmKey = k;
+    const list = [];
+    const stand = (d) => cvOf(d) === CV;
+    const modes = st >= 3 && s.wife ? ['fondle', 'touch'] : [null];   // 妻子脫光：每次打開隨機一種，兩種都先算
+    for (const md of modes) {
+      const d0 = dollOf(s, st, false, md);
+      list.push([d0, 'breathe'], [d0, 'talk']);
+      if (stand(d0)) for (const r of REACTS) list.push([d0, r]);
+      if (stand(d0) && !d0._mode) for (const a of ANGS) list.push([d0, a]);
+      if (d0._mode === 'touch') list.push([d0, 'peak']);
+      if (stand(d0) && d0._mode !== 'touch') for (const c of ['col_d', 'col_q', 'col_s']) list.push([d0, c]);
+      if (stand(d0)) for (const f of ['fg_r0', 'fg_w0', 'fg_r1', 'fg_w1', 'fg_r2', 'fg_w2', 'fg_rx', 'fg_wx']) list.push([d0, f]);
+    }
+    if (st < 3) {
+      const du = dollOf(s, st, true, null); list.push([du, animOf(du, st)]);   // 脫下一件的動畫（脫衣對話）
+      const d1 = dollOf(s, st + 1, false, null); list.push([d1, 'breathe'], [d1, 'talk']);   // 脫完以後
+    }
+    list.forEach(([doll, pose], i) => {
+      fetch(srvApi, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ doll, pose, prio: i < 7 ? 7 : i < 20 ? 8 : 9 }) })
+        .then((r) => { if (r.status === 404 || r.status === 503) SRV.off = true; }).catch(() => {});
+    });
   }
   function runLocal(job) {
     const doll = job.doll;
@@ -1581,7 +1620,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const sheet = document.getElementById('portrait-sheet');
     if (!ensureEl()) return;
     const open = !!(sheet && !sheet.hidden);
-    if (open && !wasOpen) { portraitMode = false; wifePick = Math.random() < .5 ? 'fondle' : 'touch'; openedAt = performance.now(); }
+    if (open && !wasOpen) { portraitMode = false; wifePick = Math.random() < .5 ? 'fondle' : 'touch'; openedAt = performance.now(); setTimeout(sync, 450); }
     wasOpen = open;
     // 脫衣對話開始／結束：開始時釘住目前的脫衣進度（坐下）；結束就照實際進度（站起來）
     const undressOn = open && !!sheet?.classList.contains('undress-chat');
@@ -1595,8 +1634,13 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     // 換姿勢／換下一階時新的一組還在算：黑影留著（畫布停在上一格），不要閃掉
     const on = want && (ready || (open && !wrap.hidden && !wrap.classList.contains('cs-out')));
     sheet?.classList.toggle('portrait-mode', open && portraitMode);
-    // 使用者：點房間的她先跑出立繪才生字不對 → 一打開就把立繪藏起來（不等黑影第一格算好）
-    sheet?.classList.toggle('has-shadow', want);
+    // 使用者：點房間的她先跑出立繪才生字不對 → 一打開先藏立繪 0.4 秒（手機裡存過的黑影來得及出來，不會閃）；
+    // 2026-11-24 使用者：黑影還沒算好（RP5 還在算）→ 顯示上半身立繪、不能互動（摸、手指插入都在黑影上，立繪上摸不到），上面一行小字
+    const grace = open && performance.now() - openedAt < 400;
+    sheet?.classList.toggle('has-shadow', want && (on || grace));
+    const waiting = open && want && !on && !grace && !undressOn;
+    sheet?.classList.toggle('shadow-wait', waiting);
+    if (waitEl) waitEl.hidden = !waiting;
     if (on && (wrap.hidden || wrap.classList.contains('cs-out'))) {
       clearTimeout(fadeT); fadeT = 0;
       if (wrap.hidden) canvas.dataset.f = '';
@@ -2042,6 +2086,9 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (meta) new MutationObserver(talking).observe(meta, { childList: true, subtree: true, characterData: true });
     // 換衣服、脫衣、懷孕肚子變了：開著的時候每 2 秒對一次（同一個身形不重算）
     setInterval(() => { if (!sheet.hidden) sync(); }, 2000);
+    // 有空先算（2026-11-24）：魅子在房間裡就先把她的黑影交給 RP5；樣子變了（脫衣、換衣服、關係）才再送
+    setTimeout(prewarm, 4000);
+    setInterval(prewarm, 30000);
     // 對話框高度、螢幕大小變了：重新對齊腳底
     window.addEventListener('resize', () => placeFeet());
     const tb = document.getElementById('talk-box');
