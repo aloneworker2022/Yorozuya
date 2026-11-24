@@ -8258,6 +8258,137 @@ async def shadow_render(req: ShadowRenderReq):
     return {"id": job_id, "status": "queued"}
 
 
+# 2026-11-24 遊戲裡的聊天黑影也改成 RP5 背景算（使用者）：前台送「人偶（chat_shadow dollOf 算好的）＋動作」，
+#   伺服器一次算完整組格子存成圖庫（data/shadow_cache/set_<鑰匙>.png＋.json），手機只拿成品播，不再自己算（慢又燙）。
+#   照 prio 排隊（小的先；被摸的部位、手指插入那種要馬上播的會插隊），跟 testword 的送後台算共用 _shadow_sem（一次只跑一個 Node）。
+SET_JOBS: dict = {}
+_set_wake: asyncio.Event | None = None
+_set_task: asyncio.Task | None = None
+
+
+class ShadowSetReq(BaseModel):
+    doll: dict
+    pose: str
+    prio: int = 5
+
+
+def _shadow_ver() -> str:
+    return "|".join(str(int(p.stat().st_mtime)) for p in (
+        WEB_DIR / "content" / "chat_shadow.js", WEB_DIR / "droom" / "room_doll_chest.js", Path(__file__).resolve().parent / "shadow_render.mjs") if p.exists())
+
+
+def _set_key(doll: dict, pose: str) -> str:
+    raw = json.dumps({"doll": doll, "pose": pose, "ver": _shadow_ver()}, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:24]
+
+
+def _set_meta(key: str) -> dict | None:
+    meta, png = SHADOW_CACHE_DIR / f"set_{key}.json", SHADOW_CACHE_DIR / f"set_{key}.png"
+    if not (meta.exists() and png.exists()):
+        return None
+    out = json.loads(meta.read_text("utf-8"))
+    out["url"] = f"/api/shadow-set-png/{key}"
+    return out
+
+
+async def _set_worker() -> None:
+    while True:
+        queued = [(j["prio"], j["created"], jid) for jid, j in SET_JOBS.items() if j["status"] == "queued"]
+        if not queued:
+            _set_wake.clear()
+            await _set_wake.wait()
+            continue
+        _, _, jid = min(queued)
+        job = SET_JOBS[jid]
+        try:
+            async with _shadow_sem:
+                job["status"] = "running"
+                job["started"] = time.time()
+                proc = await asyncio.create_subprocess_exec(
+                    shutil.which("node"), str(Path(__file__).resolve().parent / "shadow_render.mjs"),
+                    stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+                try:
+                    out, err = await asyncio.wait_for(proc.communicate(json.dumps({"doll": job["doll"], "pose": job["pose"]}).encode()), timeout=1200)
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    raise RuntimeError("算太久（超過 20 分鐘）")
+                if proc.returncode != 0:
+                    raise RuntimeError("算圖失敗：" + err.decode("utf-8", "replace")[-600:])
+                res = json.loads(out)
+                SHADOW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+                (SHADOW_CACHE_DIR / f"set_{job['key']}.png").write_bytes(base64.b64decode(res.pop("png")))
+                (SHADOW_CACHE_DIR / f"set_{job['key']}.json").write_text(json.dumps(res, ensure_ascii=False), "utf-8")
+                job["status"] = "done"
+        except Exception as e:  # noqa: BLE001 — 失敗原因照實給前台（前台會改回手機自己算）
+            job["status"] = "error"
+            job["error"] = str(e)[-800:]
+        job.pop("doll", None)
+
+
+@app.post("/api/shadow-set")
+async def shadow_set(req: ShadowSetReq):
+    """遊戲黑影：這個人偶的這一組動作。算過的馬上回 done（附圖庫網址），沒算過的排隊、回工作編號給前台問。"""
+    global _set_wake, _set_task
+    if not shutil.which("node"):
+        raise HTTPException(503, "伺服器沒有 Node.js（樹莓派：sudo apt install nodejs）")
+    if not re.fullmatch(r"[a-z_0-9]{1,24}", req.pose or ""):
+        raise HTTPException(400, "動作名稱不對")
+    if len(json.dumps(req.doll)) > 40000:
+        raise HTTPException(400, "人偶資料太大")
+    key = _set_key(req.doll, req.pose)
+    meta = _set_meta(key)
+    if meta:
+        return {"id": "", "status": "done", "key": key, **meta}
+    prio = max(0, min(9, int(req.prio)))
+    for jid, j in SET_JOBS.items():   # 同一組已經在排／在算：接著等同一個（要更急就插隊）
+        if j["key"] == key and j["status"] in ("queued", "running"):
+            j["prio"] = min(j["prio"], prio)
+            return {"id": jid, "status": j["status"], "key": key}
+    for jid in [k for k, j in SET_JOBS.items() if j["status"] in ("done", "error") and time.time() - j["created"] > 6 * 3600]:
+        SET_JOBS.pop(jid, None)
+    job_id = uuid.uuid4().hex[:12]
+    SET_JOBS[job_id] = {"key": key, "status": "queued", "created": time.time(), "prio": prio, "doll": req.doll, "pose": req.pose}
+    if _set_wake is None:
+        _set_wake = asyncio.Event()
+    if _set_task is None or _set_task.done():
+        _set_task = asyncio.create_task(_set_worker())
+    _set_wake.set()
+    return {"id": job_id, "status": "queued", "key": key}
+
+
+@app.get("/api/shadow-set/{job_id}")
+async def shadow_set_status(job_id: str):
+    """問遊戲黑影的算圖工作：queued（ahead＝前面還有幾組）／running（elapsed 秒）／done（附圖庫網址）／error。"""
+    job = SET_JOBS.get(job_id)
+    if not job:
+        raise HTTPException(404, "找不到這個工作（伺服器重開過？再送一次）")
+    out = {"id": job_id, "status": job["status"], "key": job["key"]}
+    if job["status"] == "queued":
+        out["ahead"] = sum(1 for j in SET_JOBS.values() if j["status"] == "queued" and (j["prio"], j["created"]) < (job["prio"], job["created"])) + sum(1 for j in SET_JOBS.values() if j["status"] == "running")
+    elif job["status"] == "running":
+        out["elapsed"] = round(time.time() - job.get("started", time.time()), 1)
+    elif job["status"] == "error":
+        out["error"] = job.get("error", "")
+    elif job["status"] == "done":
+        meta = _set_meta(job["key"])
+        if not meta:
+            raise HTTPException(410, "結果不見了，再送一次")
+        out.update(meta)
+    return out
+
+
+@app.get("/api/shadow-set-png/{key}")
+async def shadow_set_png(key: str):
+    """圖庫的一組（橫排 PNG）；鑰匙含程式版本，內容不會變 → 讓瀏覽器長期快取。"""
+    if not re.fullmatch(r"[0-9a-f]{24}", key):
+        raise HTTPException(400, "鑰匙不對")
+    from fastapi.responses import FileResponse
+    path = SHADOW_CACHE_DIR / f"set_{key}.png"
+    if not path.exists():
+        raise HTTPException(404, "還沒算好")
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
 @app.get("/api/shadow-render/{job_id}")
 async def shadow_render_status(job_id: str):
     """問算圖工作：queued／running（elapsed 秒）／done（附結果）／error（附原因）。"""

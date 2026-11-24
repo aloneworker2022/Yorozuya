@@ -1137,11 +1137,79 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       d.transaction('f', 'readwrite').objectStore('f').put({ blob, at: Date.now() }, k);
     } catch { /* 存不下就算了 */ }
   }
-  /** 把某一組（例如剛被摸的部位）插隊到最前面先算。 */
+  /** 把某一組（例如剛被摸的部位）插隊到最前面先算（RP5 那邊也插隊）。 */
   function bump(job, pose) {
+    if (job && job.srv && !SRV.off) srvLoad(job, pose, 0);
     if (!job.todo) return;
     const mine = job.todo.filter(([p]) => p === pose);
     job.todo = mine.concat(job.todo.filter(([p]) => p !== pose));
+  }
+
+  // ---------------------------------------------------------------- 2026-11-24 RP5 背景算（使用者：手機算圖又慢又燙）
+  //   每一組動作：手機 IndexedDB 有整組就直接用；沒有就把「人偶＋動作」送 /api/shadow-set 排隊，RP5 一次算完整組存成圖庫，
+  //   前台每隔一下問一次，好了下載那張橫排 PNG 切成一格一格（也存進 IndexedDB）。連不上後台（例如沒有 Node）才回到手機自己算。
+  const SRV = { off: false };
+  const srvApi = new URL('/api/shadow-set', (document.currentScript && document.currentScript.src) || location.href).href;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function srvJson(url, body) {
+    for (let k = 0; ; k++) {   // 手機切到背景時連線常被斷：網路錯誤（沒有狀態碼）等一下再試，試 6 次（約半分鐘）才放棄
+      let r;
+      try { r = await fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' }); }
+      catch (e) { if (k >= 5) throw e; await sleep(2000 + 1000 * k); continue; }
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { const e = new Error(j.detail || ('HTTP ' + r.status)); e.status = r.status; throw e; }
+      return j;
+    }
+  }
+  async function srvFrames(url, w, h, n) {   // 橫排 PNG → n 格 ImageData
+    const blob = await (await fetch(url)).blob(), bm = await createImageBitmap(blob);
+    const c = document.createElement('canvas'); c.width = w * n; c.height = h;
+    const x = c.getContext('2d', { willReadFrequently: true }); x.drawImage(bm, 0, 0); bm.close && bm.close();
+    const out = []; for (let i = 0; i < n; i++) out.push(x.getImageData(i * w, 0, w, h));
+    return out;
+  }
+  /** 這一組交給 RP5：prio 小的先算（0＝馬上要播）。同一組已經在等就只更新急不急。 */
+  function srvLoad(job, pose, prio) {
+    job.srv = job.srv || {};
+    const st = job.srv[pose];
+    if (st) { if (prio < st.prio && !st.done) { st.prio = prio; st.bump = true; } return; }
+    const me = job.srv[pose] = { prio, done: false, bump: false };
+    job.sets[pose] = job.sets[pose] || [];
+    const n = nOf(pose);
+    (async () => {
+      // ① 手機裡有整組（以前算過）：直接用
+      const ks = Array.from({ length: n }, (_, f) => fkey(job, pose, f)), have = await Promise.all(ks.map(cacheGet));
+      if (job.dead) return;
+      if (have.every(Boolean)) { have.forEach((img, f) => { job.sets[pose][f] = img; }); me.done = true; if (isReady(job) && !job.sentReady) { job.sentReady = true; sync(); } return; }
+      // ② 送 RP5 排隊、等它算好
+      let r;
+      try {
+        r = await srvJson(srvApi, { doll: job.doll, pose, prio: me.prio });
+        while (r.status !== 'done') {
+          if (job.dead) return;
+          if (r.status === 'error') throw new Error(r.error || '後台算圖失敗');
+          await sleep(r.status === 'running' ? 1500 : Math.min(10000, 2000 + 1500 * (r.ahead || 0)));   // 排在後面的少問幾次
+          if (me.bump) { me.bump = false; r = await srvJson(srvApi, { doll: job.doll, pose, prio: me.prio }); continue; }   // 要插隊：再送一次（同一組會合併、只把順序往前）
+          r = await srvJson(srvApi + '/' + r.id).catch((e) => {   // 伺服器重開過（工作不見了）：重新送單
+            if (e.status === 404 || e.status === 410) return srvJson(srvApi, { doll: job.doll, pose, prio: me.prio });
+            throw e;
+          });
+        }
+        const imgs = await srvFrames(r.url, r.w, r.h, r.n);
+        if (job.dead) return;
+        imgs.forEach((img, f) => { job.sets[pose][f] = img; void cachePut(ks[f], img); });
+        me.done = true;
+        if (isReady(job) && !job.sentReady) { job.sentReady = true; sync(); }
+      } catch (e) {
+        // ③ 後台不行：連不上／沒有 Node → 之後都手機自己算；只是這組失敗 → 這組手機自己算
+        if (!e.status || e.status === 503 || e.status === 404 && !r) SRV.off = true;   // 連不上／沒有 Node／舊伺服器沒有這個 API
+        console.warn('chat_shadow: RP5 算圖不行，改手機自己算', pose, e.message);
+        if (job.dead) return;
+        const add = []; for (let f = 0; f < n; f++) if (!job.sets[pose][f]) add.push([pose, f]);
+        job.todo = add.concat(job.todo || []);
+        if (!job.running) runLocal(job);
+      }
+    })();
   }
 
   // ---------------------------------------------------------------- 畫面
@@ -1245,12 +1313,21 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   /** 這一組要再多算一段（例如手指插入的反應）：排到最前面；工人都閒著就再開。 */
   function ensureSet(job, pose) {
     if (!job || job.dead || job.sets[pose]) return;
+    if (!SRV.off) { srvLoad(job, pose, 1); return; }
     job.sets[pose] = [];
     const add = []; for (let f = 0; f < nOf(pose); f++) add.push([pose, f]);
     job.todo = add.concat(job.todo || []);
-    if (!job.running) runJob(job);
+    if (!job.running) runLocal(job);
   }
+  /** 開始算這個人偶要用的所有動作：先交給 RP5（照 todo 的先後排隊），後台不行才手機自己算。 */
   function runJob(job) {
+    if (SRV.off) return runLocal(job);
+    const order = [];
+    for (const [p] of job.todo) if (!order.includes(p)) order.push(p);
+    job.todo = [];
+    order.forEach((p, i) => srvLoad(job, p, Math.min(9, 2 + i)));
+  }
+  function runLocal(job) {
     const doll = job.doll;
     const runner = async () => {
       job.running++;
@@ -1973,7 +2050,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   }
 
   // 2026-11-22 後台算圖（server/shadow_render.mjs 用 Node 跑這個檔）：不碰畫面，只把算圖的函式交出去
-  if (globalThis.__CHAT_SHADOW_HEADLESS) { Object.assign(globalThis.__CHAT_SHADOW_HEADLESS, { setF: (f) => { F = f; }, dollOf, wearOf, motion, drawFrame, nOf, playSeq, CV, SCALE, N }); return; }
+  if (globalThis.__CHAT_SHADOW_HEADLESS) { Object.assign(globalThis.__CHAT_SHADOW_HEADLESS, { setF: (f) => { F = f; }, dollOf, wearOf, motion, drawFrame, nOf, playSeq, cvOf, CV, SCALE, N }); return; }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
   // ---------------------------------------------------------------- testword 測試台（2026-11-21 使用者：黑影人動作測試，選體型、參數、衣著、動作，按播放）

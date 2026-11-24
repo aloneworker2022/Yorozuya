@@ -1,5 +1,6 @@
 // 2026-11-22 後台算黑影（使用者：手機平板算圖又慢又燙 → testword 填表單送後台算，算完交給前台播；同時量樹莓派一格要幾秒）
 // 用法：echo '{"spec":{...},"pose":"breathe"}' | node server/shadow_render.mjs
+//   2026-11-24 遊戲裡的聊天黑影也改成 RP5 背景算（使用者）：也可以直接給人偶 {"doll":{...},"pose":"talk"}（前台 dollOf 算好的），只算這一組
 //   讀 web/content/chat_shadow.js（headless 模式，只拿算圖的函式）和 web/droom/room_doll_chest.js，
 //   用所有 CPU 核心（worker_threads，最多 4 個）一起算，回一張橫排的連續圖（PNG，base64）＋播放順序＋花了多久。
 import fs from "node:fs";
@@ -57,7 +58,7 @@ if (!isMainThread) {
   // 工人：載一次算圖函式，一格一格算（同一個身形只建一次模型）
   const R = loadRenderer(), cache = {};
   parentPort.on("message", ({ id, doll, pose, f, n }) => {
-    try { const r = R.drawFrame(R.F, cache, doll, pose, f, n, R.SCALE, R.CV); parentPort.postMessage({ id, w: r.width, h: r.height, px: Buffer.from(r.pixels.buffer, r.pixels.byteOffset, r.pixels.byteLength) }); }
+    try { const r = R.drawFrame(R.F, cache, doll, pose, f, n, R.SCALE, R.cvOf ? R.cvOf(doll) : R.CV); parentPort.postMessage({ id, w: r.width, h: r.height, px: Buffer.from(r.pixels.buffer, r.pixels.byteOffset, r.pixels.byteLength) }); }   // 坐姿（美人魚坐）的畫布跟站著不一樣
     catch (e) { parentPort.postMessage({ id, err: String(e && e.stack || e) }); }
   });
 } else {
@@ -67,7 +68,7 @@ if (!isMainThread) {
   const known = new Set(["breathe", "talk", "bikini", ...Object.keys({ shirt: 1, bra: 1, panties: 1 })]);
   const pose0 = String(input.pose || "breathe");
   if (!known.has(pose0) && !(R.nOf(pose0) && /^[a-z_0-9]+$/.test(pose0))) throw new Error("不認得的動作：" + pose0);
-  const plan = planJob(R, input.spec || {}, pose0);
+  const plan = input.doll ? { pose: pose0, parts: [{ ps: pose0, doll: input.doll, n: R.nOf(pose0) }] } : planJob(R, input.spec || {}, pose0);
   const tasks = []; for (const p of plan.parts) for (let f = 0; f < p.n; f++) tasks.push({ id: tasks.length, doll: p.doll, pose: p.ps, f, n: p.n });
   const nW = Math.max(1, Math.min(4, os.cpus().length, tasks.length));
   const tLoad = Date.now();
