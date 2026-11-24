@@ -520,6 +520,15 @@
           hands[part] = lerp(A2[part].w0, fl, e); poles[part] = [sd, -.9, .25];   // 手肘往後外
         }
         handG.armL = handG.armR = 'open'; handSet.armL = handSet.armR = 1;   // 手掌撐地（張開）
+        // 2026-11-24 使用者：身體往後靠，乳房自然往兩邊攤開、往胸口貼平；從正面看像從乳房下緣往上看＝往上的半球
+        //   往後仰 tb：乳房（根部不動）往兩側攤、往身體貼回、下緣往上收；本體往前凸的縮小、左右變寬（越大越明顯）
+        const tb = Math.max(0, -(m.bend || 0)) * Math.PI / 180;
+        if (tb > .02 && BR[0] && BR[1]) {
+          const rr = Math.max(BR[0].r, BR[1].r), d = rr * (.5 + .4 * big) * Math.sin(tb) * .95;
+          SOFT = { [-1]: [-.8 * d, -.55 * d, .4 * d], [1]: [.8 * d, -.55 * d, .4 * d] };
+          const fl = Math.min(1, Math.sin(tb) / .47) * (.5 + .5 * big);   // 28° 時整個用上
+          for (const p of sh.prims) if (p.part === 'breast' && !p.cloth && !p.nip && p.k === 0 && p.r) { p.r = [p.r[0] * (1 + .1 * fl), p.r[1] * (1 - .2 * fl), p.r[2] * (1 - .06 * fl)]; p.br = Math.max(p.br, ...p.r); }
+        }
       } else
       if (k === 'r0') { grip('armR', .2, [1, .2, -.6]); grip('armL', .8, [-.6, .6, -.6]); }
       else if (k === 'r1') {   // 隔著褲子抓住玩家的手掌
