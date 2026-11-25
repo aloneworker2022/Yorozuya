@@ -495,6 +495,73 @@ window.RoomActivityContext = () => {
   if (HUNGER_ON) Object.assign(ctx, activityHunger(girl, { stageKey: girl.stage || "stranger", now: ctx.now, calm: ctx.calm }));
   return ctx;
 };
+// ---------------------------------------------------------------- 在家上網看文章（2026-11-25 使用者，§13.0 第 7 項；server/room_read.py）
+// 她在房間滑手機（躺在地上滑手機／蜷在椅子上滑手機）時，叫 RP5 讀一篇照她興趣的文章（有 Hermes 用 Hermes，沒有就看日本新聞標題）。
+// 最多兩小時一次；讀到的記成記憶（上網），聊天 prompt 帶最近那篇（6 小時內）。
+const READ_ACTS = new Set(["lie_phone", "chair_phone"]);
+const READ_GAP_MS = 2 * 3600e3;
+const READ_FRESH_MS = 6 * 3600e3;
+let roomReadBusy = false;
+async function maybeRoomRead(force = false) {
+  const who = girl;
+  if (!who || roomReadBusy || !girlInRoom()) return null;
+  if (!force && Date.now() - (Number(who.readAt) || 0) < READ_GAP_MS) return null;
+  roomReadBusy = true;
+  who.readAt = Date.now();
+  try {
+    const names = (arr) => (Array.isArray(arr) ? arr : []).map((x) => (typeof x === "string" ? x : x?.name || "")).filter(Boolean).slice(0, 8);
+    const resp = await fetch("/api/room/read", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: who.name || "", hobbies: names(who.hobbies), likes: names(who.likes), persona: basePersonality(who) }),
+    });
+    if (!resp.ok) return null;
+    const { job, topic, via } = await resp.json();
+    pushDebug(`上網：看「${topic}」的文章（${via === "hermes" ? "Hermes" : "新聞標題"}）`);
+    renderDebug();
+    for (let i = 0; i < 80; i++) {   // 最多約 6～7 分鐘
+      await new Promise((r) => setTimeout(r, 5000));
+      const pr = await fetch(`/api/room/read/${encodeURIComponent(job)}`, { cache: "no-store" });
+      if (!pr.ok) return null;
+      const st = await pr.json();
+      if (st.status !== "done") continue;
+      const res = st.result || {};
+      if (!res.ok || girl !== who) { pushDebug(`上網：沒讀成（${res.error || "沒找到"}）`); renderDebug(); return null; }
+      const item = { at: Date.now(), topic: res.topic || topic, title: res.title || "", url: res.url || "", gist: res.gist || "", feel: res.feel || "", via: res.via || via, told: 0 };
+      who.readLog = [...(Array.isArray(who.readLog) ? who.readLog : []), item].slice(-8);
+      try {
+        if (!who.world || typeof who.world !== "object") who.world = {};   // 剛住進來還沒出過門的室友：記憶也放在 world.mind
+        rememberExperience(who, { kind: "browse", text: `我在他房間用手機看了一篇文章「${item.title}」。${item.gist}${item.feel ? `${item.feel}` : ""}`.slice(0, 160), keys: ["上網", item.topic] });
+      } catch { /* */ }
+      pushDebug(`上網：讀完「${item.title.slice(0, 30)}」`);
+      renderDebug();
+      persistRoom();
+      return item;
+    }
+    return null;
+  } catch (err) {
+    console.warn("[room read]", err?.message || err);
+    return null;
+  } finally {
+    roomReadBusy = false;
+  }
+}
+/** 她這句有提到那篇（主題或標題裡的詞）→ 記一次。 */
+function noteReadMentioned(who, line) {
+  const log = Array.isArray(who?.readLog) ? who.readLog : [];
+  const it = log[log.length - 1];
+  if (!it || !line) return;
+  const words = [it.topic, ...String(it.title || "").split(/[\s、，。！？「」『』・｜|:：\-—]+/)].map((w) => String(w || "").trim()).filter((w) => w.length >= 2);
+  if (words.some((w) => line.includes(w))) it.told = (it.told || 0) + 1;
+}
+/** 聊天 prompt：最近（6 小時內）看的那篇；提過兩次就不再塞。 */
+function roomReadPromptLines(who = girl) {
+  const log = Array.isArray(who?.readLog) ? who.readLog : [];
+  const it = log[log.length - 1];
+  if (!it || Date.now() - (Number(it.at) || 0) > READ_FRESH_MS || (it.told || 0) >= 2) return [];
+  const trim = (t) => String(t || "").trim().replace(/[。.]+$/, "");
+  return [`【你剛在房間用手機看的文章】「${it.title}」（${it.topic}）${it.gist ? `：${trim(it.gist)}。` : "。"}${it.feel ? `你的感想：${trim(it.feel)}。` : ""}話題合適、或他問你剛在幹嘛時可以聊；不要每句都提，也不要唸網址。`];
+}
+
 let roomActSavedAt = 0;
 window.RoomActivitySink = (evt) => {
   const A = roomActs(), mem = roomActMem();
@@ -502,6 +569,7 @@ window.RoomActivitySink = (evt) => {
   if (evt.type === "start") {
     A.noteStart(mem, { id: evt.id, at: evt.at, dur: evt.dur, ordered: !!evt.ordered });
     if (evt.id === "hunger_beg" && HUNGER_ON) hungerBegStarted();
+    if (READ_ACTS.has(evt.id)) void maybeRoomRead();   // 2026-11-25 滑手機＝上網看文章（RP5／Hermes）
   } else if (evt.type === "hold" && mem.cur?.id === evt.id) {
     mem.cur.since = evt.at;
     // 2026-10-09 Al：不跳粉紅小卡，直接打開對話框（她開口求、下面只有「做愛／拒絕」）
@@ -9422,6 +9490,7 @@ function talkSystem(userText = "") {
     ...kinkRevealLines(),
     ...stageTalk(),
     ...playerNotesPromptLines(girl),
+    ...roomReadPromptLines(girl),
     ...relationshipPreGfPromptLines(girl),
     ...relationshipDatingPromptLines(girl),
     ...relationshipWifePromptLines(girl),
@@ -10485,6 +10554,7 @@ async function deliverUserTalk(text, opts = {}) {
       noteTalkExchange(girl);
       decayFriendSexFlag(girl);
       if (!opts.actId) handlePlayerNotesAfterReply(girl, line);
+      if (!opts.actId) noteReadMentioned(girl, line);
       lines.push({ role: "assistant", content: line });
       rememberChat();
       persistRoom();
@@ -13555,6 +13625,8 @@ document.addEventListener("click", (event) => {
 }, true);
 
 window.RoomCompanion = {
+  /** 上網看文章除錯（2026-11-25）：read＝現在叫她讀一篇（不看兩小時冷卻）；log＝讀過的。 */
+  read: { now: () => maybeRoomRead(true), log: () => (girl?.readLog ? [...girl.readLog] : []), lines: () => roomReadPromptLines(girl) },
   /** 調戲態度除錯（2026-11-25）：attitude＝現在摸她會是哪一種；sess＝這一場的計數；prompt＝給 LLM 的態度區塊；open＝打開對話。 */
   tease: {
     attitude: () => (girl ? teaseAttitudeOf(girl) : null),

@@ -36,6 +36,7 @@ import desk_agent
 import room_frames
 import discover_bonus
 import jp_news
+import room_read
 import life_agent
 import escort_lines
 import wifepay
@@ -6280,6 +6281,42 @@ def desk_view(since: int = 0, sinceId: int = 0):
 def desk_run(id: int):
     """一件的全部（報告書、出錯的日誌）。"""
     return _desk(desk_agent.detail, id)
+
+
+# ───────────── 她在房間上網看文章（2026-11-25，server/room_read.py）─────────────
+# POST 開一件（Hermes 讀要幾分鐘）→ 手機每幾秒 GET 一次拿結果。工作只放記憶體（伺服器重開就沒了，手機下次再叫）。
+_READ_JOBS: dict[str, dict] = {}
+
+
+@app.post("/api/room/read")
+async def room_read_start(body: dict):
+    b = body or {}
+    name = str(b.get("name") or "她")[:20]
+    topic = str(b.get("topic") or "").strip()[:30] or room_read.pick_topic(b.get("hobbies"), b.get("likes"))
+    persona = str(b.get("persona") or "")[:60]
+    jid = f"r{int(time.time() * 1000):x}{len(_READ_JOBS)}"
+    job = {"status": "running", "topic": topic, "at": int(time.time() * 1000), "result": None}
+    for k in [k for k, v in _READ_JOBS.items() if int(time.time() * 1000) - int(v.get("at") or 0) > 3600_000]:
+        _READ_JOBS.pop(k, None)
+    _READ_JOBS[jid] = job
+
+    async def go():
+        try:
+            job["result"] = await room_read.read_one(name, topic, persona, use_hermes=desk_agent.agent_name() == "hermes")
+        except Exception as e:
+            job["result"] = {"ok": False, "topic": topic, "error": str(e) or type(e).__name__}
+        job["status"] = "done"
+
+    asyncio.create_task(go())
+    return {"job": jid, "topic": topic, "via": "hermes" if desk_agent.agent_name() == "hermes" else "news"}
+
+
+@app.get("/api/room/read/{jid}")
+def room_read_poll(jid: str):
+    job = _READ_JOBS.get(str(jid))
+    if not job:
+        raise HTTPException(status_code=404, detail="沒有這件")
+    return {"status": job["status"], "topic": job["topic"], "result": job["result"]}
 
 
 @app.get("/api/desk/agent-check")
