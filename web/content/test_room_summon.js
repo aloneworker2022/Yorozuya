@@ -454,8 +454,9 @@ function fingerMood(who) {
   const key = String(who?.id || who?.name || ""); let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
   return { fgWelcome: idx >= (STAGE_INDEX.passionate ?? 5), fgLevel: lvl, fgSquirt: ["once", "faucet", "double"][h % 3] };
 }
-// 2026-11-25 使用者（測試）：黑影人改肉色＋一階陰影。開關存在 localStorage（yoro_shadow_skin＝1），test_room 除錯列的「黑影肉色」按一下切換；主畫面同一個網址也會跟著變。
-function shadowSkinOn() { try { return localStorage.getItem("yoro_shadow_skin") === "1"; } catch { return false; } }
+// 2026-11-25 使用者：黑影人改肉色＋一階陰影（聊天黑影＋房間小人）。預設開（使用者：房間聊天的黑影人沒有變肉色——主畫面沒有開關）；
+//   test_room 除錯列「黑影肉色」按一下關掉（localStorage yoro_shadow_skin＝0），主畫面同一個網址也會跟著變。
+function shadowSkinOn() { try { return localStorage.getItem("yoro_shadow_skin") !== "0"; } catch { return true; } }
 /** 膚色：照特殊特質（古銅小麥／雪白、奶白／白皙），沒有就預設肉色。 */
 function skinRgbOf(who) {
   const t = (Array.isArray(who?.specialTraits) ? who.specialTraits : []).map((x) => (typeof x === "string" ? x : x?.name || "")).join("、");
