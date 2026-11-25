@@ -526,6 +526,15 @@ function stunUncapped(who, actId = "") {
  * 性奮／開放度本身不能製造或維持失神（高潮中繼續調戲＝正被刺激，不受此限）。
  */
 export function calcStun(who, actId = "") {
+  const v = calcStunUngated(who, actId);
+  // 2026-11-25 使用者：噴一次不會失神，要噴 3 次才失神——還沒噴夠就壓在痙攣／失神門檻以下；
+  //   噴夠了，噴的那一下留下的失神殘量（noteSquirt 拉到 100，每秒 −0.5、每句 −8）當下限
+  if (squirtCount(who) < SQUIRT_STUN_AT) return Math.min(v, SQUIRT_STUN_CAP);
+  const b = ensureStunFields(who);
+  return Math.max(v, b ? Math.round(decayedCarry(b)) : 0);
+}
+
+function calcStunUngated(who, actId = "") {
   const raw = calcStunRaw(who);
   const b = ensureStunFields(who);
   if (!b) return raw;
@@ -537,6 +546,56 @@ export function calcStun(who, actId = "") {
   }
   const ceiling = Math.max(UNSTIM_STUN_CAP, decayedCarry(b));
   return clamp(Math.min(raw, ceiling), 0, 100);
+}
+
+// ---------------------------------------------------------------- 噴水（2026-11-25 使用者）
+/** 噴幾次才失神。 */
+export const SQUIRT_STUN_AT = 3;
+/** 還沒噴夠時失神值最多到這（< 痙攣門檻 70、< 失神 75）。 */
+export const SQUIRT_STUN_CAP = 69;
+/** 多久沒噴就重算（新的一場）。 */
+export const SQUIRT_GAP_MS = 20 * 60 * 1000;
+/** 已經在高潮裡，再被弄下面幾下會再噴一次。 */
+export const SQUIRT_RETEASE = 3;
+/** 會噴的動作（下面）。 */
+export const SQUIRT_ACTS = new Set(["labia", "labia_rub", "finger_in", "vagina_finger", "cervix_rub"]);
+
+/** 這一場噴了幾次（20 分鐘沒噴就歸 0）。 */
+export function squirtCount(who, now = Date.now()) {
+  const q = who?.bodyState?.squirt;
+  if (!q || typeof q !== "object") return 0;
+  if (now - (Number(q.at) || 0) > SQUIRT_GAP_MS) return 0;
+  return Math.max(0, Number(q.n) || 0);
+}
+
+/**
+ * 這一下下面被弄，會不會噴：剛跨進高潮（enteredClimax）＝噴；已經在高潮裡，再弄 SQUIRT_RETEASE 下＝再噴。
+ * 會改 bodyState.squirtTease。回傳 true＝這一下噴了（呼叫端再 noteSquirt）。
+ */
+export function squirtFromAct(who, actId, { enteredClimax = false, stayedClimax = false } = {}) {
+  const b = ensureBody(who);
+  if (!b || !SQUIRT_ACTS.has(actId)) return false;
+  if (enteredClimax) { b.squirtTease = 0; return true; }
+  if (!stayedClimax) { b.squirtTease = 0; return false; }
+  b.squirtTease = (Number(b.squirtTease) || 0) + 1;
+  if (b.squirtTease >= SQUIRT_RETEASE) { b.squirtTease = 0; return true; }
+  return false;
+}
+
+/** 記一次噴水：回傳 {n, seq, stunNow}（stunNow＝這一下剛好噴夠、進失神）。seq 一直加，給聊天黑影看有沒有新的一次。 */
+export function noteSquirt(who, now = Date.now()) {
+  const b = ensureStunFields(who);
+  if (!b) return { n: 0, seq: 0, stunNow: false };
+  const before = squirtCount(who, now);
+  const seq = (Number(b.squirt?.seq) || 0) + 1;
+  b.squirt = { n: before + 1, at: now, seq };
+  const stunNow = before < SQUIRT_STUN_AT && before + 1 >= SQUIRT_STUN_AT;
+  if (stunNow) {
+    // 噴夠了：腦袋一片空白（失神殘量拉滿，之後照常退）
+    b.stunCarry = 100;
+    b.stunCarryAt = now;
+  }
+  return { n: before + 1, seq, stunNow };
 }
 
 /** 未套「沒刺激上限」的原始失神分數。 */

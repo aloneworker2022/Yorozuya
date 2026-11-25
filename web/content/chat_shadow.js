@@ -1782,12 +1782,18 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     canvas.addEventListener('click', (ev) => {
       if (FG.eatClick) { FG.eatClick = false; return; }   // 按住下體（手指插入）放開時的那一下不算摸
       if (performance.now() - openedAt < 450) return;   // 點房間的她打開聊天、手機緊接著補的那一下 click：不算摸她、也不算點背景（不然聊天一開就被關掉）
+      if (COL.st !== 'none') {   // 2026-11-25 使用者：癱軟在地上也能繼續摸（上半身胸部、下半身下體）；坐下去／站起來那幾格不算
+        const [cx0, cy0] = toCanvas(ev), d = COL.disp, img = d && cur && cur.sets[d.k] && cur.sets[d.k][d.i];
+        const xi0 = Math.round(cx0), yi0 = Math.round(cy0), z = colZoneAt(img, xi0, yi0);
+        if (!img || !(img.data[(yi0 * img.width + xi0) * 4 + 3] > 0)) { if (img && xi0 >= 0 && yi0 >= 0 && xi0 < img.width && yi0 < img.height) document.getElementById('portrait-backdrop')?.click(); return; }
+        if ((COL.st === 'sit' || COL.st === 'hold') && z && window.RoomTouch?.zone(z)) { COL.until = performance.now() + COL_SIT; colPoke(); }
+        return;
+      }
       const [x, y] = toCanvas(ev), f = cur && cur.sets[mode] && (cur.sets[mode].find(Boolean));
       if (!f) return;
       const xi = Math.round(x), yi = Math.round(y);
       const solid = xi >= 0 && yi >= 0 && xi < f.width && yi < f.height && f.data[(yi * f.width + xi) * 4 + 3] > 0;
       if (!solid) { document.getElementById('portrait-backdrop')?.click(); return; }
-      if (COL.st !== 'none') return;   // 癱坐在地上：身體位置跟站著不一樣，先不算摸
       const zone = zoneAt(x, y);
       // 摸到就有反應（使用者：摸她沒動作）；還沒解鎖的地方一樣會反抗／遮，只是不算動作、她不說話
       if (zone) {
@@ -1855,6 +1861,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     FG.box0 = [FG.zoom.offsetWidth, FG.zoom.offsetHeight];
     FG.O = O; FG.S = Math.max(1.15, Math.min(5, (top - 10 - chestY) / Math.max(4, groinY - chestY)));   // 陰唇停在對話框上緣上面一點點
     FG.st = 'approach'; FG.p = 0; FG.t = 0; FG.mode = 'idle'; FG.choice = null; FG.pose = ''; FG.squirtAt = 0; FG.squirted = false; FG.colQ = false;
+    FG.seq = Number(spec()?.squirtSeq) || 0;
     fgRun();
     return true;
   }
@@ -1899,7 +1906,8 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   //   被摸到噴水以後，手收回去她不會站著：腿軟、雙腿打開成 M 字、癱坐在地上；屁股著地那一下忍不住又噴（每個妹子不一樣：
   //   once 噴一下／faucet 像水龍頭噴三秒／double 噴一下又再噴一下，summon 的 fgSquirt）。坐一陣子（40 秒）或關掉聊天才起來。
   const COL = { st: 'none', t0: 0, impactAt: 0, until: 0, style: 'once', disp: null, loop: 0 };
-  const COL_FPS = 16, COL_SIT = 40000, COL_IMPACT = 4, COL_Q_FPS = 14;
+  // 2026-11-25 使用者：癱軟不會自己很快站起來——一直被摸就一直坐著，60 秒沒人碰才起來（COL_SIT 每摸一下重算）
+  const COL_FPS = 16, COL_SIT = 60000, COL_IMPACT = 4, COL_Q_FPS = 14;
   const SPRAY = { once: [[0, 300]], faucet: [[0, 3000]], double: [[0, 260], [800, 1060]] };
   function colStart() {
     if (!cur || cur.cv !== CV) return;
@@ -1912,6 +1920,31 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   function colReset() { const was = COL.st !== 'none'; COL.st = 'none'; COL.disp = null; COL.impactAt = 0; if (FG.hand && FG.st === 'idle') FG.hand.hidden = true; if (was) colTell(false); }
   /** 2026-11-25：癱軟／起來告訴 summon（只有失神＋癱軟才准唉唉叫，見 stun_speech moanAllowed）。 */
   function colTell(on) { try { document.dispatchEvent(new CustomEvent('chat-shadow-collapse', { detail: { on: !!on } })); } catch { /* 舊瀏覽器 */ } }
+  /** 2026-11-25：手指插入以外（站著點下面、癱坐時再弄）噴了 → 站著就噴＋癱坐；已經癱坐就坐著再噴一次。 */
+  let seenSeq = null;
+  function squirtWatch() {
+    const sp = spec(), seq = Number(sp && sp.squirtSeq) || 0;
+    if (seenSeq == null || !cur || seq < seenSeq) { seenSeq = seq; return; }
+    if (seq === seenSeq) return;
+    seenSeq = seq;
+    if (FG.st !== 'idle') return;   // 手指插入那段自己處理（放開以後癱坐）
+    if (COL.st === 'none') { if (cur.cv === CV) colStart(); return; }
+    if (COL.st === 'sit' || COL.st === 'hold') { const t = performance.now(); COL.st = 'hold'; COL.impactAt = t; COL.until = t + COL_SIT; play(); colRun(); }
+  }
+  /** 癱坐時點她：上半身＝胸部、下半身＝下體（照這一格看得到的身體上下範圍分）。 */
+  function colZoneAt(img, x, y) {
+    if (!img) return '';
+    const { width: w, height: h, data } = img;
+    if (x < 0 || y < 0 || x >= w || y >= h || !data[(y * w + x) * 4 + 3]) return '';
+    let top = -1, bot = -1;
+    for (let yy = 0; yy < h && top < 0; yy++) for (let xx = 0; xx < w; xx++) if (data[(yy * w + xx) * 4 + 3]) { top = yy; break; }
+    for (let yy = h - 1; yy >= 0 && bot < 0; yy--) for (let xx = 0; xx < w; xx++) if (data[(yy * w + xx) * 4 + 3]) { bot = yy; break; }
+    if (top < 0) return '';
+    const u = (y - top) / Math.max(1, bot - top);
+    return u < .22 ? '' : u < .5 ? 'breast' : 'groin';   // 最上面是頭
+  }
+  /** 癱坐時被摸一下：身體輕輕一顫。 */
+  function colPoke() { try { canvas.animate([{ transform: 'translate(0,0)' }, { transform: 'translate(-1.5px,1px)' }, { transform: 'translate(1.5px,0)' }, { transform: 'translate(0,0)' }], { duration: 240 }); } catch { /* 舊瀏覽器 */ } }
   function colRun() { if (!COL.loop) COL.loop = requestAnimationFrame(colTick); }
   /** 癱坐時手那一層只畫噴水（屁股著地那一下）；撞地「碰！」那一下整個畫面震一下。 */
   function colTick(now) {
@@ -2012,7 +2045,8 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
         else FG.mode = 'idle';
       } else if (!want && !busy && now - FG.roundAt >= FG_ROUND) FG.mode = 'idle';
       // 這一輪做完她到了最高那段 → 噴一次（不是一直噴）
-      if (FG.squirtCheck && now >= FG.squirtCheck && !busy) { FG.squirtCheck = 0; const s2 = spec(); if (s2 && Number(s2.fgLevel) >= 2) { FG.squirtAt = now; if (!FG.squirted) { FG.squirted = true; for (const c of ['col_s', 'col_q', 'col_d']) { ensureSet(cur, c); bump(cur, c); } } } }   // 噴過：放開以後會癱坐——坐下去的格子馬上排到最前面算
+      // 2026-11-25：噴不噴由 summon 決定（下面被弄到高潮、高潮中再弄 3 下＝噴；squirtSeq 加一），不再看到了最高那段就每輪噴
+      if (FG.squirtCheck && now >= FG.squirtCheck && !busy) { FG.squirtCheck = 0; const s2 = spec(), q2 = Number(s2 && s2.squirtSeq) || 0; if (q2 > (FG.seq || 0)) { FG.seq = q2; FG.squirtAt = now; if (!FG.squirted) { FG.squirted = true; for (const c of ['col_s', 'col_q', 'col_d']) { ensureSet(cur, c); bump(cur, c); } } } }   // 噴過：放開以後會癱坐——坐下去的格子馬上排到最前面算
       if (!fgTick.uiAt || now - fgTick.uiAt > 250) { fgTick.uiAt = now; fgSwipe(true); }
     } else if (FG.st === 'out') { FG.t = Math.max(0, FG.t - dt / FG_OUT); if (FG.t <= 0) FG.st = 'back'; }
     const zp = FG.st === 'approach' || FG.st === 'back' ? fgEase(FG.p) : 1;
@@ -2156,6 +2190,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (meta) new MutationObserver(talking).observe(meta, { childList: true, subtree: true, characterData: true });
     // 換衣服、脫衣、懷孕肚子變了：開著的時候每 2 秒對一次（同一個身形不重算）
     setInterval(() => { if (!sheet.hidden) sync(); }, 2000);
+    setInterval(() => { if (!sheet.hidden) squirtWatch(); else seenSeq = null; }, 300);   // 2026-11-25：summon 記到新的一次噴水
     // 有空先算（2026-11-24）：魅子在房間裡就先把她的黑影交給 RP5；樣子變了（脫衣、換衣服、關係）才再送
     setTimeout(prewarm, 4000);
     setInterval(prewarm, 30000);

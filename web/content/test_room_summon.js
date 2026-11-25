@@ -49,6 +49,11 @@ import {
   speechMayBreak,
   moanAllowed,
   setCollapsed,
+  isCollapsed,
+  squirtFromAct,
+  noteSquirt,
+  squirtCount,
+  SQUIRT_STUN_AT,
   SPASM_MS,
   SHOCK_MAX,
   AFTERGLOW_FRIEND_MS,
@@ -63,7 +68,7 @@ import {
   occupancyMoanLine,
   occupancyPromptLine,
   occupancyLabel,
-} from "./stun_speech.js?v=26";
+} from "./stun_speech.js?v=27";
 import {
   pickPortraitUrl,
   portraitPathKey,
@@ -353,7 +358,7 @@ import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=18";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
 import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=21";
-import { moanVoiceId } from "./stun_speech.js?v=26";
+import { moanVoiceId } from "./stun_speech.js?v=27";
 import { ensureFeel as ensureDeskFeel, tickFeel as tickDeskFeel, noteWork as noteDeskWork, feelPromptLines as deskFeelLines, tiredLabel as deskTiredLabel } from "./desk_feel.js?v=1";
 import {
   hungerOn,
@@ -444,7 +449,7 @@ function fingerMood(who) {
   const key = String(who?.id || who?.name || ""); let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
   return { fgWelcome: idx >= (STAGE_INDEX.passionate ?? 5), fgLevel: lvl, fgSquirt: ["once", "faucet", "double"][h % 3] };
 }
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl), ...teaseReactLook(girl) } : null);
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl), ...teaseReactLook(girl), squirtSeq: Number(girl.bodyState?.squirt?.seq) || 0, collapsed: isCollapsed(girl) } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
@@ -10142,6 +10147,18 @@ async function deliverUserTalk(text, opts = {}) {
         if (stageBefore !== "climax" && stageAfter === "climax") {
           noteAfterglow(girl, "hers");
           herClimaxNow = true;
+        }
+        // 噴水（2026-11-25 使用者）：下面被弄到高潮＝噴；已經在高潮裡再弄 3 下＝再噴一次；噴 3 次才失神（stun_speech SQUIRT_*）
+        if (squirtFromAct(girl, opts.actId, { enteredClimax: herClimaxNow, stayedClimax: stageBefore === "climax" && stageAfter === "climax" })) {
+          const sq = noteSquirt(girl);
+          if (!herClimaxNow) { noteAfterglow(girl, "hers"); herClimaxNow = true; }
+          if (!spasmNote) {
+            spasmNote = sq.stunNow
+              ? "（她又噴了出來——已經是第三次，眼神一下子空了，整個人失了神。）"
+              : `（她下面一陣抽緊，噴了出來${sq.n >= 2 ? `——這是第 ${sq.n} 次` : ""}。）`;
+          }
+          pushDebug(`噴水 第 ${sq.n} 次${sq.stunNow ? "・失神" : `（噴 ${SQUIRT_STUN_AT} 次才失神）`}`);
+          renderDebug();
         }
         if (spasm.enteredSpasm || herClimaxNow) { hungerRelief("orgasm"); organDevOrgasm(); }
         const stunAfter = effectiveStun(girl, opts.actId);
