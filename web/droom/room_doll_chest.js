@@ -456,7 +456,7 @@
         sh.cone(BODY, U(ball, -.6, .1), U(tip, 1.8, .3), 1.18 * q, .26 * q);             // 尖頭鞋頭
         const ht = U(heel, -.35, -.7), hb = [ht[0] - ux * .2, ht[1] - uy * .2, .1];
         sh.cone(BODY, ht, hb, .62 * q, .22 * q);                                         // 細跟：從後跟底下長出來、往下收細
-        for (let i = i0; i < sh.prims.length; i++) sh.prims[i].shoe = 1;
+        for (let i = i0; i < sh.prims.length; i++) { sh.prims[i].shoe = 1; sh.prims[i].part = 'legs'; }   // 算腿的一部分（聊天黑影癱坐、跪下時跟著腳走；也不會被當成上衣）
       } finally { sh.cloth = c0; }
     }
     // 2026-10-30 pt77u：手腳零件標 limb（上衣算軀幹表面時排除），手臂關節記下來給袖子用
