@@ -343,7 +343,7 @@ import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_actio
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
-import { neglectMs, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=13";
+import { neglectMs, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=14";
 import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit, wornOutfitOf } from "./outfit_pick.js?v=3";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
@@ -409,6 +409,8 @@ import {
 const $ = (id) => document.getElementById(id);
 
 let girl = null;
+/** 2026-11-25 使用者（§13.0 第 7 項）：房間裡這位是室友——住在這裡、自己出門過生活、不會因為沒人理就走。關掉＝舊的「停留到期回日本」。 */
+const ROOMMATE_ON = true;
 /** 房間剪影（room_doll.js）讀她的外觀：身高／體型／罩杯／髮型＋身上那套（裙子）＋脫到第幾階。test_room.js 每秒問一次。 */
 // wife：妻子以上（聊天黑影脫光後的動作：妻子以下害羞遮著、妻子主動——chat_shadow.js）
 /** 聊天黑影用：她現在在生氣嗎（2026-11-21 使用者：生氣時說話會叉腰或雙手抱胸）——情緒餘溫是生氣（被冒犯、被亂摸抗議），
@@ -3040,6 +3042,7 @@ function finishSummonArrival(who, mode) {
     resetOpenness(who);
     clearVaginaFingers(who);
   }
+  who.recallAt = Date.now();   // 2026-11-25 室友：付錢叫回來 → RP5 結束她的外出
   window.RoomActor?.setPresent(true);
   // 接客收工回來（2026-10-10）：痕跡（同一套 lifeTraces，只收一次）＋依個性的心情／被發現偷看
   try {
@@ -9106,6 +9109,13 @@ function summonOpener() {
   return `（旁白：${base}妻子／更深：嗔或黏地應他，可問要做什麼，一兩句。${body}只輸出台詞。）`;
 }
 
+/** home_back（2026-11-25 室友）：她剛從外面（打工／溜達／旅遊）自己回到房間（家）。 */
+function homeBackOpener() {
+  const body = openerBodyHint();
+  const what = { work: "打工", stroll: "出去溜達", travel: "旅遊" }[girl?.homeBackKind || ""] || "出門";
+  return `（旁白：你剛${what}完，自己回到他的房間——這裡是你的家。照你們的關係自然地打招呼（「我回來了」那種），可以順口提一下剛才在外面的事，一兩句。${body}只輸出台詞。）`;
+}
+
 /** angry_end：剛才被他惹到生氣、結束聊天後，他又來找她說話（舊存檔的 flee_back 也走這裡）。 */
 function fleeBackOpener() {
   const body = openerBodyHint({ forceBody: true });
@@ -9129,14 +9139,14 @@ function fleeBackOpener() {
  */
 function resolveEnterReason(returning) {
   const reason = girl.chatEnter || "";
-  if (reason === "summon" || reason === "flee_back" || reason === "angry_end") return reason;
+  if (reason === "summon" || reason === "flee_back" || reason === "angry_end" || reason === "home_back") return reason;
   if (returning || reason === "reopen") return "reopen";
   return "first";
 }
 
 function consumeEnterReason(reason) {
   if (!girl) return;
-  if (reason === "summon" || reason === "flee_back" || reason === "angry_end" || reason === "first" || reason === "reopen") {
+  if (reason === "summon" || reason === "flee_back" || reason === "angry_end" || reason === "home_back" || reason === "first" || reason === "reopen") {
     girl.chatEnter = "reopen";
   }
 }
@@ -9148,9 +9158,10 @@ function freshMeetLine() {
 
 function enterOpener(returning) {
   const reason = resolveEnterReason(returning);
-  if (girl) girl.freshMeet = reason === "summon" || reason === "flee_back";
+  if (girl) girl.freshMeet = reason === "summon" || reason === "flee_back" || reason === "home_back";
   let line = "";
   if (reason === "flee_back" || reason === "angry_end") line = fleeBackOpener();
+  else if (reason === "home_back") line = homeBackOpener();
   else if (reason === "summon") line = summonOpener();
   else if (reason === "reopen") line = reopenOpener();
   else line = firstOpener();
@@ -11604,7 +11615,7 @@ function endTalkSession() {
     girl.bodyState.ejacTalkBan = false;
   }
   clearVaginaFingers(girl);
-  if (girl.chatEnter !== "flee_back" && girl.chatEnter !== "summon" && girl.chatEnter !== "angry_end") {
+  if (girl.chatEnter !== "flee_back" && girl.chatEnter !== "summon" && girl.chatEnter !== "angry_end" && girl.chatEnter !== "home_back") {
     girl.chatEnter = "reopen";
   }
 }
@@ -11653,6 +11664,8 @@ function spendPlayerSemen(cc, source = "sex") {
 function persistRoom(opts = {}) {
   if (!girl) return;
   try {
+    // 2026-11-25 使用者（§13.0 第 7 項）：房間裡這位＝室友（家是房間；RP5 看鏡像的 roommate 旗決定她出門、回來）
+    if (ROOMMATE_ON) girl.roommate = true;
     player = ensurePlayer(player);
     const payload = {
       girl,
@@ -11991,6 +12004,7 @@ async function adoptRosterGirl(payload) {
 
     // 畫完並下載完才讓她出現。停留從這一刻才開始。
     await cacheVisitPics(girl);
+    girl.recallAt = Date.now();   // 2026-11-25 室友：從名冊叫來（叫回）→ RP5 結束她的外出
     window.RoomActor?.setPresent(true);
     if (!continuingVisit) {
       armRoomVisit(girl);
@@ -12746,6 +12760,48 @@ function paintLifeWorld(world, row) {
   return girl && world === girl.world ? applyLifeHunger(girl) : 0;
 }
 
+const OUT_ZH = { work: "打工", stroll: "溜達", travel: "旅遊", escort: "接客" };
+/** 室友出門：穿好衣服、走出房間（RP5 已經排好這趟）。 */
+function roommateGoOut(row) {
+  const who = girl;
+  if (!who) return;
+  const kind = row?.agenda?.kind || "";
+  clearShift();
+  activityOpen = false;
+  dropVisitPics();
+  clearVisitUndress(who);
+  clearRoomVisit(who);
+  resetOpenness(who);
+  clearVaginaFingers(who);
+  try { setCollapsed(who, false); } catch { /* */ }
+  window.RoomActor?.setPresent(false);
+  if (sheetOpen()) hideSheet();
+  else syncArousalOffChatTimer();
+  persistRoom({ quiet: true });
+  try { renderCard(); renderWorld(); } catch { /* ignore */ }
+  const what = OUT_ZH[kind] || "出門";
+  const dest = kind === "travel" && row.travel ? `（${row.travel}）` : "";
+  const st = $("summon-status");
+  if (st) st.textContent = `${who.name}出門去日本${what}${dest}了，結束就會自己回來。想她早點回來可以叫她（3～5 金）。`;
+  pushDebug(`室友出門：${what}${dest}`);
+}
+/** 室友回家：自己走回房間（不用儀式、不用付錢）。打開對話時用「剛回來」的開場。 */
+function roommateComeHome(row) {
+  const who = girl;
+  if (!who) return;
+  if (who.chatEnter !== "flee_back" && who.chatEnter !== "angry_end") who.chatEnter = "home_back";
+  who.homeBackKind = row?.last?.kind || "";
+  who.chatLines = [];
+  who.topicHint = "";
+  who.sessionEnded = true;
+  window.RoomActor?.setPresent(true);
+  persistRoom({ quiet: true });
+  try { renderCard(); renderWorld(); } catch { /* ignore */ }
+  const st = $("summon-status");
+  if (st) st.textContent = `${who.name}回來了。`;
+  pushDebug(`室友回家（${OUT_ZH[who.homeBackKind] || "外出"}完）`);
+}
+
 function applyLifeSnap(snap) {
   window.__yoroLifeAgentOk = true;
   try {
@@ -12755,6 +12811,20 @@ function applyLifeSnap(snap) {
   const row = snap?.girls?.[girl.gameGirlId || girl.id];
   if (!row) return;
   girl.world = girl.world || {};
+  // 2026-11-25 室友：她出門（RP5 決定）→ 走出房間；回來 → 回到房間。正在說話、做愛、脫衣、場面中等你聊完才走
+  if (row.roommate && row.phase === "japan" && !sheIsOut()) {
+    if (talkBusy || pending || autoLifeBusy || visitClockHeld() || sheetOpen() || stayTalking()) return;
+    if ((Number(girl.recallAt) || 0) > (Number(row.recallSeen) || 0)) return;   // 剛叫她回來，RP5 還沒收到：不要又送出去
+    paintLifeWorld(girl.world, row);
+    roommateGoOut(row);
+    return;
+  }
+  if (row.roommate && row.phase === "room" && sheIsOut()) {
+    if (pending || summoning || summonBackBusy || visitClockHeld()) return;
+    paintLifeWorld(girl.world, row);
+    roommateComeHome(row);
+    return;
+  }
   if (row.phase === "japan" && !sheIsOut()) {
     if (talkBusy || pending || autoLifeBusy || visitClockHeld()) return;
     paintLifeWorld(girl.world, row);
@@ -12798,6 +12868,7 @@ async function pullLifeAgent() {
 
 function stayClockLine() {
   if (!girl || sheIsOut()) return "";
+  if (ROOMMATE_ON) return "你住在他的房間，這裡就是你的家。你會照自己的生活出門（去日本打工、溜達、偶爾旅遊），結束就回來；不會因為他不理你就離開。不要說要回日本的住所。";
   const until = Number(girl.roomVisitUntil);
   if (!Number.isFinite(until) || until < 1e11) return "";
   const min = Math.round(neglectMs(girl.roomStayBand === "wife") / 60000);
@@ -12845,6 +12916,8 @@ async function tickLifeLoop() {
     persistRoom();
   }
   // 到期就離開，日本行程等走出房間才開始。生活線連著也一樣要走，不能把人留在房裡。
+  // 2026-11-25 使用者：室友不會因為沒人理就走——什麼時候出門由 RP5 決定（applyLifeSnap）
+  if (ROOMMATE_ON) { delete girl.leaveAfterErrand; return; }
   if (!sheIsOut() && (girl.leaveAfterErrand || visitDue(girl.roomVisitUntil, Date.now()))) {
     const keptUntil = girl.roomVisitUntil;
     delete girl.leaveAfterErrand;
@@ -13134,6 +13207,7 @@ function bindBodyPanel() {
   const saved = loadRoomSave();
   if (!saved?.girl) return;
   girl = saved.girl;
+  if (ROOMMATE_ON) girl.roommate = true;
   migrateAffectionScale(girl);
   player = ensurePlayer(saved.player);
   stripRetiredNude(girl);
@@ -13179,7 +13253,11 @@ function bindBodyPanel() {
     try { persistRoom(); } catch { /* ignore */ }
   }
   syncArousalOffChatTimer();
-  if ($("summon-status")) $("summon-status").textContent = `${girl.name}還在（狀態已保留）。長按她繼續聊，或讓她離開。`;
+  if ($("summon-status")) {
+    $("summon-status").textContent = ROOMMATE_ON && !girlInRoom()
+      ? `${girl.name}出門了，結束就會自己回來。想她早點回來可以叫她（3～5 金）。`
+      : `${girl.name}還在（狀態已保留）。長按她繼續聊，或讓她離開。`;
+  }
   // 舊房間存檔補綁 Comfy 模型（非 comfy / 已綁定則 no-op）
   ensureGirlComfyCkpt(girl).then(() => {
     if (girl) { try { persistRoom(); } catch { /* */ } renderCard(); }

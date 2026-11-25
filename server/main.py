@@ -4842,7 +4842,7 @@ async def _life_once() -> None:
 
 
 async def _life_loop():
-    """她在日本的生活。網頁開不開都走。一次只寫一件已經到期的事。"""
+    """她在日本的生活（2026-11-25 起也管室友什麼時候出門、回房間）。網頁開不開都走。一次只寫一件已經到期的事。"""
     await asyncio.sleep(8)
     while True:
         try:
@@ -4956,6 +4956,9 @@ def life_choose(body: dict):
     def commit(store):
         life_agent.absorb(store, data, now_ms)
         rec = (store.get("girls") or {}).get(gid)
+        if rec and rec.get("roommate") and rec.get("phase") != "japan":
+            ok["done"] = life_agent.apply_choice(store, gid, kind, now_ms)   # 2026-11-25 沙盒：叫室友現在出門
+            return
         if not rec or rec.get("phase") != "japan":
             return
         rec["agenda"] = None

@@ -5,9 +5,9 @@ export const HOUR_MS = 60 * 60 * 1000;
 export const WORK_MS = 4 * HOUR_MS;
 export const BROWSE_MS = 30 * 60 * 1000; // 在家上網固定 30 分
 /* 跟 server/life_agent.py、life_data.py 同一套（2026-10-09 加在家的事）。改一邊要改另一邊。 */
-export const OUTSIDE_KINDS = ["work", "stroll", "browse", "sleep", "idle", "tidy", "meal"];
+export const OUTSIDE_KINDS = ["work", "stroll", "browse", "sleep", "idle", "tidy", "meal", "travel"];
 export const HOME_KINDS = ["browse", "idle", "tidy", "meal"];
-export const OUTSIDE_KIND_ZH = { work: "打工", stroll: "溜達", browse: "上網", sleep: "睡覺", idle: "發呆", tidy: "整理房間", meal: "吃飯" };
+export const OUTSIDE_KIND_ZH = { work: "打工", stroll: "溜達", browse: "上網", sleep: "睡覺", idle: "發呆", tidy: "整理房間", meal: "吃飯", travel: "旅遊" };
 export const HOME_DURATIONS_MIN = { idle: [30], browse: [30], tidy: [30, 60] };
 export const MEAL_TIMES = { 早起型: [6, 12, 18], 夜貓子: [12, 18.5, 0.5], 愛睡午覺: [8, 12, 19], 淺眠易怒: [7.5, 12, 19], 隨和好睡: [8.5, 12.5, 19], "": [8, 12, 19] };
 export const MEAL_MIN = [30, 30, 30];
