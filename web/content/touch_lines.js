@@ -6,7 +6,7 @@
    - 回應：摸胸部、下體先一聲嬌喘（依高潮程度，只有一聲）再接台詞；腰臀只在已經興奮時輕輕一聲（2026-11-21 使用者：只是一下而已，不會有一連串叫聲）。
    這個檔只放純函式（分帶、prompt、解析、內建保底台詞、嬌喘）；呼叫模型、存到她身上在 test_room_summon.js。 */
 import { STAGE_IDX, stageIndexOf, familyStageLine, addressRule } from "./girl_voice.js?v=1";
-import { ATTITUDES, ATTITUDE_ZH, attitudeRange, nearestAttitude } from "./tease_attitude.js?v=1";
+import { ATTITUDES, ATTITUDE_ZH, attitudeRange, nearestAttitude } from "./tease_attitude.js?v=2";
 
 export const TOUCH_TIERS = ["stranger", "friend", "girlfriend", "wife"];
 export const TOUCH_TIER_ZH = { stranger: "陌生", friend: "朋友", girlfriend: "女友", wife: "妻子" };

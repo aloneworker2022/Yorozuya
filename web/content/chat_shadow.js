@@ -1906,9 +1906,12 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const sp = spec(); COL.style = (sp && SPRAY[sp.fgSquirt]) ? sp.fgSquirt : 'once';
     for (const c of ['col_s', 'col_q', 'col_d']) { ensureSet(cur, c); bump(cur, c); }
     COL.st = 'wait'; COL.t0 = 0; COL.impactAt = 0; COL.until = 0;
+    colTell(true);
     play(); colRun();
   }
-  function colReset() { COL.st = 'none'; COL.disp = null; COL.impactAt = 0; if (FG.hand && FG.st === 'idle') FG.hand.hidden = true; }
+  function colReset() { const was = COL.st !== 'none'; COL.st = 'none'; COL.disp = null; COL.impactAt = 0; if (FG.hand && FG.st === 'idle') FG.hand.hidden = true; if (was) colTell(false); }
+  /** 2026-11-25：癱軟／起來告訴 summon（只有失神＋癱軟才准唉唉叫，見 stun_speech moanAllowed）。 */
+  function colTell(on) { try { document.dispatchEvent(new CustomEvent('chat-shadow-collapse', { detail: { on: !!on } })); } catch { /* 舊瀏覽器 */ } }
   function colRun() { if (!COL.loop) COL.loop = requestAnimationFrame(colTick); }
   /** 癱坐時手那一層只畫噴水（屁股著地那一下）；撞地「碰！」那一下整個畫面震一下。 */
   function colTick(now) {

@@ -834,6 +834,14 @@ export function afterglowTemplate(who, actId = "") {
 export function afterglowPromptLines(who) {
   const b = ensureStunFields(who);
   if (!b || !inAfterglow(who)) return [];
+  if (!moanAllowed(who)) {
+    // 2026-11-25 使用者：高潮過也不唉唉叫——身體還熱、有點恍惚，但照常說完整句子
+    return [
+      b.afterglowSource === "friend"
+        ? "【餘韻・外人】你剛與房間外的人有過身體關係，身體還有點熱。說話照常完整句子，不要喘、不要呻吟；不要詳細交代過程，可帶一點心虛或坦然（看個性）。"
+        : "【剛去過】你剛高潮過，身體還熱、有點恍惚。可以害羞、可以直白說剛才的感覺（看個性與關係），但說話照常完整句子：不准「嗯啊」「哈啊」這類呻吟、不准喘、不准斷成碎句。不准報狀態名。",
+    ];
+  }
   if (b.afterglowSource === "friend") {
     return [
       "【餘韻・外人】你剛與房間外的人有過身體關係，身體還軟、喘還沒完全平。",
@@ -1031,11 +1039,18 @@ function withSemen(list, ev) {
 }
 
 /** 看現在的佔有度（不記帳；除錯／判斷用）。opts.cap：上限（例：自己脫衣回覆 30）。 */
+/** 不准崩的時候佔有度最多到這（< 輕度點綴門檻：完全照常說話）。做愛場面（opts.inSex）照舊。 */
+export const OCC_HELD_CAP = 9;
+function occCap(who, actId, opts) {
+  if (opts.inSex || opts.allowMoan || moanAllowed(who, actId)) return opts.cap;
+  return Math.min(opts.cap != null ? opts.cap : 100, OCC_HELD_CAP);
+}
+
 export function peekOccupancy(who, actId = "", opts = {}) {
   const b = ensureStunFields(who);
   if (!b) return { ...combineOccupancy([]), semenOut: "" };
   const ev = semenOutPeek(b);
-  const occ = combineOccupancy(withSemen(occupancySources(who, actId, opts), ev), { cap: opts.cap });
+  const occ = combineOccupancy(withSemen(occupancySources(who, actId, opts), ev), { cap: occCap(who, actId, opts) });
   return { ...occ, semenOut: ev };
 }
 
@@ -1044,7 +1059,7 @@ export function takeOccupancy(who, actId = "", opts = {}) {
   const b = ensureStunFields(who);
   if (!b) return { ...combineOccupancy([]), semenOut: "" };
   const ev = semenOutTake(b, opts.rng || Math.random);
-  const occ = combineOccupancy(withSemen(occupancySources(who, actId, opts), ev), { cap: opts.cap });
+  const occ = combineOccupancy(withSemen(occupancySources(who, actId, opts), ev), { cap: occCap(who, actId, opts) });
   return { ...occ, semenOut: ev };
 }
 
@@ -1058,10 +1073,12 @@ export function occupancyMoanLine(occ, who = null, opts = {}) {
  * ≥95 全是呻吟；痙攣或 ≥65 吃掉大半；餘韻（未到 65）沿用餘韻改寫；10–64 依佔有度切；<10 照舊（輕點綴）。
  */
 export function presentOccupied(who, text, actId = "", occ = null, opts = {}) {
+  const raw = String(text || "").trim();
+  // 不准崩（不是失神噴水癱軟）：她想說的話照原樣說出口，不塞呻吟、不切碎（做愛場面另論）
+  if (who && !opts.inSex && !opts.allowMoan && !moanAllowed(who, actId)) return raw;
   const o = occ || peekOccupancy(who, actId, opts);
   const voice = ensureMoanVoice(who);
   const rng = opts.rng || Math.random;
-  const raw = String(text || "").trim();
   if (o.score >= OCC_BANDS.mute) return occMoanLine(o, { voice, rng });
   if (o.score >= OCC_BANDS.eaten || (who && inSpasm(who))) {
     return applyOccupancy(raw, o, { voice, rng, semenOutEvent: o.semenOut });
@@ -1084,6 +1101,15 @@ export function presentOccupied(who, text, actId = "", occ = null, opts = {}) {
  * - composed：以上皆無 → 盡力鎮定、正常完整句子
  */
 export function speechMode(who, actId = "") {
+  const real = speechModeRaw(who, actId);
+  // 2026-11-25 使用者：性奮再高也不唉唉叫——只有「失神＋噴水＋癱軟在地上」才崩。其餘一律照常說話（held＝其實正被刺激，在忍）。
+  if (real.mode !== "composed" && !moanAllowed(who, actId)) {
+    return { ...real, mode: "composed", level: 0, held: real.mode, heldLevel: real.level };
+  }
+  return real;
+}
+
+function speechModeRaw(who, actId = "") {
   const b = ensureStunFields(who);
   if (!b) return { mode: "composed", level: 0, reasons: [], stun: 0, tier: "calm" };
   const stun = effectiveStun(who, actId);
@@ -1095,6 +1121,31 @@ export function speechMode(who, actId = "") {
   if (tier === "stun") return { ...base, mode: "stun", level: Math.max(3, stim.level) };
   if (stim.active) return { ...base, mode: "stimulated" };
   return { ...base, mode: "composed", level: 0 };
+}
+
+/** 癱軟在地上（噴水後；聊天黑影回報，存 bodyState.collapse＝{on, at}）。超過這麼久沒更新就當作已經起來了（保險）。 */
+export const COLLAPSE_STALE_MS = 15 * 60 * 1000;
+export function isCollapsed(who, now = Date.now()) {
+  const c = who?.bodyState?.collapse;
+  return !!(c && c.on && now - (Number(c.at) || 0) < COLLAPSE_STALE_MS);
+}
+/** 記下癱軟／起來（聊天黑影的癱坐開始、站起來時呼叫）。回傳有沒有改變。 */
+export function setCollapsed(who, on, now = Date.now()) {
+  const b = ensureBody(who);
+  if (!b) return false;
+  const was = isCollapsed(who, now);
+  if (on) b.collapse = { on: true, at: was ? (Number(b.collapse.at) || now) : now };
+  else b.collapse = null;
+  return was !== !!on;
+}
+/**
+ * 能不能唉唉叫、說話崩（2026-11-25 使用者）：只有「失神（或痙攣）＋噴水後癱軟在地上」才行。
+ * 性奮、高潮、被摸、插著、餘韻本身都不會讓她呻吟——她會忍住照常說話。
+ */
+export function moanAllowed(who, actId = "") {
+  if (!isCollapsed(who)) return false;
+  if (inSpasm(who)) return true;
+  return stunTier(effectiveStun(who, actId)) === "stun";
 }
 
 /** 是否允許「嗯／啊」喘息與斷句（失神／痙攣／餘韻／正被刺激 level≥2）。 */

@@ -117,6 +117,10 @@ t("LLM 自己寫的呻吟段會被拿掉（≥35）", () => {
 });
 
 /* ── stun_speech 接線 ── */
+// 2026-11-25：佔有度機制本身的測試照舊算（allowMoan）；「不准崩」的閘門另外測（文末）
+const P = (g, a = "", o = {}) => S.peekOccupancy(g, a, { allowMoan: true, ...o });
+const T = (g, a = "", o = {}) => S.takeOccupancy(g, a, { allowMoan: true, ...o });
+const PO = (g, text, a = "", occ = null, o = {}) => S.presentOccupied(g, text, a, occ, { allowMoan: true, ...o });
 const girl = (extra = {}) => {
   const g = { id: "g1", stage: "girlfriend", bodyState: { arousal: 0, libido: 8, moanVoice: "scream", openness: 50, organs: {} } };
   S.ensureStunFields(g);
@@ -126,52 +130,52 @@ const girl = (extra = {}) => {
 
 t("沒事：佔有度 0、不跳 LLM", () => {
   const g = girl();
-  assert.equal(S.peekOccupancy(g).score, 0);
+  assert.equal(P(g).score, 0);
   assert.equal(S.shouldSkipLlm(0, g), false);
 });
 
 t("乳頭腫 2 → 18；陰蒂腫 3 → 25", () => {
   const g = girl();
   g.bodyState.organs.nipples.swell = 2;
-  assert.equal(S.peekOccupancy(g).score, 18);
+  assert.equal(P(g).score, 18);
   const h = girl();
   h.bodyState.organs.clit.swell = 3;
-  assert.equal(S.peekOccupancy(h).score, 25);
+  assert.equal(P(h).score, 25);
 });
 
 t("塞著：跳蛋 > 陰莖 > 手指 都有分；肏（inSex）算陰莖", () => {
   const g = girl();
   g.bodyState.organs.vagina.stuffed = "vibe";
-  const vibe = S.peekOccupancy(g).sources.find((s) => s.id === "vibe");
+  const vibe = P(g).sources.find((s) => s.id === "vibe");
   assert.equal(vibe.pts, 45);
   const h = girl();
-  assert.equal(S.peekOccupancy(h, "", { inSex: true }).sources.find((s) => s.id === "penis").pts, 60);
+  assert.equal(P(h, "", { inSex: true }).sources.find((s) => s.id === "penis").pts, 60);
 });
 
 t("痙攣中：佔有度 ≥70、仍問 LLM；過感 ≥90", () => {
   const g = girl({ spasmUntil: Date.now() + 60000 });
-  const o = S.peekOccupancy(g);
+  const o = P(g);
   assert.ok(o.score >= 70 && o.score < 95, String(o.score));
   assert.equal(S.shouldSkipLlm(80, g), false);
   g.bodyState.overstim = true;
-  assert.ok(S.peekOccupancy(g).score >= 90);
+  assert.ok(P(g).score >= 90);
   assert.ok(!PAIN.test(S.spasmTemplate(g, "")));
 });
 
 t("高潮那一下 ≥95 → 跳 LLM（本地呻吟）", () => {
   const g = girl();
-  const o = S.takeOccupancy(g, "", { climaxNow: true });
+  const o = T(g, "", { climaxNow: true });
   assert.ok(o.score >= 95);
-  const line = S.presentOccupied(g, LINE, "", o, { rng: M.makeRng(2) });
+  const line = PO(g, LINE, "", o, { rng: M.makeRng(2) });
   assert.ok(!/這樣|生氣/.test(line), line);
 });
 
 t("自己脫衣：痙攣中 cap 30 → 好好講話（原句都在）", () => {
   const g = girl({ spasmUntil: Date.now() + 60000 });
   for (let seed = 1; seed < 30; seed++) {
-    const o = S.takeOccupancy(g, "", { cap: 30 });
+    const o = T(g, "", { cap: 30 });
     assert.equal(o.score, 30);
-    const line = S.presentOccupied(g, LINE, "", o, { rng: M.makeRng(seed) });
+    const line = PO(g, LINE, "", o, { rng: M.makeRng(seed) });
     assert.ok(line.replace(/…[^…]*…/g, "，").replace(/…[^…]*。$/, "。").replace(/[，。]/g, "").includes("你不要這樣我生氣了"), line);
   }
 });
@@ -180,37 +184,37 @@ t("精液流出：拔出後第一句 fresh、下一句 fade、再來沒了；塞
   const g = girl();
   g.bodyState.organs.uterus.semen = 2;
   g.bodyState.organs.vagina.stuffed = "penis";
-  assert.equal(S.takeOccupancy(g).semenOut, "");
+  assert.equal(T(g).semenOut, "");
   assert.equal(g.bodyState.organs.uterus.semen, 2);
   g.bodyState.organs.vagina.stuffed = "semen";
-  assert.equal(S.peekOccupancy(g).semenOut, "fresh");
+  assert.equal(P(g).semenOut, "fresh");
   assert.equal(g.bodyState.organs.uterus.semen, 2);
-  assert.equal(S.takeOccupancy(g).semenOut, "fresh");
+  assert.equal(T(g).semenOut, "fresh");
   assert.equal(g.bodyState.organs.uterus.semen, 1);
-  assert.equal(S.takeOccupancy(g).semenOut, "fade");
+  assert.equal(T(g).semenOut, "fade");
   assert.equal(g.bodyState.organs.uterus.semen, 1);
-  assert.equal(S.takeOccupancy(g).semenOut, "");
+  assert.equal(T(g).semenOut, "");
   // 又被內射（量變多）→ 再流一次
   g.bodyState.organs.uterus.semen = 3;
-  assert.equal(S.takeOccupancy(g).semenOut, "fresh");
+  assert.equal(T(g).semenOut, "fresh");
   assert.equal(g.bodyState.organs.uterus.semen, 2);
   // 過 8 分鐘可能再流（rng 0 → 一定）
   g.bodyState.semenOutAt = Date.now() - S.SEMEN_OUT_REDRIP_MS - 1000;
   g.bodyState.semenOutLeft = 0;
-  assert.equal(S.takeOccupancy(g, "", { rng: () => 0 }).semenOut, "fresh");
+  assert.equal(T(g, "", { rng: () => 0 }).semenOut, "fresh");
   assert.equal(g.bodyState.organs.uterus.semen, 1);
-  assert.equal(S.takeOccupancy(g).semenOut, "fade");
+  assert.equal(T(g).semenOut, "fade");
   // 精液清空 → 歸零
   g.bodyState.organs.uterus.semen = 0;
-  assert.equal(S.takeOccupancy(g).semenOut, "");
+  assert.equal(T(g).semenOut, "");
   assert.equal(g.bodyState.semenOutLast, 0);
   // 最後一階流出：減到沒有，下一句仍是餘波
   g.bodyState.organs.uterus.semen = 1;
   g.bodyState.semenOutLast = 0;
-  assert.equal(S.takeOccupancy(g).semenOut, "fresh");
+  assert.equal(T(g).semenOut, "fresh");
   assert.equal(g.bodyState.organs.uterus.semen, 0);
-  assert.equal(S.takeOccupancy(g).semenOut, "fade");
-  assert.equal(S.takeOccupancy(g).semenOut, "");
+  assert.equal(T(g).semenOut, "fade");
+  assert.equal(T(g).semenOut, "");
 });
 
 t("失神 → 佔有度換算（沒被刺激最多 20）", () => {
@@ -224,10 +228,37 @@ t("失神 → 佔有度換算（沒被刺激最多 20）", () => {
 
 t("乳環掛鉤：bodyState.nippleRing 為真才有", () => {
   const g = girl();
-  assert.equal(S.peekOccupancy(g).sources.length, 0);
+  assert.equal(P(g).sources.length, 0);
   g.bodyState.nippleRing = true;
-  assert.equal(S.peekOccupancy(g).sources[0].id, "nipple_ring");
-  assert.equal(S.peekOccupancy(g, "", { clothed: false }).score, 12);
+  assert.equal(P(g).sources[0].id, "nipple_ring");
+  assert.equal(P(g, "", { clothed: false }).score, 12);
+});
+
+t("2026-11-25 不唉唉叫：沒有失神噴水癱軟 → 佔有度最多 9、原句照說；癱軟＋痙攣／失神才崩", () => {
+  const g = girl({ spasmUntil: Date.now() + 60000 });
+  g.bodyState.organs.clit.swell = 3;
+  assert.ok(S.peekOccupancy(g).score <= S.OCC_HELD_CAP);
+  assert.equal(S.presentOccupied(g, LINE, "", S.takeOccupancy(g, "", { climaxNow: true })), LINE);
+  assert.equal(S.speechMode(g).mode, "composed");
+  assert.equal(S.speechMode(g).held, "spasm");
+  assert.equal(S.moanAllowed(g), false);
+  S.setCollapsed(g, true);
+  assert.equal(S.isCollapsed(g), true);
+  assert.equal(S.moanAllowed(g), true);
+  assert.equal(S.speechMode(g).mode, "spasm");
+  assert.ok(S.peekOccupancy(g).score >= 70);
+  const h = girl();
+  S.setCollapsed(h, true);
+  assert.equal(S.moanAllowed(h), false, "癱軟但沒失神：照常說話");
+  S.setCollapsed(g, false);
+  assert.equal(S.moanAllowed(g), false);
+  assert.ok(S.peekOccupancy(g, "", { inSex: true }).score >= 70, "做愛場面照舊");
+});
+
+t("2026-11-25 高潮餘韻：沒崩的時候 prompt 叫她照常完整句子", () => {
+  const g = girl({ afterglowUntil: Date.now() + 60000, afterglowReplies: 2 });
+  const lines = S.afterglowPromptLines(g).join("");
+  assert.ok(/完整句子/.test(lines) && !/必須餘韻、喘/.test(lines), lines);
 });
 
 console.log(`\n${pass} passed`);

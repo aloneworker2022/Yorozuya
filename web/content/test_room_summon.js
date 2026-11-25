@@ -20,7 +20,7 @@ import {
   decayArousalCool,
   resetOpenness,
   clearVaginaFingers,
-} from "./body_state.js?v=21";
+} from "./body_state.js?v=22";
 import { classifyUserText, applyVerbalTease, verbalTeasePrompt } from "./verbal_tease.js?v=1";
 import {
   effectiveStun,
@@ -47,6 +47,8 @@ import {
   moanVoicePromptLines,
   speechMode,
   speechMayBreak,
+  moanAllowed,
+  setCollapsed,
   SPASM_MS,
   SHOCK_MAX,
   AFTERGLOW_FRIEND_MS,
@@ -61,7 +63,7 @@ import {
   occupancyMoanLine,
   occupancyPromptLine,
   occupancyLabel,
-} from "./stun_speech.js?v=25";
+} from "./stun_speech.js?v=26";
 import {
   pickPortraitUrl,
   portraitPathKey,
@@ -111,7 +113,7 @@ import {
   personalityResistMult,
   PERSONALITY_RESIST,
 } from "./invasion.js?v=10";
-import { teaseAttitude, teaseSessionCount, noteTeaseSession, attitudeShift, attitudePromptBlock, attitudeRange, nearestAttitude, ATTITUDE_REACT } from "./tease_attitude.js?v=1";
+import { teaseAttitude, teaseSessionCount, noteTeaseSession, attitudeShift, attitudePromptBlock, attitudeRange, nearestAttitude, ATTITUDE_REACT } from "./tease_attitude.js?v=2";
 import {
   ensureMiss,
   getMiss,
@@ -220,7 +222,7 @@ import {
   dressedReactionPrompt,
 } from "./undress_shy.js?v=3";
 import { PERSONALITY_FAMILY, familyStageLine, familyOf, scrubHusband as scrubHusbandV } from "./girl_voice.js?v=1";
-import { touchTierOf, touchBankMessages, parseTouchBank, pickTouchLine, moanLevelOf, touchReply, tierAttitudes, TOUCH_TIERS, TOUCH_BANK_REV } from "./touch_lines.js?v=3";
+import { touchTierOf, touchBankMessages, parseTouchBank, pickTouchLine, moanLevelOf, touchReply, tierAttitudes, TOUCH_TIERS, TOUCH_BANK_REV } from "./touch_lines.js?v=4";
 import { lineEventPromptLines } from "./line_social.js?v=1";
 import {
   TRIGGERS as TALK_TRIGGERS, TRIGGER_ZH as TALK_TRIGGER_ZH, talkEligible, ensureTalkState, talkGate, tickTalk, freshMemory, freshLineEvent,
@@ -351,7 +353,7 @@ import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=18";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
 import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=21";
-import { moanVoiceId } from "./stun_speech.js?v=25";
+import { moanVoiceId } from "./stun_speech.js?v=26";
 import { ensureFeel as ensureDeskFeel, tickFeel as tickDeskFeel, noteWork as noteDeskWork, feelPromptLines as deskFeelLines, tiredLabel as deskTiredLabel } from "./desk_feel.js?v=1";
 import {
   hungerOn,
@@ -9281,7 +9283,7 @@ let promptActId = "";
 function speechBodyPromptLines() {
   const sm = speechMode(girl, promptActId);
   return [
-    ...bodyPromptLines(girl, { mode: sm.mode, level: sm.level, actId: promptActId }),
+    ...bodyPromptLines(girl, { mode: sm.mode, level: sm.level, actId: promptActId, held: !!sm.held }),
     ...moanVoicePromptLines(girl, promptActId),
   ];
 }
@@ -9563,7 +9565,7 @@ async function openTalk() {
     if (openerOcc.score >= 95) {
       line = occupancyMoanLine(openerOcc, girl) || "……嗯啊…";
       setTyping(false);
-    } else if (openerOcc.score < 65 && !inSpasm(girl) && inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0) {
+    } else if (openerOcc.score < 65 && !inSpasm(girl) && inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0 && moanAllowed(girl, "")) {
       line = afterglowTemplate(girl, "") || "……哈…";
       setTyping(false);
     } else {
@@ -10368,6 +10370,8 @@ async function deliverUserTalk(text, opts = {}) {
         const base = pickTouchLine(girl.touchBank, tier, opts.touchZone, girl.touchRecent, teaseAtt?.key || "");
         let lvl = moanLevelOf(arousalStage(girl.bodyState?.arousal || 0), { climaxNow: herClimaxNow, spasm: inSpasm(girl) });
         if (occ.score >= 95) lvl = 4; else if (occ.score >= 65) lvl = Math.max(lvl, 3);
+        // 2026-11-25 使用者：不唉唉叫——沒有失神噴水癱軟時，被摸那一下最多一聲輕輕的（嚇一跳／「嗯…♡」）
+        if (!moanAllowed(girl, opts.actId || "")) lvl = Math.min(lvl, 1);
         line = touchReply(scrubHusbandV(base, girl.stage || "stranger", girl.playerPet || ""), opts.touchZone, lvl) || base;
         pushDebug(`摸（${opts.touchZone}・${tier}${teaseAtt ? "・" + teaseAtt.zh : ""}${girl.touchBank?.tiers?.[tier] ? "" : "・內建"}）嬌喘 ${lvl}`);
         renderDebug();
@@ -10375,7 +10379,7 @@ async function deliverUserTalk(text, opts = {}) {
       } else if (occ.score >= 95) {
         line = occupancyMoanLine(occ, girl) || "……嗯啊…";
         setTyping(false);
-      } else if (occ.score < 65 && !inSpasm(girl) && inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0) {
+      } else if (occ.score < 65 && !inSpasm(girl) && inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0 && moanAllowed(girl, actId)) {
         line = afterglowTemplate(girl, actId) || "……哈…腿…軟…";
         setTyping(false);
       } else {
@@ -10569,6 +10573,12 @@ function fingerEnd() {
   if (!girl) return;
   if (clearVaginaFingers(girl)) { renderBodyPanel(); persistRoom(); }
 }
+// 2026-11-25：聊天黑影的癱坐開始／起來 → 記在她身上（只有失神＋癱軟才准唉唉叫，stun_speech moanAllowed）
+document.addEventListener("chat-shadow-collapse", (ev) => {
+  if (!girl) return;
+  const on = !!ev?.detail?.on;
+  if (setCollapsed(girl, on)) { pushDebug(on ? "癱軟在地上" : "站起來了"); renderDebug(); persistRoom(); }
+});
 window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES, finger: { can: fingerCan, round: fingerRound, end: fingerEnd, busy: () => !!talkBusy } };
 
 function undressPlayOpen() {
