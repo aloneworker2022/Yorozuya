@@ -101,6 +101,9 @@ _SHOT_FILE_SUFS = (
     *(f"sex_prone_{_st}" for _st in ("thrust", "orgasm", "open", "tip", "cum")),   # pt285u 床鋪背後組
     # 扣陰道／揉子宮口 x-ray 剖面（不分穿衣／裸體，共用一張）
     "tease_vagina_finger", "tease_cervix_rub",
+    # 2026-11-25 癱軟在地上被玩弄（裸體版比穿衣版長，先比對）
+    "tease_floor_breast_nude", "tease_floor_labia_nude", "tease_floor_finger_nude",
+    "tease_floor_breast", "tease_floor_labia", "tease_floor_finger",
     # 動作圖裸體版（比穿衣版長，先比對）
     "tease_breast_knead_nude", "tease_breast_suck_nude", "tease_nipple_lick_nude",
     "tease_labia_rub_nude", "tease_finger_in_nude", "tease_breast_nude", "tease_labia_nude",
@@ -124,6 +127,8 @@ SHOT_LABEL_ZH = {
     "undress_cover": "脫衣·遮住胸和下體",
     "undress_low": "脫衣·遮住下面",
     "undress_stand": "脫衣·裸體立繪",
+    "tease_floor_breast": "癱坐·摸奶", "tease_floor_labia": "癱坐·摸下面", "tease_floor_finger": "癱坐·手指插入",
+    "tease_floor_breast_nude": "癱坐·摸奶（裸）", "tease_floor_labia_nude": "癱坐·摸下面（裸）", "tease_floor_finger_nude": "癱坐·手指插入（裸）",
     "undress_stand_shirt": "脫衣·站著脫上衣", "undress_stand_bra": "脫衣·站著脫胸罩", "undress_stand_panties": "脫衣·站著脫內褲",
     "half_xi": "半身·喜", "half_nu": "半身·怒", "half_ai": "半身·哀",
     "half_le": "半身·樂", "half_xiu": "半身·害羞",

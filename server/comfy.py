@@ -145,6 +145,11 @@ ACTION_NUDE_BASES = (
 NUDE_ACTION_SHOTS = tuple(f"{b}_nude" for b in ACTION_NUDE_BASES)
 for _s in NUDE_ACTION_SHOTS:
     PORTRAIT_SHOTS[_s] = dict(_ACTION_CROP_SPEC)
+# 2026-11-25 癱軟在地上被玩弄（web/content/floor_shots.js）：全身直圖、玩家 POV；_nude＝脫光版（garment=nude）
+FLOOR_ACTION_BASES = ("tease_floor_breast", "tease_floor_labia", "tease_floor_finger")
+FLOOR_ACTION_SHOTS = FLOOR_ACTION_BASES + tuple(f"{b}_nude" for b in FLOOR_ACTION_BASES)
+for _s in FLOOR_ACTION_SHOTS:
+    PORTRAIT_SHOTS[_s] = dict(_TEASE_SPEC)
 # 扣陰道／揉子宮口：x-ray 剖面動作圖（正方形；剖面不分穿衣／裸體，沒有 _nude 版）
 XRAY_ACTION_SHOTS = ("tease_vagina_finger", "tease_cervix_rub")
 for _s in XRAY_ACTION_SHOTS:
@@ -184,7 +189,7 @@ TEASE_SHOTS = (
     "tease_cowgirl",
     "tease_cowgirl_ready", "tease_cowgirl_half", "tease_cowgirl_more", "tease_cowgirl_deep", "tease_cowgirl_cum",
 )
-TEASE_SHOTS = TEASE_SHOTS + NUDE_ACTION_SHOTS + XRAY_ACTION_SHOTS + SEX_STEP_SHOTS
+TEASE_SHOTS = TEASE_SHOTS + NUDE_ACTION_SHOTS + XRAY_ACTION_SHOTS + SEX_STEP_SHOTS + FLOOR_ACTION_SHOTS
 
 
 def is_action_crop_shot(shot: str) -> bool:
@@ -235,6 +240,8 @@ def undress_garment(shot: str) -> str:
     if s == "undress_slip":
         return "panties"
     if s in ("undress_nude", "undress_stand") or s in NUDE_ACTION_SHOTS or s in SEX_POSE_SHOTS or s in SEX_STEP_SHOTS:
+        return "nude"
+    if s in FLOOR_ACTION_SHOTS and s.endswith("_nude"):
         return "nude"
     if s == "undress_cover":
         return "cover"

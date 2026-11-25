@@ -23,6 +23,7 @@ import {
 } from "./body_state.js?v=22";
 import { classifyUserText, applyVerbalTease, verbalTeasePrompt } from "./verbal_tease.js?v=2";
 import { classifyRequest, requestPrompt, parseDecision, fallbackYesChance } from "./request_ask.js?v=1";
+import { FLOOR_SHOT_LIST, floorShotKey, buildFloorImgBody } from "./floor_shots.js?v=1";
 import {
   effectiveStun,
   calcStun,
@@ -451,7 +452,7 @@ function fingerMood(who) {
   const key = String(who?.id || who?.name || ""); let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
   return { fgWelcome: idx >= (STAGE_INDEX.passionate ?? 5), fgLevel: lvl, fgSquirt: ["once", "faucet", "double"][h % 3] };
 }
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl), ...teaseReactLook(girl), squirtSeq: Number(girl.bodyState?.squirt?.seq) || 0, collapsed: isCollapsed(girl) } : null);
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl), ...teaseReactLook(girl), squirtSeq: Number(girl.bodyState?.squirt?.seq) || 0, collapsed: isCollapsed(girl), stunned: inSpasm(girl) || stunTier(effectiveStun(girl, "")) === "stun" } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
@@ -5930,6 +5931,14 @@ async function collectSummonPortraitItems(who = girl, opts = {}) {
         console.warn("[summon-queue] standee", slot?.id, err?.message || err);
       }
     }
+    // 2026-11-25 癱軟在地上被玩弄（穿著版，跟衣服走）：裸體版第一次脫光癱坐時才產
+    for (const shot of FLOOR_SHOT_LIST) {
+      try {
+        pushItem({ slot: { kind: "undress", shot, outfit: true }, body: buildFloorImgBody(shot, who, engine, { worn }) });
+      } catch (err) {
+        console.warn("[summon-queue] floor", shot, err?.message || err);
+      }
+    }
     if (opts.clothedOnly) return items;
     let undressPacks = [];
     try {
@@ -10133,20 +10142,23 @@ async function deliverUserTalk(text, opts = {}) {
           hungerRelief("touch");
         }
         organDevTouch(TALK_ACTS.find((a) => a.id === opts.actId)?.hitId);
-        if (opts.actId === "butt") void maybeGenButtShot(girl, opts.actId);
-        if (opts.actId === "waist") void maybeGenWaistShot(girl, opts.actId);
-        if (opts.actId === "breast") void maybeGenBreastShot(girl, opts.actId);
-        if (opts.actId === "breast_knead") void maybeGenKneadShot(girl, opts.actId);
-        if (opts.actId === "breast_suck") void maybeGenSuckShot(girl, opts.actId);
-        if (opts.actId === "nipple_lick") void maybeGenLickShot(girl, opts.actId);
-        if (opts.actId === "labia") void maybeGenLabiaShot(girl, opts.actId);
-        if (opts.actId === "labia_rub") void maybeGenLabiaRubShot(girl, opts.actId);
-        if (opts.actId === "pull_out") clearActionFlash();
-        if (opts.actId === "finger_in") void maybeGenFingerShot(girl, opts.actId);
-        if (opts.actId === "vagina_finger" || opts.actId === "cervix_rub") {
-          // x-ray 剖面圖組關著（XRAY_ACTION_PACKS_ON=false）→ 借插入手指的圖（全裸＋閘門開時借裸體版）
-          if (XRAY_ACTION_PACKS_ON) void maybeGenOwnActionShot(girl, opts.actId);
-          else void maybeGenFingerShot(girl, "finger_in");
+        // 2026-11-25 癱坐在地上：閃坐地的動作圖，不閃站著的
+        if (!showFloorShot(girl, opts.actId)) {
+          if (opts.actId === "butt") void maybeGenButtShot(girl, opts.actId);
+          if (opts.actId === "waist") void maybeGenWaistShot(girl, opts.actId);
+          if (opts.actId === "breast") void maybeGenBreastShot(girl, opts.actId);
+          if (opts.actId === "breast_knead") void maybeGenKneadShot(girl, opts.actId);
+          if (opts.actId === "breast_suck") void maybeGenSuckShot(girl, opts.actId);
+          if (opts.actId === "nipple_lick") void maybeGenLickShot(girl, opts.actId);
+          if (opts.actId === "labia") void maybeGenLabiaShot(girl, opts.actId);
+          if (opts.actId === "labia_rub") void maybeGenLabiaRubShot(girl, opts.actId);
+          if (opts.actId === "pull_out") clearActionFlash();
+          if (opts.actId === "finger_in") void maybeGenFingerShot(girl, opts.actId);
+          if (opts.actId === "vagina_finger" || opts.actId === "cervix_rub") {
+            // x-ray 剖面圖組關著（XRAY_ACTION_PACKS_ON=false）→ 借插入手指的圖（全裸＋閘門開時借裸體版）
+            if (XRAY_ACTION_PACKS_ON) void maybeGenOwnActionShot(girl, opts.actId);
+            else void maybeGenFingerShot(girl, "finger_in");
+          }
         }
         // 情感：一般挑逗不加；接近高潮／失神門檻才小幅＋1，痙攣／射精＋2
         const nearClimax = stunBefore >= 50 || arousalBefore >= 22
@@ -10553,6 +10565,48 @@ async function sendTalk(event) {
   if (order) closeAfterOrderReply(order);
 }
 
+// ---------------------------------------------------------------- 癱軟在地上被玩弄的動作圖（2026-11-25 使用者，§13.0 第 6 項；floor_shots.js）
+const FLOOR_KIND_OF_ACT = { breast: "breast", breast_knead: "breast", breast_suck: "breast", nipple_lick: "breast", labia: "groin", labia_rub: "groin", finger_in: "finger", vagina_finger: "finger", cervix_rub: "finger" };
+const floorJobs = new Map();
+/** 產一張坐地動作圖（缺才產；同一張同時只產一次）。 */
+function ensureFloorShot(who, shot) {
+  if (!who?.id || !shot) return Promise.resolve("");
+  const cached = String(who.portraits?.[shot] || "");
+  if (cached) return Promise.resolve(cached);
+  const key = `${who.id}:${shot}`;
+  if (floorJobs.has(key)) return floorJobs.get(key);
+  const job = (async () => {
+    const engine = await gameImgRoute();
+    await ensureGirlComfyCkpt(who);
+    const result = await waitImage(buildFloorImgBody(shot, who, engine));
+    if (result?.status === "done" && result.result) {
+      who.portraits = who.portraits || {};
+      who.portraits[shot] = stampPortraitUrl(result.result);
+      if (who === girl) persistRoom();
+      return who.portraits[shot];
+    }
+    return "";
+  })().catch((err) => { console.warn("[floor]", shot, err?.message || err); return ""; }).finally(() => floorJobs.delete(key));
+  floorJobs.set(key, job);
+  return job;
+}
+/** 她癱坐時被碰：閃坐地那張（穿著／脫光各一套）；還沒有就背景產，這次不閃。回傳有沒有處理（有＝不要再閃站著的動作圖）。 */
+function showFloorShot(who, actId) {
+  const kind = FLOOR_KIND_OF_ACT[actId];
+  if (!who || !kind || !isCollapsed(who)) return false;
+  const shot = floorShotKey(kind, undressStage(who) >= 3);
+  const url = String(who.portraits?.[shot] || "");
+  if (url) showActionFlash(url, `${who.name}癱坐在地上`);
+  else void ensureFloorShot(who, shot);
+  return true;
+}
+/** 一癱坐就把這身穿著的三張排進背景（之後摸才有圖）。 */
+function pregenFloorShots(who) {
+  if (!who) return;
+  const nude = undressStage(who) >= 3;
+  for (const kind of ["breast", "groin", "finger"]) void ensureFloorShot(who, floorShotKey(kind, nude));
+}
+
 // ---------------------------------------------------------------- 用說的請她（2026-11-25 使用者，§13.0 第 4 項）
 const AROUSAL_ZH = { none: "平靜", slight: "微微有感覺", aroused: "有感覺了", wantFill: "很想要", climax: "到了高潮邊緣" };
 const UNDRESS_ZH = ["穿著衣服", "只剩胸罩和內褲", "只剩內褲", "全裸"];
@@ -10749,8 +10803,18 @@ document.addEventListener("chat-shadow-collapse", (ev) => {
   if (!girl) return;
   const on = !!ev?.detail?.on;
   if (setCollapsed(girl, on)) { pushDebug(on ? "癱軟在地上" : "站起來了"); renderDebug(); persistRoom(); }
+  if (on) pregenFloorShots(girl);
 });
-window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES, finger: { can: fingerCan, round: fingerRound, end: fingerEnd, busy: () => !!talkBusy } };
+// 2026-11-25 使用者（§13.0 第 6 項）：癱坐在地上按住下面＝坐著被手指插入。能扣陰道就扣，不能就揉陰唇／摸陰唇（每一輪一個動作，走摸黑影的快路）。
+const SEAT_FINGER_ACTS = ["vagina_finger", "finger_in", "labia_rub", "labia"];
+function seatFingerAct() { return SEAT_FINGER_ACTS.find((id) => fingerCan(id)) || ""; }
+function seatFingerCan() { return !!girl && isCollapsed(girl) && !!seatFingerAct(); }
+function seatFingerRound() {
+  if (!seatFingerCan()) return false;
+  void sendTalkAct(seatFingerAct(), { touchZone: "groin" });
+  return true;
+}
+window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES, finger: { can: fingerCan, round: fingerRound, end: fingerEnd, seat: seatFingerRound, seatCan: seatFingerCan, busy: () => !!talkBusy } };
 
 function undressPlayOpen() {
   if (undressChatActive()) return sheetOpen();
