@@ -110,7 +110,7 @@ import {
   blendProtestReply,
   personalityResistMult,
   PERSONALITY_RESIST,
-} from "./invasion.js?v=9";
+} from "./invasion.js?v=10";
 import { teaseAttitude, teaseSessionCount, noteTeaseSession, attitudeShift, attitudePromptBlock, attitudeRange, nearestAttitude, ATTITUDE_REACT } from "./tease_attitude.js?v=1";
 import {
   ensureMiss,
@@ -139,7 +139,7 @@ import {
   reckoningFleeNote,
   reckoningMood,
   stunDebtActsText,
-} from "./stun_reckoning.js?v=2";
+} from "./stun_reckoning.js?v=3";
 import {
   SEX_POSES,
   SEX_PREGEN_STEPS,
@@ -6122,7 +6122,7 @@ function bikiniOutfit(who) {
 
 function undressBeat(help, outcome, stageBefore, stageAfter, bikini = false) {
   if (bikini && outcome === "flee") {
-    const text = "她掙開你的手，比基尼還在身上，人逃離了房間。";
+    const text = "她掙開你的手，比基尼還在身上，氣得不想再跟你說話。";
     return { text, canned: `（${text}）` };
   }
   if (bikini && outcome === "ignore") {
@@ -6137,7 +6137,7 @@ function undressBeat(help, outcome, stageBefore, stageAfter, bikini = false) {
   }
   if (outcome === "flee") {
     const still = stageBefore <= 0 ? "外衣還在身上" : stageBefore === 1 ? "胸罩和內褲都還在" : "內褲還在";
-    const text = `她掙開你的手，${still}，人逃離了房間。`;
+    const text = `她掙開你的手，${still}，氣得不想再跟你說話。`;
     return { text, canned: `（${text}）` };
   }
   if (outcome === "ignore") {
@@ -6174,7 +6174,7 @@ async function narrateUndress(beat) {
           "只寫這一拍看得見的脫衣：誰的手、哪一件布料離開或沒離開、現在還穿什麼、身體怎麼動。",
           "不要寫「」或『』台詞，不要替她說話。她的回應另外有人寫。",
           "不要寫選項、系統詞、階段名、順從、被動。不要寫插入、抽插、做愛。",
-          "事實不能改：沒脫成就不要寫成脫掉，逃走就不要寫成留下。",
+          "事實不能改：沒脫成就不要寫成脫掉；她掙開了就是不肯，要生氣地結束聊天（人不會離開房間）。",
         ].join("\n"),
       },
       { role: "user", content: `事實：${beat.text}` },
@@ -8822,8 +8822,10 @@ function bumpAffection(delta, reason = "") {
   renderDebug();
 }
 
-/** 閒聊判定只加不減。接住 5、喜歡 3、有趣 1、平常 0、冒犯 0（仍設防備）。 */
-const MARK_AFF = { 接住: 5, 喜歡: 3, 有趣: 1, 冒犯: 0 };
+/** 閒聊判定只加不減。接住 5、喜歡 3、有趣 1、平常 1（2026-11-25 使用者：對話都加一點點）、冒犯 0（仍設防備）。 */
+const MARK_AFF = { 接住: 5, 喜歡: 3, 有趣: 1, 平常: 1, 冒犯: 0 };
+/** 每次調戲（動手）加一點點感情（2026-11-25 使用者：侵犯也會加一點點；只有侵犯滿了才扣，見 ANGER_AFF_DROP）。 */
+const TEASE_AFF = 1;
 
 function applyMark(mark) {
   const delta = MARK_AFF[mark] || 0;
@@ -9073,13 +9075,13 @@ function summonOpener() {
   return `（旁白：${base}妻子／更深：嗔或黏地應他，可問要做什麼，一兩句。${body}只輸出台詞。）`;
 }
 
-/** flee_back：侵犯逃出後再被召喚 */
+/** angry_end：剛才被他惹到生氣、結束聊天後，他又來找她說話（舊存檔的 flee_back 也走這裡）。 */
 function fleeBackOpener() {
   const body = openerBodyHint({ forceBody: true });
   const stage = girl.stage || "stranger";
   const idx = STAGE_INDEX[stage] ?? 0;
   const open = getOpenness(girl);
-  const base = "你剛才因他太過分而逃離房間，現在又被召喚回來。餘怒／害怕／羞耻／彆扭要進第一句。不要說侵犯數字；用「剛才太過分」「你嚇到我了」這類感覺。禁止報日本流水帳。";
+  const base = "你剛才因他太過分，生氣地不跟他說話了；你一直在這間房間裡，現在他又來找你說話。餘怒／害怕／羞耻／彆扭要進第一句。不要說侵犯數字；用「剛才太過分」「你嚇到我了」這類感覺。禁止報日本流水帳。";
   if (idx <= (STAGE_INDEX.friend ?? 2) || open < 30) {
     return `（旁白：${base}低關係或低開放：罵、躲、要他保證不再亂來、或想立刻走，一兩句。${body}只輸出台詞。）`;
   }
@@ -9096,14 +9098,14 @@ function fleeBackOpener() {
  */
 function resolveEnterReason(returning) {
   const reason = girl.chatEnter || "";
-  if (reason === "summon" || reason === "flee_back") return reason;
+  if (reason === "summon" || reason === "flee_back" || reason === "angry_end") return reason;
   if (returning || reason === "reopen") return "reopen";
   return "first";
 }
 
 function consumeEnterReason(reason) {
   if (!girl) return;
-  if (reason === "summon" || reason === "flee_back" || reason === "first" || reason === "reopen") {
+  if (reason === "summon" || reason === "flee_back" || reason === "angry_end" || reason === "first" || reason === "reopen") {
     girl.chatEnter = "reopen";
   }
 }
@@ -9117,7 +9119,7 @@ function enterOpener(returning) {
   const reason = resolveEnterReason(returning);
   if (girl) girl.freshMeet = reason === "summon" || reason === "flee_back";
   let line = "";
-  if (reason === "flee_back") line = fleeBackOpener();
+  if (reason === "flee_back" || reason === "angry_end") line = fleeBackOpener();
   else if (reason === "summon") line = summonOpener();
   else if (reason === "reopen") line = reopenOpener();
   else line = firstOpener();
@@ -10266,7 +10268,7 @@ async function deliverUserTalk(text, opts = {}) {
     }
     if (climaxLine || spasmNote) persistRoom();
 
-    // 侵犯值：動作後擲骰；滿值則逃離房間。保留本回合 added 供抗議語氣。
+    // 侵犯值：動作後擲骰；滿值則她生氣結束聊天（2026-11-25 起不逃走、不離開房間）。保留本回合 added 供抗議語氣。
     let invAdded = 0;
     let invWilling = false;
     let invToneOpts = { willing: false };
@@ -10318,10 +10320,11 @@ async function deliverUserTalk(text, opts = {}) {
           renderDebug();
         }
       }
+      if (!invRoll.fled && opts.actId !== "pull_out") bumpAffection(TEASE_AFF, "調戲");
       persistRoom();
       refreshTalkActs();
       if (invRoll.fled) {
-        const fleeNote = `（旁白：侵犯感爆滿——${girl.name}推開你，慌忙逃離了房間。）`;
+        const fleeNote = `（旁白：侵犯感爆滿——${girl.name}用力推開你，氣得不想再跟你說話了。）`;
         lines.push({ role: "user", content: herView(fleeNote) });
         await typeLine("旁白", fleeNote);
         persistRoom();
@@ -10331,7 +10334,7 @@ async function deliverUserTalk(text, opts = {}) {
     }
 
     if (verbalTease?.res?.fled) {
-      const fleeNote = `（旁白：侵犯感爆滿——${girl.name}推開你，慌忙逃離了房間。）`;
+      const fleeNote = `（旁白：侵犯感爆滿——${girl.name}用力推開你，氣得不想再跟你說話了。）`;
       lines.push({ role: "user", content: herView(fleeNote) });
       await typeLine("旁白", fleeNote);
       persistRoom();
@@ -10385,7 +10388,7 @@ async function deliverUserTalk(text, opts = {}) {
             stage: girl.stage || "stranger", arousal: actArousalBefore ?? (girl.bodyState?.arousal || 0), shift: teaseShift,
             hitId: TALK_ACTS.find((a) => a.id === actId)?.hitId || "", persToken: pr?.token || "", persProtest: "",
           }) : "";
-          const near = teaseAtt && teaseAtt.idx >= 1 && invTotal >= INVASION_MAX - 15 ? "（侵犯感已經快到你受不了的程度：可以暗示再這樣下去你就要走了。）" : "";
+          const near = teaseAtt && teaseAtt.idx >= 1 && invTotal >= INVASION_MAX - 15 ? "（侵犯感已經快到你受不了的程度：可以暗示再這樣下去你就不理他了。）" : "";
           protestExtra = !teaseAtt || teaseAtt.idx === 0
             ? [protestPromptBlock(invAdded, { invasion: invTotal, ...invToneOpts }), attBlock].filter(Boolean).join("\n")
             : [attBlock, near].filter(Boolean).join("\n");
@@ -10777,7 +10780,7 @@ function advanceUndressPlay() {
   renderUndressPlayChoices();
 }
 
-/** 畫面裡才選。幫她脫：2/3 進一階，1/3 逃走。叫她脫：不逃走，1/3 才進一階。旁白與她的話用下一句分開看。 */
+/** 畫面裡才選。幫她脫：2/3 進一階，1/3 她不肯（掙開、生氣結束聊天，人留在房間）。叫她脫：不會生氣，1/3 才進一階。旁白與她的話用下一句分開看。 */
 async function playUndress(mode) {
   if (!undressPlay || undressPlay.busy || undressPlay.phase !== "choose") return;
   if (!girl || !undressPlayOpen()) return;
@@ -11350,7 +11353,7 @@ function endTalkSession() {
     girl.bodyState.ejacTalkBan = false;
   }
   clearVaginaFingers(girl);
-  if (girl.chatEnter !== "flee_back" && girl.chatEnter !== "summon") {
+  if (girl.chatEnter !== "flee_back" && girl.chatEnter !== "summon" && girl.chatEnter !== "angry_end") {
     girl.chatEnter = "reopen";
   }
 }
@@ -12356,52 +12359,10 @@ function closeTalkForLeave() {
   }
 }
 
-/** 幫她脫時逃走：離開房間（脫衣進度清 0）。「裸體」旗已撤掉（NUDE_FLAG_ON=false）。 */
+/** 幫她脫時她不肯（2026-11-25 使用者：沒有逃走，魅魔頂多結束聊天）：推開你、把衣服穿回去、結束聊天，人還在房間。
+ *  只是不肯脫，不扣感情（扣感情只在侵犯滿的時候）。 */
 async function fleeRoomFromUndress() {
-  if (!girl) return;
-  const who = girl;
-  const name = who.name;
-  if (NUDE_FLAG_ON) who.nude = true;
-  who.chatEnter = "flee_back";
-  clearVisitUndress(who);
-  try { clearStunDebt(who); } catch { /* ignore */ }
-  startArousalCool(who);
-  resetOpenness(who);
-  clearVaginaFingers(who);
-  closeTalkForLeave();
-  window.RoomActor?.setPresent(false);
-  dropVisitPics();
-  syncArousalOffChatTimer();
-  activityOpen = false;
-
-  const tail = `${name}掙開你逃離了房間。可再召喚回來。`;
-  if (who.world?.home) {
-    clearShift();
-    renderCard();
-    renderWorld();
-    persistRoom();
-    if ($("summon-status")) $("summon-status").textContent = tail;
-    return;
-  }
-  if (who.world) {
-    ensureWorldHome(who);
-    clearShift();
-    renderCard();
-    renderWorld();
-    persistRoom();
-    const region = placedRegion();
-    const homeName = who.world.home?.name || "某處";
-    if ($("summon-status")) {
-      $("summon-status").textContent = region
-        ? `${name}掙開你逃離了房間。人在日本的${region.name}，住在${homeName}。可再召喚回來。`
-        : tail;
-    }
-    return;
-  }
-  await letHerLeave({ instantHome: true, keepArousal: true });
-  if ($("summon-status")) {
-    $("summon-status").textContent = `${name}掙開你逃離了房間。人已回到日本。可再召喚回來。`;
-  }
+  await endChatAngry({ cause: "硬要脫你衣服", kind: "undress", affDrop: 0 });
 }
 
 /** 失神／痙攣中記一筆欠帳（閘門關或她沒失神就不記）。 */
@@ -12442,7 +12403,7 @@ async function settleStunReckoning({ redressed = false } = {}) {
   }
   const pct = Math.round(r.share * 100);
   if (r.kind === "sweet") pushDebug(`算帳 欠 ${r.debt}・熱戀以上不補${r.sweetDrop ? `，甜 侵犯 −${r.sweetDrop}` : ""} → ${getInvasion(who)}/${INVASION_MAX}`);
-  else pushDebug(`算帳 欠 ${r.debt}×${pct}% → 侵犯 +${r.add} → ${Math.min(INVASION_MAX, invBefore + r.add)}/${INVASION_MAX}${r.fled ? "・逃走" : ""}`);
+  else pushDebug(`算帳 欠 ${r.debt}×${pct}% → 侵犯 +${r.add} → ${Math.min(INVASION_MAX, invBefore + r.add)}/${INVASION_MAX}${r.fled ? "・結束聊天" : ""}`);
   const mood = reckoningMood(r);
   if (mood) {
     try { noteMood(who, { ...mood, cause: "趁你失神的時候對你動手動腳" }); } catch { /* ignore */ }
@@ -12472,7 +12433,7 @@ async function settleStunReckoning({ redressed = false } = {}) {
     lines.push({ role: "user", content: herView(note) });
     await typeLine("旁白", note);
     persistRoom();
-    await fleeRoomFromInvasion({ cause: "趁你失神的時候對你動手動腳，回神後受不了逃走" });
+    await fleeRoomFromInvasion({ cause: "趁你失神的時候對你動手動腳，回神後受不了" });
     return { fled: true, spoke: true, line, r };
   }
   try { paintHalfPortrait(who); } catch { /* ignore */ }
@@ -12495,54 +12456,35 @@ async function runIdleReckoning(waitFor = null) {
   }
 }
 
-/** 侵犯值滿：清侵犯、關對話、趕出房間（需再召喚或再抽）。 */
-async function fleeRoomFromInvasion({ cause = "動手動腳到你受不了逃走" } = {}) {
+/** 侵犯滿了扣多少感情（2026-11-25 使用者：被侵犯生氣到一定值才扣一點點）。 */
+const ANGER_AFF_DROP = 3;
+/** 侵犯值滿（2026-11-25 使用者：不逃走，頂多結束聊天）：扣一點點感情、清侵犯、記最強的氣、關對話，人還在房間。 */
+async function fleeRoomFromInvasion({ cause = "動手動腳到你受不了" } = {}) {
+  await endChatAngry({ cause, kind: "invasion", affDrop: ANGER_AFF_DROP });
+}
+
+/** 她生氣地結束聊天：穿回衣服、情緒餘溫記最強的氣（約 1.5 小時才消）、下次打開聊天用「剛才生氣結束聊天」開場；不離開房間。 */
+async function endChatAngry({ cause = "動手動腳到你受不了", kind = "invasion", affDrop = 0 } = {}) {
   if (!girl) return;
   const who = girl;
   const name = who.name;
-  who.chatEnter = "flee_back";
+  who.chatEnter = "angry_end";
   clearVisitUndress(who);
   clearInvasion(who);
   try { clearStunDebt(who); } catch { /* ignore */ }
-  // 情緒餘溫：侵犯爆滿逃走＝最強的氣（−1/分鐘，約 1.5 小時才消；召回時開場也會帶著）
   try { noteMood(who, { type: "angry", level: 100, cause }); } catch { /* ignore */ }
+  if (affDrop > 0) bumpAffection(-affDrop, kind === "invasion" ? "侵犯到她受不了" : "惹她生氣");
   startArousalCool(who);
   resetOpenness(who);
   clearVaginaFingers(who);
-  // 先關對話／busy／scroll lock，再趕人——避免房間被鎖、找地點卡住
   closeTalkForLeave();
-  window.RoomActor?.setPresent(false);
-  dropVisitPics();
   syncArousalOffChatTimer();
   activityOpen = false;
-
-  if (who.world?.home) {
-    clearShift();
-    renderCard();
-    renderWorld();
-    persistRoom();
-    $("summon-status").textContent = `${name}因侵犯感過重逃離了房間。可再召喚回來。`;
-    return;
-  }
-  if (who.world) {
-    // 半狀態：補住所後離房，勿停在「正在決定她住哪」且召喚鍵被藏
-    ensureWorldHome(who);
-    clearShift();
-    renderCard();
-    renderWorld();
-    persistRoom();
-    const region = placedRegion();
-    const homeName = who.world.home?.name || "某處";
-    $("summon-status").textContent = region
-      ? `${name}因侵犯感過重逃離了房間，人在日本的${region.name}，住在${homeName}。可再召喚回來。`
-      : `${name}因侵犯感過重逃離了房間。可再召喚回來。`;
-    return;
-  }
-  // 尚無 world：同步安置日本＋隨機住所（逃離不等人模選房）
-  await letHerLeave({ instantHome: true, keepArousal: true });
-  if ($("summon-status")) {
-    $("summon-status").textContent = `${name}因侵犯感過重逃離了房間，人已回到日本。可再召喚回來。`;
-  }
+  renderCard();
+  persistRoom();
+  const st = $("summon-status");
+  if (st) st.textContent = kind === "undress" ? `${name}推開你、把衣服穿回去，氣得不想再說話了。` : `${name}受不了了，生氣地結束了聊天。`;
+  try { window.RoomActor?.tip?.(`${name}在生氣，不想理你。`); } catch { /* */ }
 }
 
 

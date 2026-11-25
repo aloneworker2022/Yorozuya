@@ -2,8 +2,8 @@
  * 事後算帳（2026-10-03 使用者）：失神／痙攣中動手動腳、脫她衣服時，侵犯值完全不漲（閘門開時由房間端強制 0），
  * 但偷偷記一筆「欠帳」＝這些動作在她清醒、沒被撩起來時本來會漲的侵犯值（整筆）。
  * 她回過神（失神／痙攣結束）時依關係階結算：
- *   陌生／認識／朋友：大部分補上（約 70～80%），補到 ≥100 會逃走（先說一句再逃）；
- *   好友／女友：補一點（約 20～30%），害羞地抱怨（結算不會逼她逃走，最多補到 99）；
+ *   陌生／認識／朋友：大部分補上（約 70～80%），補到 ≥100 她會生氣結束聊天（先說一句；2026-11-25 起不逃走、不離開房間）；
+ *   好友／女友：補一點（約 20～30%），害羞地抱怨（結算不會逼她結束聊天，最多補到 99）；
  *   熱戀以上：不補，覺得甜（侵犯 −STUN_SWEET_DROP）。
  * 個性修正補上的比例。純函式，狀態存在 bodyState.stunDebt = { amount, acts: {名稱: 次數}, since }。
  */
@@ -226,7 +226,7 @@ export function reckoningPrompt(r, { personality = "", redressed = false } = {})
   const tail = "只說一兩句台詞，口吻照你的個性，稱呼照系統規則。只輸出台詞。）";
   if (r.tone === "flee") {
     const style = FLEE_STYLE[personality] || FLEE_STYLE["文靜溫柔"];
-    return `${head}你又羞又氣，再也受不了，說完這句就要逃出房間：${style}。不要說要留下、不要原諒他。${tail}`;
+    return `${head}你又羞又氣，再也受不了，說完這句就不想再跟他說話了（你不會離開房間）：${style}。不要說要留下、不要原諒他。${tail}`;
   }
   if (r.tone === "angry") return `${head}你很生氣、覺得被冒犯，質問他剛才在你不清醒時做了什麼，口氣冷、帶刺，要他給個交代。${tail}`;
   if (r.tone === "suspicious") return `${head}你覺得不對勁，狐疑地質問他剛剛是不是趁你恍神亂碰，語氣戒備。${tail}`;
@@ -246,12 +246,12 @@ export function reckoningFallback(r, personality = "") {
   return "";
 }
 
-/** 逃走旁白（她說完那句之後）。 */
+/** 補滿了的旁白（她說完那句之後）。2026-11-25 使用者：沒有逃走，頂多結束聊天。 */
 export function reckoningFleeNote(name = "她") {
-  return `（旁白：${name}抓緊衣服推開你，頭也不回地逃離了房間。）`;
+  return `（旁白：${name}抓緊衣服推開你，別過頭去，不想再跟你說話了。）`;
 }
 
-/** 情緒餘溫建議：{type, level} 或 null（逃走由逃離流程記最強的氣）。 */
+/** 情緒餘溫建議：{type, level} 或 null（補滿了由結束聊天的流程記最強的氣）。 */
 export function reckoningMood(r) {
   if (!r || r.fled || r.tone === "none") return null;
   if (r.tone === "angry" || r.tone === "suspicious") return { type: "angry", level: Math.min(100, 30 + r.add * 1.5) };

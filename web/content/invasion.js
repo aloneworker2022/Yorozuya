@@ -1,4 +1,4 @@
-/** 侵犯值 0–100：依關係階段倍率與失神抑制累加；滿值則逃離房間。 */
+/** 侵犯值 0–100：依關係階段倍率與失神抑制累加；滿值則她生氣結束聊天（2026-11-25 起不逃走、不離開房間）。 */
 
 import { ensureBody, arousalStage, libidoStage } from "./body_state.js?v=9";
 
@@ -404,10 +404,10 @@ function protestToneBase(g) {
   return {
     gain: g,
     tier: "furious",
-    label: "暴怒／要離開",
+    label: "暴怒／不想再說話",
     promptLine:
-      "本回合侵犯感暴衝。必須暴怒痛罵、揚言要離開或推開對方；語氣失控。不准平靜、不准配合。",
-    scraps: ["夠了！！我要走了！", "再碰我一下試試！", "滾！別靠近我！", "受不了了——放開！", "再這樣我真的離開！"],
+      "本回合侵犯感暴衝。必須暴怒痛罵、用力推開對方、揚言不想再跟他說話；語氣失控。（你不會離開房間。）不准平靜、不准配合。",
+    scraps: ["夠了！！我不想跟你說話了！", "再碰我一下試試！", "滾！別靠近我！", "受不了了——放開！", "再這樣我真的不理你了！"],
   };
 }
 
@@ -421,7 +421,7 @@ export function protestPromptBlock(gain, { invasion = null, max = INVASION_MAX, 
   if (p.tier === "none" || !p.promptLine) return "";
   const near =
     invasion != null && Number(invasion) >= max - 15
-      ? "（侵犯感已接近上限，可暗示再繼續就離開。）"
+      ? "（侵犯感已接近上限，可暗示再繼續就不理他了。）"
       : "";
   return `【本回合抗議語氣・侵犯＋${p.gain}・${p.label}】${p.promptLine}${near}只准說出口的話，不要旁白。`;
 }
