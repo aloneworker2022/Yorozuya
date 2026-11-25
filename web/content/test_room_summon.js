@@ -343,7 +343,7 @@ import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_actio
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
-import { neglectMs, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=14";
+import { neglectMs, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES, roommateOutLabel } from "./life_schedule.js?v=15";
 import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit, wornOutfitOf } from "./outfit_pick.js?v=3";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
@@ -12836,6 +12836,7 @@ function roommateGoOut(row) {
   const who = girl;
   if (!who) return;
   const kind = row?.agenda?.kind || "";
+  const left = roommateOutLabel({ roommate: true, phase: "japan", agenda: row?.agenda, travel: row?.travel }).split("・")[1] || "";   // clearShift 會清掉行程，先算
   clearShift();
   activityOpen = false;
   dropVisitPics();
@@ -12852,7 +12853,7 @@ function roommateGoOut(row) {
   const what = OUT_ZH[kind] || "出門";
   const dest = kind === "travel" && row.travel ? `（${row.travel}）` : "";
   const st = $("summon-status");
-  if (st) st.textContent = `${who.name}出門去日本${what}${dest}了，結束就會自己回來。想她早點回來可以叫她（3～5 金）。`;
+  if (st) st.textContent = `${who.name}出門去日本${what}${dest}了${left ? `（${left}）` : ""}，結束就會自己回來。想她早點回來可以叫她（3～5 金）。`;
   pushDebug(`室友出門：${what}${dest}`);
 }
 /** 室友回家：自己走回房間（不用儀式、不用付錢）。打開對話時用「剛回來」的開場。 */

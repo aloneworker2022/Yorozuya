@@ -91,6 +91,19 @@ export function moodStrengthWord(level) {
 
 /** RP5 /api/life 那一列畫進 world。房間（test_room_summon）和名冊（app.js）共用，免得一邊漏抄。
  * 心情只在她人在日本時才蓋（人在房裡時手機是真相）。記憶照 id 去重推進 mind。 */
+/** 2026-11-25 室友的位置一句話（名冊卡、房間狀態用）：在房間／出門打工・還有 2 小時／旅遊（京都）・還有 10 小時。不是室友回空字串。 */
+export function roommateOutLabel(world, now = Date.now()) {
+  if (!world?.roommate) return "";
+  if (world.phase !== "japan") return "在房間";
+  const kind = world.agenda?.kind || "";
+  if (kind === "escort") return "";   // 接客另有標籤
+  const until = Number(world.agenda?.until) || 0;
+  const what = kind === "travel" ? `旅遊${world.travel ? `（${world.travel}）` : ""}` : kind === "work" ? "出門打工" : kind === "stroll" ? "出門溜達" : "出門";
+  if (!until || until <= now) return `${what}・快回來了`;
+  const min = Math.ceil((until - now) / 60000);
+  return `${what}・還有 ${min >= 60 ? `${Math.round(min / 6) / 10} 小時` : `${min} 分`}`;
+}
+
 export function paintLifeRow(world, row) {
   if (!world || !row) return;
   if (row.home?.id) world.home = { id: row.home.id, name: row.home.name };
@@ -98,6 +111,11 @@ export function paintLifeRow(world, row) {
   if (row.job?.name) world.job = { id: row.job.id || "", name: row.job.name };
   world.agenda = row.agenda || null;
   world.activity = row.activity || null;
+  // 2026-11-25 室友：家是房間；出門中／什麼時候回來（roommateOutLabel 用）
+  world.roommate = !!row.roommate;
+  world.phase = row.phase || "";
+  world.travel = row.travel || "";
+  world.nextOutAt = Number(row.nextOutAt) || 0;
   world.shift = row.shift || null;
   world.stroll = row.stroll || null;
   world.browse = row.browse || null;
