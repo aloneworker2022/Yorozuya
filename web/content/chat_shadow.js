@@ -1599,9 +1599,28 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     return y;
   }
   /** 脫衣對話（使用者）：立繪的底端也在對話框上緣上面 2 px（平常的聊天照舊：立繪貼畫面底、下半身被對話框蓋住）。 */
+  // 2026-11-25 使用者：半身立繪時鍵盤出來，立繪不要縮小、位置不要改變——跟黑影一樣：鍵盤出來那一刻把立繪的上緣、高度釘成像素
+  //   （用鍵盤出來之前最後一次排好的位置；畫面本身會變矮的手機一出來就已經被擠了），鍵盤收起來才放開、重新照對話框排。
+  let pPin = null, pLast = null;
+  function pinPortrait(img, sheet) {
+    const shown = !sheet.hidden && !img.hidden;
+    const up = shown && keyboardUp();
+    if (up && !pPin) {
+      const r = pLast || img.getBoundingClientRect();
+      if (r.height > 0) { pPin = { top: r.top, h: r.height }; Object.assign(img.style, { top: r.top + 'px', height: r.height + 'px', bottom: 'auto', maxHeight: 'none' }); }
+    } else if (!up && pPin) {
+      pPin = null; img.style.top = ''; img.style.bottom = ''; img.style.height = ''; img.style.maxHeight = '';
+    }
+    return !!pPin;
+  }
   function placePortrait() {
     const img = document.getElementById('portrait-img'), sheet = document.getElementById('portrait-sheet');
     if (!img || !sheet) return;
+    if (pinPortrait(img, sheet)) return;   // 鍵盤出來：釘住不動
+    placePortrait0(img, sheet);
+    if (!sheet.hidden && !img.hidden) { const r = img.getBoundingClientRect(); if (r.height > 0) pLast = { top: r.top, height: r.height }; } else pLast = null;
+  }
+  function placePortrait0(img, sheet) {
     const box = document.getElementById('talk-box');
     let T = box ? box.getBoundingClientRect().top : 0;
     // 鍵盤出來時對話框會往上移：立繪照鍵盤出來之前的位置算（不縮小，只是被鍵盤蓋住）
@@ -1622,14 +1641,14 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   // 2026-11-21 使用者：打字時鍵盤彈出，黑影不要縮小——照原本的大小、位置，只是被鍵盤蓋住。
   //   鍵盤出來（body.kb-open，或畫面高度突然矮了 80px 以上）那一刻把黑影的上緣、高度釘成像素；鍵盤收起來才放開、照對話框重新對齊。
   //   畫面本身會變矮的手機（adjustResize）：鍵盤一出來黑影就已經被擠小了 → 用鍵盤出來之前最後一次對齊好的位置（lastRect）。
-  let fullH = 0, kbPin = null, lastRect = null;
+  let fullH = window.innerHeight || 0, kbPin = null, lastRect = null;   // 一開始就記全高（立繪模式不會先叫 keyboardUp）
   function keyboardUp() {
     const h = window.innerHeight, ae = document.activeElement;
     if (!kbPin) fullH = Math.max(fullH, h);
     const typing = !!ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
     return document.body.classList.contains('kb-open') || (typing && fullH > 0 && h < fullH - 80);
   }
-  window.addEventListener('orientationchange', () => { fullH = 0; });
+  window.addEventListener('orientationchange', () => { fullH = 0; setTimeout(() => { if (!kbPin && !pPin) fullH = window.innerHeight; }, 400); });
   function pinForKeyboard() {
     if (!wrap) return false;
     const up = !wrap.hidden && keyboardUp();
@@ -2398,6 +2417,8 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     setInterval(prewarm, 30000);
     // 對話框高度、螢幕大小變了：重新對齊腳底
     window.addEventListener('resize', () => placeFeet());
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', () => placeFeet());
+    document.addEventListener('focusin', () => { if (!sheet.hidden) placeFeet(); }, true);   // 點輸入框那一刻（鍵盤還沒出來）先記下立繪／黑影的位置   // iOS：鍵盤出來畫面高度不變，只有 visualViewport 變
     const tb = document.getElementById('talk-box');
     if (tb && typeof ResizeObserver === 'function') new ResizeObserver(() => placeFeet()).observe(tb);
     sync();
