@@ -8286,7 +8286,9 @@ function roomUndressState(raw) {
     ? raw.pantiesBy
     : "";
   const sexStance = pantiesBy === "self" ? "順從" : pantiesBy === "help" ? "被動" : "";
-  return { stage, shot, pantiesBy, sexStance };
+  // consent（2026-11-25，同 test_room_summon snapshotUndress）：她自己答應脫的，回神不會穿回去
+  const consent = stage > 0 && !!raw?.consent;
+  return { stage, shot, pantiesBy, sexStance, ...(consent ? { consent: true } : {}) };
 }
 
 /** 把名冊妹子編成房間 session 用物件（同 id，進度可回寫） */

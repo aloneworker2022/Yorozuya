@@ -3,7 +3,7 @@ import { wornOutfitOf } from "./outfit_pick.js?v=3";
 
 const API = "/api/undress-packs";
 
-/** 預設七景。前四場是虛脫坐姿；後三場是裸體站姿。不是做愛。召喚一併生的是下面六張，不含仍穿著的坐下。 */
+/** 預設十景。前四場是虛脫坐姿；中間三場是裸體站姿；最後三場是站著脫到一半（2026-11-25）。不是做愛。召喚一併生的是下面九張，不含仍穿著的坐下。 */
 export const SUMMON_UNDRESS_SHOTS = Object.freeze([
   "undress_loose",
   "undress_slip",
@@ -11,7 +11,13 @@ export const SUMMON_UNDRESS_SHOTS = Object.freeze([
   "undress_cover",
   "undress_low",
   "undress_stand",
+  // 2026-11-25 使用者：站著脫到一半（一般聊天她答應自己脫時閃一下；聊天黑影同時播站著脫的動畫）
+  "undress_stand_shirt",
+  "undress_stand_bra",
+  "undress_stand_panties",
 ]);
+/** 站著脫到一半：脫衣進度（脫之前）→ 用哪一張。比基尼脫上面用胸罩那張。 */
+export const STAND_UNDRESS_SHOT = Object.freeze(["undress_stand_shirt", "undress_stand_bra", "undress_stand_panties"]);
 export const DROPPED_UNDRESS_SHOTS = new Set(["undress_self", "undress_help"]);
 export const UNDRESS_PRESETS = [
   {
@@ -180,6 +186,73 @@ export const UNDRESS_PRESETS = [
       "nipples",
     ].join(", "),
     negative: "sitting, sitting on the floor, slumped, covering breasts, covering crotch, arm across breasts, hand covering crotch, bra, panties, underwear, lingerie, bikini, shirt, dress, skirt, jacket, coat, uniform, covered breasts",
+  },
+  // ---- 2026-11-25 站著脫到一半（全身、站著、自己脫）
+  {
+    id: "undress_stand_shirt",
+    name: "站著脫上衣",
+    shot: "undress_stand_shirt",
+    caption: "她站著，自己把上衣往上拉過頭，露出胸罩。",
+    prompt: [
+      "full body",
+      "standing",
+      "undressing",
+      "taking off top",
+      "pulling clothes up over head",
+      "arms raised",
+      "lifting shirt",
+      "bra visible",
+      "midriff",
+      "navel",
+      "blush",
+      "embarrassed",
+      "panties",
+    ].join(", "),
+    negative: "sitting, sitting on the floor, slumped, lying, nude, completely naked, topless, bare breasts, nipples, bottomless, extra arms, extra legs, text, watermark",
+  },
+  {
+    id: "undress_stand_bra",
+    name: "站著脫胸罩",
+    shot: "undress_stand_bra",
+    caption: "她站著，手伸到背後解開胸罩，胸罩正要滑下來。",
+    prompt: [
+      "full body",
+      "standing",
+      "undressing",
+      "unhooking bra",
+      "arms behind back",
+      "bra slipping off",
+      "loose bra straps",
+      "partially covered breasts",
+      "panties only",
+      "no shirt",
+      "blush",
+      "embarrassed",
+      "looking away",
+    ].join(", "),
+    negative: "sitting, sitting on the floor, slumped, lying, shirt, dress, skirt, jacket, coat, uniform, completely naked, bottomless, extra arms, extra legs, text, watermark",
+  },
+  {
+    id: "undress_stand_panties",
+    name: "站著脫內褲",
+    shot: "undress_stand_panties",
+    caption: "她站著，彎下一點腰，把內褲往下拉到大腿。",
+    prompt: [
+      "full body",
+      "standing",
+      "undressing",
+      "pulling down panties",
+      "panties around thighs",
+      "leaning forward slightly",
+      "topless",
+      "bare breasts",
+      "nipples",
+      "no bra",
+      "no shirt",
+      "blush",
+      "embarrassed",
+    ].join(", "),
+    negative: "sitting, sitting on the floor, slumped, lying, bra, shirt, dress, skirt, jacket, coat, uniform, extra arms, extra legs, text, watermark",
   },
 ];
 

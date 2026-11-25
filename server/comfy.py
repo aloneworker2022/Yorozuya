@@ -223,6 +223,13 @@ def is_undress_shot(shot: str) -> bool:
 def undress_garment(shot: str) -> str:
     """這些景不穿生涯服裝。自己脫上衣／幫忙脫上衣已取消，不再回 topoff。"""
     s = str(shot or "").lower()
+    # 2026-11-25 站著脫到一半：上衣往上拉（胸罩露出）／解胸罩（胸罩＋內褲）／拉內褲（上身已裸）
+    if s == "undress_stand_shirt":
+        return "topoff"
+    if s == "undress_stand_bra":
+        return "underwear"
+    if s == "undress_stand_panties":
+        return "panties"
     if s == "undress_loose":
         return "underwear"
     if s == "undress_slip":

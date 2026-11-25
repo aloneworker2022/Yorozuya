@@ -1354,7 +1354,8 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (!F) { loadDroom().then(sync).catch(e => console.warn('chat_shadow', e)); return false; }
     // 脫衣對話中（使用者）：美人魚坐姿；脫衣進度釘在 pinStage，脫衣動畫播完才換到下一階
     const undressing = pinStage != null;
-    const st = Math.max(0, Math.min(3, Number(undressing ? pinStage : s.undressStage) || 0));
+    // 2026-11-25 站著脫（一般聊天）：動畫播完那一件才換到下一階（standPin），不坐下
+    const st = Math.max(0, Math.min(3, Number(undressing ? pinStage : standPin != null ? standPin : s.undressStage) || 0));
     const doll = dollOf(s, st, undressing, null);
     const key = JSON.stringify(doll);
     if (cur && cur.key === key) return isReady(cur);
@@ -1424,6 +1425,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     }
     if (st < 3) {
       const du = dollOf(s, st, true, null); list.push([du, animOf(du, st)]);   // 脫下一件的動畫（脫衣對話）
+      const ds = dollOf(s, st, false, null); if (stand(ds)) list.push([ds, animOf(ds, st)]);   // 2026-11-25 站著脫下一件（一般聊天她答應自己脫）
       const d1 = dollOf(s, st + 1, false, null); list.push([d1, 'breathe'], [d1, 'talk']);   // 脫完以後
     }
     list.forEach(([doll, pose], i) => {
@@ -1541,7 +1543,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   // ---------------------------------------------------------------- 脫衣（使用者：按下脫衣、她脫了 → 黑影表演脫衣動畫）
   let reactPlay = null;   // 被摸的反應 {kind, t0}
   let angPlay = null, angPick = null;   // 生氣說話 {kind, phase, i, at}；angPick：這次生氣用叉腰還是抱胸（30 秒內同一種）
-  let pinStage = null, animPlay = null;   // pinStage：脫衣對話中畫的是哪一階；animPlay：{kind, to, t0, wait}
+  let pinStage = null, animPlay = null, standPin = null;   // standPin：站著脫（一般聊天）時畫的是哪一階   // pinStage：脫衣對話中畫的是哪一階；animPlay：{kind, to, t0, wait}
   /** 這一階要預載哪一段脫衣動畫：一般照 ANIMS；比基尼 0＝解上面（胸罩那段）、1～2＝解下面（內褲那段）。 */
   function animOf(doll, st) {
     const w = doll.wear;
@@ -1550,12 +1552,35 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     return ANIMS[st];
   }
   function animDone(a) {
+    if (a.stand) {   // 站著脫：這件脫完換到下一階；還有下一件（脫光、比基尼下面）就接著播
+      animPlay = null;
+      const next = a.queue && a.queue[0];
+      standPin = next ? a.to : null;
+      sync();
+      if (next && cur) { ensureSet(cur, next.kind); bump(cur, next.kind); animPlay = { kind: next.kind, to: next.to, stand: true, queue: a.queue.slice(1), t0: 0, wait: performance.now() }; play(); }
+      return;
+    }
     animPlay = null; pinStage = a.to; sync();
     if (a.then != null) { animPlay = { kind: 'panties', to: a.then, then: null, t0: 0, wait: performance.now() }; play(); }
   }
+  /** 2026-11-25 站著脫（一般聊天她答應自己脫）：from→to 一件一件播（T 恤 → 胸罩 → 內褲；比基尼＝上面 → 下面），站著、不坐下。 */
+  function standUndress(from, to) {
+    if (!cur || from >= 3 || to <= from || cur.cv !== CV || COL.st !== 'none' || FG.st !== 'idle') { standPin = null; sync(); return; }
+    const steps = [];
+    if (cur.bikini && from === 0) { steps.push({ kind: 'bra', to: 2 }); if (to >= 3) steps.push({ kind: 'panties', to: 3 }); }
+    else for (let k = from; k < to; k++) steps.push({ kind: ANIMS[k], to: k + 1 });
+    standPin = from;
+    sync();
+    if (!cur) return;
+    reactPlay = null; angPlay = null;
+    ensureSet(cur, steps[0].kind); bump(cur, steps[0].kind);
+    animPlay = { kind: steps[0].kind, to: steps[0].to, stand: true, queue: steps.slice(1), t0: 0, wait: performance.now() };
+    play();
+  }
   /** test_room_summon.js 在她決定脫一件時叫（from→to）。動畫還沒算好就等一下（最多 25 秒），算不出來就直接換。 */
   function undress(from, to) {
-    if (pinStage == null || !cur || from >= 3) { if (pinStage != null) { pinStage = to; sync(); } return; }
+    if (pinStage == null) { standUndress(from, to); return; }
+    if (!cur || from >= 3) { pinStage = to; sync(); return; }
     // 2026-11-22 使用者：脫比基尼跟脫胸罩一樣（手伸到背後解開）→ 上面先（胸罩那段），再接下面（解開兩側的結，跟丁字褲一樣）
     const bik = !!(cur.bikini && from === 0 && to >= 3);
     animPlay = { kind: bik ? 'bra' : ANIMS[from], to: bik ? 2 : to, then: bik ? to : null, t0: 0, wait: performance.now() };
@@ -1691,6 +1716,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const undressOn = open && !!sheet?.classList.contains('undress-chat');
     if (undressOn && pinStage == null) { const sp = spec(); pinStage = Math.max(0, Math.min(3, Number(sp?.undressStage) || 0)); }
     if (!undressOn && pinStage != null) { pinStage = null; animPlay = null; }
+    if (!open && standPin != null) { standPin = null; if (animPlay && animPlay.stand) animPlay = null; }   // 關掉聊天：站著脫的動畫不播了，照實際進度
     const s = wanted(sheet);
     const ready = s ? prepare(s) : false;   // 立繪顯示時也照算（脫衣動畫預載）
     // 脫衣中（使用者）：平常是立繪，只有她答應脫、動畫開始播的時候才是黑影

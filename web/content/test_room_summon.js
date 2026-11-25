@@ -275,7 +275,8 @@ import {
   presetByShot,
   SUMMON_UNDRESS_SHOTS,
   DROPPED_UNDRESS_SHOTS,
-} from "./undress_packs.js?v=9";
+  STAND_UNDRESS_SHOT,
+} from "./undress_packs.js?v=10";
 import {
   mountSuckPackEditor,
   pickRuntimeSuckPack,
@@ -6057,7 +6058,9 @@ function snapshotUndress(raw) {
     ? raw.pantiesBy
     : "";
   const sexStance = pantiesBy === "self" ? "順從" : pantiesBy === "help" ? "被動" : "";
-  return { stage, shot, pantiesBy, sexStance };
+  // consent（2026-11-25）：她清醒時自己答應脫的——回神不會自己穿回去（settleUndressAfterStun 跳過）
+  const consent = stage > 0 && !!raw?.consent;
+  return { stage, shot, pantiesBy, sexStance, ...(consent ? { consent: true } : {}) };
 }
 
 function ensureUndress(who) {
@@ -6092,6 +6095,7 @@ function settleUndressAfterStun(who = girl) {
   if (stage < 1 || stage >= 3) return false;
   if (who === girl && undressPlayOpen()) return false;
   if (undressDazed(who)) return false;
+  if (who.undress?.consent) return false;   // 她自己答應脫的：不會因為「回神」穿回去
   clearVisitUndress(who);
   return true;
 }
@@ -10639,7 +10643,7 @@ async function handleRequest(req, raw) {
   }
   if (req.kind === "undress") { await selfUndressFromRequest(req.all); return; }
   if (req.kind === "sex") {
-    if (undressStage(who) < 3) await selfUndressFromRequest(true);
+    if (undressStage(who) < 3) await selfUndressFromRequest(true, { animate: false });
     const dryCc = ensurePlayer(player).semenCc;
     if (!canStartSexAt(dryCc, { peak: sexPeakNow() })) {
       const st = $("summon-status");
@@ -10649,14 +10653,25 @@ async function handleRequest(req, raw) {
     openRoomScene("sex");
   }
 }
-/** 她答應自己脫（一次一件；all＝全脫）。脫光的後續（站立圖、裸體動作圖、做愛開場圖）跟脫衣畫面一樣排。 */
-async function selfUndressFromRequest(all = false) {
+/**
+ * 她答應自己脫（一次一件；all＝全脫）。脫光的後續（站立圖、裸體動作圖、做愛開場圖）跟脫衣畫面一樣排。
+ * 2026-11-25 使用者（§13.0 第 5 項）：站著脫——聊天黑影站著播脫衣動畫（chat_shadow standUndress），
+ *   同時閃一下「站著脫到一半」的立繪（undress_stand_shirt／bra／panties；還沒產就背景產，下次用）。animate:false＝要直接進做愛，不播。
+ */
+async function selfUndressFromRequest(all = false, { animate = true } = {}) {
   if (!girl) return;
   const u = ensureUndress(girl);
   const before = undressStage(girl);
   if (before >= 3) return;
+  if (animate) {
+    const shot = bikiniOutfit(girl) ? STAND_UNDRESS_SHOT[1] : STAND_UNDRESS_SHOT[before];
+    const cached = String(girl.portraits?.[shot] || "");
+    if (cached) showActionFlash(cached, `${girl.name}站著脫衣服`);
+    else void ensureUndressPortrait(girl, shot);
+  }
   clearVaginaFingers(girl);
   u.stage = all || bikiniOutfit(girl) ? 3 : Math.min(3, before + 1);
+  u.consent = true;
   const after = u.stage;
   if (after >= 3) {
     u.pantiesBy = "self";
@@ -10665,7 +10680,7 @@ async function selfUndressFromRequest(all = false) {
     void queueNudeActionPregen(girl);
     void queueSexPosePregen(girl);
   }
-  window.ChatShadow?.undress?.(before, after);
+  if (animate) window.ChatShadow?.undress?.(before, after);
   const beat = undressBeat(false, "advance", before, after, bikiniOutfit(girl));
   lines.push({ role: "user", content: herView(beat.canned) });
   persistRoom();

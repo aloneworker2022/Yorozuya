@@ -124,6 +124,7 @@ SHOT_LABEL_ZH = {
     "undress_cover": "脫衣·遮住胸和下體",
     "undress_low": "脫衣·遮住下面",
     "undress_stand": "脫衣·裸體立繪",
+    "undress_stand_shirt": "脫衣·站著脫上衣", "undress_stand_bra": "脫衣·站著脫胸罩", "undress_stand_panties": "脫衣·站著脫內褲",
     "half_xi": "半身·喜", "half_nu": "半身·怒", "half_ai": "半身·哀",
     "half_le": "半身·樂", "half_xiu": "半身·害羞",
     "tease_breast": "調戲·摸奶", "tease_breast_knead": "調戲·揉奶", "tease_breast_suck": "調戲·吸奶頭", "tease_nipple_lick": "調戲·舔奶頭", "tease_labia": "調戲·摸陰唇", "tease_labia_rub": "調戲·揉陰唇", "tease_finger_in": "調戲·手指插入",
