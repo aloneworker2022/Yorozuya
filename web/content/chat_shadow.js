@@ -12,6 +12,19 @@
   const DROOM_URL = new URL('../droom/room_doll_chest.js?v=31', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
+  // 2026-11-25 使用者（調戲不帶感）：反應改跟「態度」走（tease_attitude.js）——拒絕＝stranger（推開、遮住、掙扎）、無奈拒絕＝friend（輕推遮住）、
+  //   無奈順從＝girlfriend（一手遮、嘆氣）、迎合＝wife（不遮、仰頭一顫）。動作名 r_breast_friend…；沒帶後綴的 r_breast 照人偶的關係帶（testword 用）
+  const REACT_T = ['stranger', 'friend', 'girlfriend', 'wife'];
+  for (const r of REACTS) for (const t of REACT_T) NA_OF[r + '_' + t] = NA_OF[r];
+  /** r_breast／r_breast_friend → {zone, tier}（tier 空＝照人偶）；不是反應回 null。 */
+  function reactOf(pose) { const m = /^r_(breast|groin|waist)(?:_(stranger|friend|girlfriend|wife))?$/.exec(String(pose || '')); return m ? { zone: m[1], tier: m[2] || '' } : null; }
+  /** 這次要用的反應動作（RoomLookProvider 給 react；沒有就照關係帶）。 */
+  function reactKey(zone, s) { const t = s && REACT_T.includes(s.react) ? s.react : (s && REACT_T.includes(s.tier) ? s.tier : 'stranger'); return 'r_' + zone + '_' + t; }
+  /** 要先算的反應：現在的態度那三個先，再來這個關係階會用到的其他態度。 */
+  function reactPoses(s) {
+    const now = reactKey('x', s).slice(4), list = [now, ...((s && s.reacts) || []).filter((t) => t !== now && REACT_T.includes(t))];
+    return { now: REACTS.map((r) => r + '_' + now), more: list.slice(1).flatMap((t) => REACTS.map((r) => r + '_' + t)) };
+  }
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
   const BEAT = {
     shirt: (u) => (u < .12 ? 160 : u < .45 ? 130 : u < .62 ? 120 : u < .8 ? 95 : 150) + (Math.abs(u - .57) < .025 ? 380 : 0),   // 套過頭時卡一下
@@ -192,20 +205,21 @@
       }
       return { ph: 0, br, tilt, nod, turn, gest: 0, ang: { kind: ak ? 'akimbo' : 'cross', w: wa, bounce, wave }, jolt };
     }
-    if (pose === 'r_breast' || pose === 'r_groin' || pose === 'r_waist') {
+    const RI = reactOf(pose);
+    if (RI) {
       // 被摸的反應（使用者：陌生生氣、朋友生氣、女友無奈嫌煩、妻子喜歡調情；摸的時候會反抗、遮擋）：
       //   陌生／朋友：轉頭、低頭，手先推開再遮住被摸的地方，遮著的時候掙扎（頭小幅甩）；陌生多一下驚跳
       //   女友：一隻手遮、頭轉一點點、低頭嘆一口氣；妻子：不遮，頭往後仰、身體一顫、手摀嘴
       const u = f / (n - 1) * .72, sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };   // 只算到遮著掙扎完（放下＝倒著播）
       const w = u < .22 ? sm(u / .22) : u < .72 ? 1 : 1 - sm((u - .72) / .28);
       const base = mode ? motion('breathe', 0, 16, sit, mode) : { ph: 0, br: .2, tilt: 0, nod: 0, turn: 0, gest: 0 };
-      const T = tier || 'stranger', shake = u > .22 && u < .72 ? Math.sin((u - .22) * 38) : 0;
+      const T = RI.tier || tier || 'stranger', shake = u > .22 && u < .72 ? Math.sin((u - .22) * 38) : 0;
       const D = { stranger: [-38, 6, -5, .35, 4], friend: [-30, 9, -4, .3, 2.5], girlfriend: [-14, 11, 4, .8, 0], wife: [12, -15, 7, .6, 0] }[T] || [-30, 8, -4, .3, 2];
       const bump = (c, r) => Math.max(0, 1 - Math.abs(u - c) / r);
       const jolt = T === 'wife' ? .45 * bump(.3, .09) : T === 'stranger' ? .3 * bump(.1, .1) : 0;
       return { ph: base.ph, br: base.br + D[3] * w, tilt: base.tilt + D[2] * w, nod: base.nod + D[1] * w,
         turn: Math.max(-62, Math.min(62, (base.turn || 0) + (D[0] + D[4] * shake) * w)), gest: 0, mode: mode || null,
-        react: { zone: pose.slice(2), u, w, tier: T }, jolt };
+        react: { zone: RI.zone, u, w, tier: T }, jolt };
     }
     if (mode && (pose === 'breathe' || pose === 'talk' || pose === 'peak')) {   // 脫光後的動作：手照 mode 擺（deform），這裡只給頭和呼吸
       const talk = pose === 'talk', b = talk ? .65 * (.5 - .5 * Math.cos(2 * ph)) : .5 - .5 * Math.cos(ph);
@@ -1120,7 +1134,7 @@
       new Function('globalThis', 'module', src)(box, undefined);   // 兩個人偶檔都叫 RoomDoll → 另外裝，不蓋掉房間用的
       F = box.RoomDoll;
       try {
-        const code = `const F=(${F.factorySource})();const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const clothAt=${clothAt};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
+        const code = `const F=(${F.factorySource})();const reactOf=${reactOf};const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const clothAt=${clothAt};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
 onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},j.cv);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
         const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
         for (let i = 0; i < POOL; i++) {
@@ -1354,9 +1368,11 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     } else {
       // 順序（使用者：摸她沒動作）：先第一格呼吸（人先出來）→ 被摸的反應（站著才摸得到）→ 其他呼吸 → 說話
       todo.push(['breathe', 0]);
-      if (cvOf(doll) === CV) for (const r of REACTS) { job.sets[r] = []; for (let f = 0; f < NA_OF[r]; f++) todo.push([r, f]); }
+      const RP = reactPoses(s);
+      if (cvOf(doll) === CV) for (const r of RP.now) { job.sets[r] = []; for (let f = 0; f < NA_OF[r]; f++) todo.push([r, f]); }
       for (let f = 1; f < N; f++) todo.push(['breathe', f]);
       for (let f = 0; f < N; f++) todo.push(['talk', f]);
+      if (cvOf(doll) === CV) for (const r of RP.more) { job.sets[r] = []; for (let f = 0; f < NA_OF[r]; f++) todo.push([r, f]); }   // 態度變了才用到的反應
       if (cvOf(doll) === CV && !doll._mode) for (const a of ANGS_PLAY) { job.sets[a] = []; for (let f = 0; f < NA_OF[a]; f++) todo.push([a, f]); }   // 生氣說話（站著、還沒脫光）
       if (doll._mode === 'touch') { job.sets.peak = []; for (let f = 0; f < NA_OF.peak; f++) todo.push(['peak', f]); }   // 忽然仰頭（偶爾播）
       if (cvOf(doll) === CV && doll._mode !== 'touch') for (const c of ['col_d', 'col_q', 'col_s']) { job.sets[c] = []; for (let f = 0; f < NA_OF[c]; f++) todo.push([c, f]); }   // 噴水後癱坐（2026-11-22）：先在背景算好（算過的存起來，下次直接拿），放開時才坐得下去
@@ -1391,7 +1407,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (!s) return;
     if (!F) { loadDroom().then(prewarm).catch(() => {}); return; }
     const st = Math.max(0, Math.min(3, Number(s.undressStage) || 0));
-    const k = JSON.stringify([s.look, s.outfit, st, s.tier, s.wife, s.belly]);
+    const k = JSON.stringify([s.look, s.outfit, st, s.tier, s.wife, s.belly, s.reacts]);
     if (k === warmKey) return;
     warmKey = k;
     const list = [];
@@ -1400,7 +1416,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     for (const md of modes) {
       const d0 = dollOf(s, st, false, md);
       list.push([d0, 'breathe'], [d0, 'talk']);
-      if (stand(d0)) for (const r of REACTS) list.push([d0, r]);
+      if (stand(d0)) { const RP = reactPoses(s); for (const r of [...RP.now, ...RP.more]) list.push([d0, r]); }
       if (stand(d0) && !d0._mode) for (const a of ANGS_PLAY) list.push([d0, a]);
       if (d0._mode === 'touch') list.push([d0, 'peak']);
       if (stand(d0) && d0._mode !== 'touch') for (const c of ['col_d', 'col_q', 'col_s']) list.push([d0, c]);
@@ -1776,7 +1792,8 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       // 摸到就有反應（使用者：摸她沒動作）；還沒解鎖的地方一樣會反抗／遮，只是不算動作、她不說話
       if (zone) {
         window.RoomTouch?.zone(zone);
-        const k = 'r_' + zone;
+        let k = reactKey(zone, spec());
+        if (cur && !cur.sets[k]) ensureSet(cur, k);   // 這個態度的反應還沒排（態度剛變）：插隊先算
         if (cur && cur.sets[k]) { if (!full(cur.sets[k], nOf(k))) bump(cur, k); reactPlay = { kind: k, t0: 0, wait: performance.now() }; play(); }
       }
     });
@@ -2071,7 +2088,9 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
         const F = window.RoomTouch && window.RoomTouch.finger;
         if (!(F && F.can())) {   // 不能玩弄：不靠近，她馬上反抗
           window.RoomTouch?.zone('groin');
-          if (cur && cur.sets.r_groin) { if (!full(cur.sets.r_groin, nOf('r_groin'))) bump(cur, 'r_groin'); reactPlay = { kind: 'r_groin', t0: 0, wait: performance.now() }; play(); }
+          const kg = reactKey('groin', spec());
+          if (cur && !cur.sets[kg]) ensureSet(cur, kg);
+          if (cur && cur.sets[kg]) { if (!full(cur.sets[kg], nOf(kg))) bump(cur, kg); reactPlay = { kind: kg, t0: 0, wait: performance.now() }; play(); }
           return;
         }
         if (!fgStart()) return;
@@ -2153,7 +2172,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   function playSeq(pose) {
     const n = nOf(pose);
     if (pose === 'breathe' || pose === 'talk') return Array.from({ length: n }, (_, i) => [i, 1000 / FPS[pose]]);
-    if (REACTS.includes(pose)) return REACT_SEQ.map((i, k) => [i, REACT_MS[k]]);
+    if (reactOf(pose)) return REACT_SEQ.map((i, k) => [i, REACT_MS[k]]);
     if (ANG[pose]) {
       const A = ANG[pose], out = [];
       for (let i = 0; i < A.enter; i++) out.push([i, A.ms(i)]);

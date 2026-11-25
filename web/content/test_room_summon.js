@@ -108,7 +108,10 @@ import {
   protestTone,
   protestPromptBlock,
   blendProtestReply,
+  personalityResistMult,
+  PERSONALITY_RESIST,
 } from "./invasion.js?v=9";
+import { teaseAttitude, teaseSessionCount, noteTeaseSession, attitudeShift, attitudePromptBlock, attitudeRange, nearestAttitude, ATTITUDE_REACT } from "./tease_attitude.js?v=1";
 import {
   ensureMiss,
   getMiss,
@@ -217,7 +220,7 @@ import {
   dressedReactionPrompt,
 } from "./undress_shy.js?v=3";
 import { PERSONALITY_FAMILY, familyStageLine, familyOf, scrubHusband as scrubHusbandV } from "./girl_voice.js?v=1";
-import { touchTierOf, touchBankMessages, parseTouchBank, pickTouchLine, moanLevelOf, touchReply, TOUCH_TIERS, TOUCH_BANK_REV } from "./touch_lines.js?v=2";
+import { touchTierOf, touchBankMessages, parseTouchBank, pickTouchLine, moanLevelOf, touchReply, tierAttitudes, TOUCH_TIERS, TOUCH_BANK_REV } from "./touch_lines.js?v=3";
 import { lineEventPromptLines } from "./line_social.js?v=1";
 import {
   TRIGGERS as TALK_TRIGGERS, TRIGGER_ZH as TALK_TRIGGER_ZH, talkEligible, ensureTalkState, talkGate, tickTalk, freshMemory, freshLineEvent,
@@ -405,6 +408,29 @@ function girlAngryNow(who) {
   if ((Number(who._angryUntil) || 0) > Date.now()) return true;
   try { const m = getMoodCarry(who); return !!(m && m.type === "angry" && (Number(m.level) || 0) >= 15); } catch { return false; }
 }
+/** 調戲的態度（2026-11-25 使用者：拒絕／無奈拒絕／無奈順從／迎合；tease_attitude.js）。
+ *  arousal 沒給＝現在的性奮；turnTier／willing＝這一下的抗議語氣階、半推半就（動作結算後才有）。 */
+function teaseAttitudeOf(who, { arousal = null, turnTier = "", willing = false } = {}) {
+  if (!who) return null;
+  const b = who.bodyState || {};
+  const st = who.stage || "stranger";
+  let mood = null; try { mood = getMoodCarry(who); } catch { mood = null; }
+  // 這一場摸出來的氣（情緒餘溫的原因是「剛才對你『摸奶』」）已經算在侵犯值裡，不重複扣；進來前就在氣的才算
+  if (mood && teaseSessionCount(b.teaseSess) > 0 && /^剛才對你「/.test(String(mood.cause || ""))) mood = null;
+  let hunger = 0; if (HUNGER_ON) { try { hunger = peekHunger(who, Date.now(), st) || 0; } catch { hunger = 0; } }
+  let persMult = 1; try { persMult = personalityResistMult(basePersonality(who), who.stats || null, st); } catch { persMult = 1; }
+  return teaseAttitude({
+    stage: st, arousal: arousal ?? b.arousal ?? 0, libido: b.libido || 0, count: teaseSessionCount(b.teaseSess),
+    invasion: b.invasion || 0, mood: mood?.type || "", moodLevel: mood?.level || 0, persMult, hunger, turnTier, willing,
+  });
+}
+/** 黑影被摸的反應（chat_shadow.js）：現在的態度用哪一種動作、這個關係階會用到哪幾種（先算）。 */
+function teaseReactLook(who) {
+  const range = attitudeRange(who?.stage || "stranger");
+  let key = range[0];
+  try { key = nearestAttitude(teaseAttitudeOf(who)?.key || key, range); } catch { /* 用起點 */ }
+  return { react: ATTITUDE_REACT[key] || "stranger", reacts: range.map((k) => ATTITUDE_REACT[k]) };
+}
 /** 手伸進去時她的反應（2026-11-22 使用者）：熱戀以前抗拒、熱戀起迎合；程度照性奮：沒什麼～微微＝普通、興奮～想要＝有感、高潮（剛高潮、痙攣）＝高潮。 */
 function fingerMood(who) {
   const idx = STAGE_INDEX[who?.stage || "stranger"] ?? 0;
@@ -416,7 +442,7 @@ function fingerMood(who) {
   const key = String(who?.id || who?.name || ""); let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
   return { fgWelcome: idx >= (STAGE_INDEX.passionate ?? 5), fgLevel: lvl, fgSquirt: ["once", "faucet", "double"][h % 3] };
 }
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl) } : null);
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl), ...teaseReactLook(girl) } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
@@ -2870,7 +2896,7 @@ document.addEventListener("visibilitychange", () => {
  * 換衣服：clothedOnly，只重畫會露出衣服的。大頭、喜怒哀樂都不在這裡。
  * 手機關了，伺服器仍照清單跑。
  */
-/** 召喚流程裡順便把「摸她的回應」產好（使用者：摸了才等模型太慢）。四個關係帶、每帶胸部／下體／腰臀各幾句；目前的關係帶先產。
+/** 召喚流程裡順便把「摸她的回應」產好（使用者：摸了才等模型太慢）。四個關係帶 × 那一帶會用到的態度（2026-11-25）× 胸部／下體／腰臀各幾句；目前的關係帶先產。
  *  產好存在 who.touchBank（跟著存檔）；舊的那份留到新的產好才換掉。模型失敗＝用 touch_lines.js 內建的。 */
 const touchBankJobs = new Map();
 function pregenTouchBank(who) {
@@ -2887,7 +2913,7 @@ function pregenTouchBank(who) {
         const reply = route.provider === "ollama"
           ? await askOllama(route, msgs, null, { temperature: 0.95 })
           : await askGrok(route, msgs, `roomtouch:${who.id}:${tier}:${Date.now().toString(36)}`, { temperature: 0.95 });
-        const got = parseTouchBank(reply);
+        const got = parseTouchBank(reply, tierAttitudes(tier));
         if (got) {
           tiers[tier] = got;
           // 一帶好了就先用（不用等四帶都好）
@@ -9586,7 +9612,7 @@ async function openTalk() {
 }
 
 /** 回覆後記錄本回合情緒（挑逗→生氣／害羞／羞燥；閒聊判冒犯→生氣／受傷）。 */
-function noteTurnMood(actId, opts, { invAdded = 0, invWilling = false, turnMark = "平常", stunZero = false } = {}) {
+function noteTurnMood(actId, opts, { invAdded = 0, invWilling = false, turnMark = "平常", stunZero = false, teaseIdx = -1 } = {}) {
   if (!girl) return;
   try {
     let m = null;
@@ -9594,10 +9620,12 @@ function noteTurnMood(actId, opts, { invAdded = 0, invWilling = false, turnMark 
       // 事後算帳（閘門開）：痙攣中或失神 ≥75 的動作不記任何情緒餘溫（回神結算時才記）
       if (stunZero) return;
       const label = TALK_ACTS.find((a) => a.id === actId)?.label || "動手動腳";
+      // 態度（2026-11-25）：無奈拒絕＝羞燥（不記成生氣）、無奈順從／迎合＝被撩起；拒絕照侵犯量
+      const softAdded = teaseIdx >= 2 ? Math.min(invAdded, 12) : teaseIdx === 1 ? Math.min(invAdded, 5) : invAdded;
       m = noteMoodFromAct(girl, {
-        added: invAdded,
+        added: softAdded,
         arousal: girl.bodyState?.arousal || 0,
-        willing: invWilling,
+        willing: invWilling || teaseIdx >= 2,
         cause: `剛才對你「${label}」`,
       });
     } else if (!actId && turnMark === "冒犯") {
@@ -10244,6 +10272,8 @@ async function deliverUserTalk(text, opts = {}) {
     let invToneOpts = { willing: false };
     let invTotal = getInvasion(girl);
     let stunZero = false;
+    let teaseAtt = null;
+    let teaseShift = 0;
     if (opts.actId && !opts.skipBody) {
       ensureInvasion(girl);
       // 事後算帳（閘門開）：痙攣中或失神 ≥75 → 侵犯值一點都不漲，整筆「清醒時本來會漲的量」記成欠帳，回神再結算
@@ -10274,6 +10304,20 @@ async function deliverUserTalk(text, opts = {}) {
         pushDebug(`侵犯 +${invRoll.added}${am} → ${invRoll.invasion}/${INVASION_MAX}${pt.tier !== "none" ? `・抗議${pt.label}` : ""}`);
         renderDebug();
       }
+      // 調戲的態度（2026-11-25）：這一下她是拒絕／無奈拒絕／無奈順從／迎合；記這一場被碰幾下、上一下的態度
+      if (opts.actId !== "pull_out") {
+        const tierNow = stunZero ? "" : protestTone(invAdded, invToneOpts).tier;
+        teaseAtt = teaseAttitudeOf(girl, { arousal: actArousalBefore, turnTier: tierNow, willing: invWilling });
+        if (teaseAtt && girl.bodyState) {
+          girl.bodyState.teaseSess = noteTeaseSession(girl.bodyState.teaseSess, teaseAtt.key);
+          teaseShift = attitudeShift(girl.bodyState.teaseSess.prev, teaseAtt.key);
+          // 拒絕＝生氣（黑影叉腰講）；無奈以上不叉腰
+          if (teaseAtt.key === "refuse" && !stunZero) girl._angryUntil = Date.now() + 6000;
+          else girl._angryUntil = 0;
+          pushDebug(`態度 ${teaseAtt.zh}${teaseShift > 0 ? "↑" : teaseShift < 0 ? "↓" : ""}（${teaseAtt.score}${teaseAtt.reasons.length ? "：" + teaseAtt.reasons.join("、") : ""}）`);
+          renderDebug();
+        }
+      }
       persistRoom();
       refreshTalkActs();
       if (invRoll.fled) {
@@ -10298,7 +10342,7 @@ async function deliverUserTalk(text, opts = {}) {
     // 情緒餘溫：本回合的侵犯／挑逗／冒犯在 finally 記下（LLM 失敗也記），下一句起帶進 prompt
     // 只有語氣真的走「半推半就」（增益 ≤ tokenCap）才把情緒記成羞燥
     // 事後算帳（閘門開）：失神／痙攣中的動作不記情緒，情緒交給回神結算
-    moodTurn = { invAdded, invWilling: invWilling && invAdded <= (invToneOpts.tokenCap ?? 12), turnMark, stunZero };
+    moodTurn = { invAdded, invWilling: invWilling && invAdded <= (invToneOpts.tokenCap ?? 12), turnMark, stunZero, teaseIdx: teaseAtt ? teaseAtt.idx : -1 };
 
     if (!sheetOpen() || talkFor !== girl.id) return;
 
@@ -10318,11 +10362,11 @@ async function deliverUserTalk(text, opts = {}) {
         //   胸部、下體先一聲嬌喘（只有一聲，越接近高潮越嬌），腰臀只在已經興奮時輕輕一聲（2026-11-21 使用者：只是一下而已，不會有一連串叫聲）
         const tier = touchTierOf(girl.stage || "stranger");
         if (!Array.isArray(girl.touchRecent)) girl.touchRecent = [];
-        const base = pickTouchLine(girl.touchBank, tier, opts.touchZone, girl.touchRecent);
+        const base = pickTouchLine(girl.touchBank, tier, opts.touchZone, girl.touchRecent, teaseAtt?.key || "");
         let lvl = moanLevelOf(arousalStage(girl.bodyState?.arousal || 0), { climaxNow: herClimaxNow, spasm: inSpasm(girl) });
         if (occ.score >= 95) lvl = 4; else if (occ.score >= 65) lvl = Math.max(lvl, 3);
         line = touchReply(scrubHusbandV(base, girl.stage || "stranger", girl.playerPet || ""), opts.touchZone, lvl) || base;
-        pushDebug(`摸（${opts.touchZone}・${tier}${girl.touchBank?.tiers?.[tier] ? "" : "・內建"}）嬌喘 ${lvl}`);
+        pushDebug(`摸（${opts.touchZone}・${tier}${teaseAtt ? "・" + teaseAtt.zh : ""}${girl.touchBank?.tiers?.[tier] ? "" : "・內建"}）嬌喘 ${lvl}`);
         renderDebug();
         setTyping(false);
       } else if (occ.score >= 95) {
@@ -10333,7 +10377,19 @@ async function deliverUserTalk(text, opts = {}) {
         setTyping(false);
       } else {
         const streamOk = stun < 25 && occ.score < 10 && !occ.semenOut && !inSpasm(girl) && !inAfterglow(girl);
-        const protestExtra = actId ? protestPromptBlock(invAdded, { invasion: invTotal, ...invToneOpts }) : "";
+        // 態度（2026-11-25）：拒絕＝照侵犯量的抗議語氣＋嘴硬身體誠實；無奈拒絕以上＝態度區塊取代抗議語氣（不再硬塞「放開！」）
+        let protestExtra = "";
+        if (actId) {
+          const pr = PERSONALITY_RESIST[basePersonality(girl)] || PERSONALITY_RESIST["文靜溫柔"];
+          const attBlock = teaseAtt ? attitudePromptBlock(teaseAtt, {
+            stage: girl.stage || "stranger", arousal: actArousalBefore ?? (girl.bodyState?.arousal || 0), shift: teaseShift,
+            hitId: TALK_ACTS.find((a) => a.id === actId)?.hitId || "", persToken: pr?.token || "", persProtest: "",
+          }) : "";
+          const near = teaseAtt && teaseAtt.idx >= 1 && invTotal >= INVASION_MAX - 15 ? "（侵犯感已經快到你受不了的程度：可以暗示再這樣下去你就要走了。）" : "";
+          protestExtra = !teaseAtt || teaseAtt.idx === 0
+            ? [protestPromptBlock(invAdded, { invasion: invTotal, ...invToneOpts }), attBlock].filter(Boolean).join("\n")
+            : [attBlock, near].filter(Boolean).join("\n");
+        }
         // afterglowPromptLines 已在 talkSystem；若仍餘韻（僅時間門檻）再塞一層
         const agLines = inAfterglow(girl) ? afterglowPromptLines(girl).join("\n") : "";
         const verbalExtra = verbalTease ? verbalTeasePrompt(verbalTease.hit, { blocked: verbalTease.blocked }) : "";
@@ -10352,7 +10408,7 @@ async function deliverUserTalk(text, opts = {}) {
           promptActId = "";
         }
         line = presentOccupied(girl, reply || moodFallbackLine(girl, undressShyFallback(undressStage(girl), girl.stage, "……")), actId, occ) || "……";
-        if (actId && invAdded > 1 && !inAfterglow(girl) && occ.score < 65) line = blendProtestReply(line, invAdded, invToneOpts) || line;
+        if (actId && invAdded > 1 && !inAfterglow(girl) && occ.score < 65 && (!teaseAtt || teaseAtt.idx === 0)) line = blendProtestReply(line, invAdded, invToneOpts) || line;
       }
       if (girl.guard) girl.guard -= 1;
       tickStunAfterReply(girl);
@@ -10481,9 +10537,7 @@ function touchZone(zone) {
   if (!ok.length) return false;
   // 台詞庫還沒有（舊的一趟、召喚時模型失敗）：背景補產，這次先用內建的
   if (girl.touchBank?.rev !== TOUCH_BANK_REV && !touchBankJobs.has(girl.id)) void pregenTouchBank(girl).catch(() => null);
-  // 陌生、朋友被摸＝生氣（台詞庫那句就是在罵你）→ 黑影叉腰／抱胸講
-  const tierNow = touchTierOf(girl.stage || "stranger");
-  if (tierNow === "stranger" || tierNow === "friend") girl._angryUntil = Date.now() + 6000;
+  // 生氣（黑影叉腰講）改看態度：動作結算時「拒絕」才生氣（deliverUserTalk 裡設 _angryUntil）
   void sendTalkAct(ok[Math.floor(Math.random() * ok.length)], { touchZone: zone });
   return true;
 }
@@ -13230,6 +13284,14 @@ document.addEventListener("click", (event) => {
 }, true);
 
 window.RoomCompanion = {
+  /** 調戲態度除錯（2026-11-25）：attitude＝現在摸她會是哪一種；sess＝這一場的計數；prompt＝給 LLM 的態度區塊；open＝打開對話。 */
+  tease: {
+    attitude: () => (girl ? teaseAttitudeOf(girl) : null),
+    sess: () => (girl?.bodyState?.teaseSess ? { ...girl.bodyState.teaseSess } : null),
+    prompt: (actId = "breast") => (girl ? attitudePromptBlock(teaseAttitudeOf(girl), { stage: girl.stage || "stranger", arousal: girl.bodyState?.arousal || 0, hitId: TALK_ACTS.find((a) => a.id === actId)?.hitId || "", persToken: (PERSONALITY_RESIST[basePersonality(girl)] || {}).token || "" }) : ""),
+    react: () => (girl ? teaseReactLook(girl) : null),
+    open: () => { if (girl && !sheetOpen()) showSheet(); return sheetOpen(); },
+  },
   /** 主動聊天除錯：state＝girl.proactiveTalk；force(trigger)；tick()；ask(trigger)＝開場 prompt；weights()。 */
   talk: {
     state: () => (girl ? JSON.parse(JSON.stringify(talkState())) : null),
