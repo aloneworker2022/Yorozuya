@@ -1009,6 +1009,53 @@
       if (o) { px[i] = o[0]; px[i + 1] = o[1]; px[i + 2] = o[2]; }
     }
   }
+  /**
+   * 2026-11-25 使用者（測試）：黑影人改肉色＋一階陰影（卡通著色：亮面一色、背光面深一色）。doll._skin＝[r,g,b] 才做。
+   * 身體那層（shade 之後）：身體色／加深的手臂色 → 肉色；照深度圖算表面朝向（光從左上前方來），背光面用深一階的肉色；
+   * 前後疊的地方（深度跳很大）和外框畫深咖啡線；乳暈、乳頭換成粉色系。頭髮（另外畫一層頭髮當遮罩）不動。
+   */
+  function skinPass(px, depth, W, Hh, hairMask, skin, scale) {
+    const SK = skin, SH = SK.map((v) => Math.round(v * .76)), LN = [Math.round(SK[0] * .42), Math.round(SK[1] * .3), Math.round(SK[2] * .3)];
+    const AR = [Math.round(SK[0] * .86), Math.round(SK[1] * .6), Math.round(SK[2] * .62)], NP = [Math.round(SK[0] * .78), Math.round(SK[1] * .5), Math.round(SK[2] * .54)];
+    const near = (i, c, t) => Math.abs(px[i] - c[0]) <= t && Math.abs(px[i + 1] - c[1]) <= t && Math.abs(px[i + 2] - c[2]) <= t;
+    const kind = new Uint8Array(W * Hh);   // 0 不管、1 皮膚、2 線、3 乳暈、4 乳頭
+    for (let k = 0, n = W * Hh; k < n; k++) {
+      const i = k * 4; if (!px[i + 3]) continue;
+      // 身體色一律換（頭髮遮罩只用來分頭髮跟輪廓線：兩個顏色幾乎一樣）
+      if (near(i, [51, 45, 64], 3) || near(i, [34, 30, 42], 3) || near(i, [134, 112, 152], 3)) kind[k] = 1;
+      else if (near(i, [72, 58, 84], 3) || near(i, [48, 38, 55], 3)) kind[k] = 3;
+      else if (near(i, [88, 72, 100], 3) || near(i, [58, 48, 66], 3)) kind[k] = 4;
+      else if (!(hairMask && hairMask[k]) && (near(i, [30, 24, 40], 3) || near(i, [33, 27, 45], 3) || near(i, [20, 16, 26], 3) || near(i, [45, 39, 58], 3) || near(i, [40, 34, 52], 3) || near(i, [35, 29, 46], 3))) kind[k] = 2;
+    }
+    // render 的 depth＝世界單位 /32 → 乘回 32；畫面一格＝1/scale 世界單位 → 坡度＝Δ深度×scale
+    const JUMP = 1.6, K = scale || 2, L = (() => { const v = [-.45, -.6, .66], m = Math.hypot(...v); return v.map((x) => x / m); })();
+    const dAt = (x, y) => (x < 0 || y < 0 || x >= W || y >= Hh || !kind[y * W + x] ? null : depth[y * W + x] * 32);
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+      const k = y * W + x, t = kind[k]; if (!t) continue;
+      const i = k * 4, d0 = depth[k] * 32;
+      let col;
+      if (t === 2) col = LN;
+      else {
+        // 深度跳很大（手臂在身體前面、乳房下緣）：比較遠的那一邊畫一條分隔線
+        let edge = false, gx = 0, gy = 0, nx = 0, ny = 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const q = dAt(x + dx, y + dy);
+          if (q == null) { nx += dx; ny += dy; continue; }   // 外面是空的：那個方向就是表面朝外的方向
+          if (q - d0 > JUMP) { edge = true; continue; }
+          if (Math.abs(q - d0) > JUMP) continue;
+          gx += dx * (q - d0) / 2; gy += dy * (q - d0) / 2;
+        }
+        if (edge && t === 1) col = LN;
+        else {
+          // depth 裡混了高度（(y＋z)/32，見下面 T 恤打光那段的「＋1」）：往下一格本來就淺一點，要扣掉，直立的面坡度才是 0
+          let n = [-gx * K + nx * .9, -(gy * K + 1) + ny * .9, 1]; const m = Math.hypot(...n); n = n.map((v) => v / m);
+          const lit = n[0] * L[0] + n[1] * L[1] + n[2] * L[2] > .62;
+          col = t === 3 ? (lit ? AR : AR.map((v) => Math.round(v * .82))) : t === 4 ? NP : lit ? SK : SH;
+        }
+      }
+      px[i] = col[0]; px[i + 1] = col[1]; px[i + 2] = col[2]; px[i + 3] = 255;
+    }
+  }
   /** 衣服的部位標記色：1＝布（T 恤布、胸罩布、蕾絲、褲頭）、2＝滾邊／扣子；0＝不是衣服。 */
   function clothAt(px, i) {
     if (!px[i + 3]) return 0;
@@ -1077,6 +1124,11 @@
         px[j] = px[j] * .66; px[j + 1] = px[j + 1] * .66; px[j + 2] = px[j + 2] * .66; px[j + 3] = Math.min(255, px[j + 3] + 30);
       }
     }
+    if (Array.isArray(doll._skin)) {   // 2026-11-25 測試：肉色＋一階陰影（頭髮另外畫一層當遮罩，不換色）
+      const hr = run(p => p.mat === 1), hp = hr.pixels, hd = hr.depth, rd = r.depth, n = r.width * r.height, hm = new Uint8Array(n);
+      for (let k = 0; k < n; k++) if (hp[k * 4 + 3] && !(rd[k] > hd[k] + .5)) hm[k] = 1;
+      skinPass(r.pixels, rd, r.width, r.height, hm, doll._skin, scale);
+    }
     // 衣服那幾層不畫皮膚上的標記（乳房輪廓弧線等 mat 2／摺線、乳暈印子、乳頭：浮在皮膚表面或直接印上去，會穿出衣服、在衣服上留一圈；T 恤做形狀時也不跟著乳頭凸起）
     if (hasU) veil(r.pixels, run(p => (!p.cloth || p.under) && p.mat !== 2 && !p.crease && !p.nip, true).pixels);
     if (hasO) {
@@ -1115,7 +1167,7 @@
         px[j] = Math.min(255, px[j] * k); px[j + 1] = Math.min(255, px[j + 1] * k); px[j + 2] = Math.min(255, px[j + 2] * k);
       }
     }
-    if (capH.h) pasteHands(r, capH.h, scale, cv, armDark, hasO);
+    if (capH.h) pasteHands(r, capH.h, scale, cv, armDark, hasO, Array.isArray(doll._skin) ? doll._skin : null);
     return r;
   }
 
@@ -1129,7 +1181,7 @@
     cup: { a: [6, 11.5], d: [0, -1], rows: ['##..##..##..##.', '##..##..##..##.', '.##.##..##.##..', '.##.##..##.##..', '..##.##.##.##..', '..###########..', '##.#########...', '.###########...', '..#########....', '...#######.....', '...######......', '...######......'] },
     fist: { a: [5.5, 9.5], d: [0, -1], rows: ['.##.##.##..', '##########.', '###########', '###########', '###########', '##########.', '.#########.', '..#######..', '...#####...', '...#####...'] },
   };
-  function pasteHands(r, hands, scale, cv, dark, hasO) {
+  function pasteHands(r, hands, scale, cv, dark, hasO, skin) {
     const W = r.width, Hh = r.height, px = r.pixels, dep = r.depth, k = scale / 2;   // 圖是照 scale 2 畫的
     for (const h of hands) {
       if ((h.hide && hasO) || h.g === 'none') continue;   // 伸進衣服裡／塞在手臂下面
@@ -1150,7 +1202,10 @@
         const i = oy * W + ox, j = i * 4;
         const hd = (1.65 * yF - ((oy + .5) / scale - cv.ay)) / 32;   // 跟 render 的 depth 同一套
         if (Number.isFinite(dep[i]) && dep[i] > hd + .03) continue;   // 前面有身體（乳房等）擋住
-        const q = dark && px[j + 3] ? [34, 30, 42, 234] : [51, 45, 64, 204];
+        // 肉色模式（2026-11-25 測試）：手是肉色，手的外緣（圖上旁邊是空格）畫深咖啡線
+        const rim = (yy, xx) => { const rw = S.rows[yy]; const c2 = mir ? sw - 1 - xx : xx; return !rw || c2 < 0 || c2 >= rw.length || rw[c2] !== '#'; };
+        const q = skin ? (rim(sy, sx - 1) || rim(sy, sx + 1) || rim(sy - 1, sx) || rim(sy + 1, sx) ? [Math.round(skin[0] * .42), Math.round(skin[1] * .3), Math.round(skin[2] * .3), 255] : [skin[0], skin[1], skin[2], 255])
+          : dark && px[j + 3] ? [34, 30, 42, 234] : [51, 45, 64, 204];
         px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2]; px[j + 3] = q[3];
       }
     }
@@ -1168,7 +1223,7 @@
       new Function('globalThis', 'module', src)(box, undefined);   // 兩個人偶檔都叫 RoomDoll → 另外裝，不蓋掉房間用的
       F = box.RoomDoll;
       try {
-        const code = `const F=(${F.factorySource})();const reactOf=${reactOf};const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const clothAt=${clothAt};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
+        const code = `const F=(${F.factorySource})();const reactOf=${reactOf};const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const skinPass=${skinPass};const clothAt=${clothAt};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
 onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},j.cv);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
         const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
         for (let i = 0; i < POOL; i++) {
@@ -1353,6 +1408,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   function dollOf(s, st, undressing, mode) {
     const doll = F.lookToDoll(s.look || null, { outfit: s.outfit, undressStage: st, belly: s.belly });
     if (s.noHair) doll._noHair = 1;
+    if (Array.isArray(s.skin)) doll._skin = s.skin;   // 2026-11-25 測試：肉色＋一階陰影（skinPass）
     doll._stance = stanceOf(s.look);   // 2026-11-24 使用者：平常站著手抱胸／放背後／自然放下，每個魅子固定一種   // 2026-11-23 edit_pic 臉模型：同一個姿勢另外算一張光頭（肉臉），AI 畫臉、再蓋回頭髮
     Object.assign(doll, shapeOf(s.look?.breast_shape));
     if (/外擴/.test(String(s.look?.breast_splay || ''))) doll.splay = 'wide';   // 外擴是另一個維度（2026-11-21 使用者：例如木瓜型＋外擴、母乳型＋外擴）
@@ -1442,7 +1498,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (!s) return;
     if (!F) { loadDroom().then(prewarm).catch(() => {}); return; }
     const st = Math.max(0, Math.min(3, Number(s.undressStage) || 0));
-    const k = JSON.stringify([s.look, s.outfit, st, s.tier, s.wife, s.belly, s.reacts]);
+    const k = JSON.stringify([s.look, s.outfit, st, s.tier, s.wife, s.belly, s.reacts, s.skin]);
     if (k === warmKey) return;
     warmKey = k;
     const list = [];

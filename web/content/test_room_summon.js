@@ -454,7 +454,17 @@ function fingerMood(who) {
   const key = String(who?.id || who?.name || ""); let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
   return { fgWelcome: idx >= (STAGE_INDEX.passionate ?? 5), fgLevel: lvl, fgSquirt: ["once", "faucet", "double"][h % 3] };
 }
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl), ...teaseReactLook(girl), squirtSeq: Number(girl.bodyState?.squirt?.seq) || 0, collapsed: isCollapsed(girl), stunned: inSpasm(girl) || stunTier(effectiveStun(girl, "")) === "stun" } : null);
+// 2026-11-25 使用者（測試）：黑影人改肉色＋一階陰影。開關存在 localStorage（yoro_shadow_skin＝1），test_room 除錯列的「黑影肉色」按一下切換；主畫面同一個網址也會跟著變。
+function shadowSkinOn() { try { return localStorage.getItem("yoro_shadow_skin") === "1"; } catch { return false; } }
+/** 膚色：照特殊特質（古銅小麥／雪白、奶白／白皙），沒有就預設肉色。 */
+function skinRgbOf(who) {
+  const t = (Array.isArray(who?.specialTraits) ? who.specialTraits : []).map((x) => (typeof x === "string" ? x : x?.name || "")).join("、");
+  if (/古銅|小麥/.test(t)) return [198, 146, 108];
+  if (/雪白|奶白/.test(t)) return [250, 226, 214];
+  if (/白皙/.test(t)) return [246, 214, 192];
+  return [242, 204, 177];
+}
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl), ...teaseReactLook(girl), squirtSeq: Number(girl.bodyState?.squirt?.seq) || 0, collapsed: isCollapsed(girl), stunned: inSpasm(girl) || stunTier(effectiveStun(girl, "")) === "stun", ...(shadowSkinOn() ? { skin: skinRgbOf(girl) } : {}) } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
@@ -1197,6 +1207,14 @@ function bindTalkDebug() {
     const ok = startProactiveTalk(t, { force: true });
     pushDebug(ok ? `除錯：叫她走過來聊（${TALK_TRIGGER_ZH[t]}）` : "除錯：她不在房間");
   });
+  onId("dbg-shadow-skin", "click", () => {
+    const on = !shadowSkinOn();
+    try { localStorage.setItem("yoro_shadow_skin", on ? "1" : "0"); } catch { /* */ }
+    const b = $("dbg-shadow-skin"); if (b) b.textContent = on ? "黑影肉色：開" : "黑影肉色：關";
+    pushDebug(on ? "黑影改肉色＋一階陰影（測試）" : "黑影回到原本的深色"); renderDebug();
+    try { window.ChatShadow?.sync?.(); } catch { /* */ }
+  });
+  { const b = $("dbg-shadow-skin"); if (b) b.textContent = shadowSkinOn() ? "黑影肉色：開" : "黑影肉色：關"; }
   onId("dbg-talk-now", "click", () => { const st = talkState(); if (!st) return; st.leftMs = 0; st.closedAt = 0; proactiveTalkTick(); renderTalkDebug(); });
 }
 
