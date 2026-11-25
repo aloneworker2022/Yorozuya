@@ -1034,8 +1034,7 @@
       const k = y * W + x, t = kind[k]; if (!t) continue;
       const i = k * 4, d0 = depth[k] * 32;
       let col;
-      if (t === 2) col = LN;
-      else {
+      {
         // 深度跳很大（手臂在身體前面、乳房下緣）：比較遠的那一邊畫一條分隔線
         let edge = false, gx = 0, gy = 0, nx = 0, ny = 0;
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -1045,15 +1044,42 @@
           if (Math.abs(q - d0) > JUMP) continue;
           gx += dx * (q - d0) / 2; gy += dy * (q - d0) / 2;
         }
-        if (edge && t === 1) col = LN;
+        if (edge && (t === 1 || t === 2)) col = SH;   // 2026-11-25 使用者：肉色不要黑色邊框——前後疊的地方用深一階的肉色分開
         else {
           // depth 裡混了高度（(y＋z)/32，見下面 T 恤打光那段的「＋1」）：往下一格本來就淺一點，要扣掉，直立的面坡度才是 0
           let n = [-gx * K + nx * .9, -(gy * K + 1) + ny * .9, 1]; const m = Math.hypot(...n); n = n.map((v) => v / m);
           const lit = n[0] * L[0] + n[1] * L[1] + n[2] * L[2] > .62;
-          col = t === 3 ? (lit ? AR : AR.map((v) => Math.round(v * .82))) : t === 4 ? NP : lit ? SK : SH;
+          col = t === 3 ? (lit ? AR : AR.map((v) => Math.round(v * .82))) : t === 4 ? NP : lit ? SK : SH;   // t 2（原本的輪廓線）也照亮暗面上色，不畫線
         }
       }
       px[i] = col[0]; px[i + 1] = col[1]; px[i + 2] = col[2]; px[i + 3] = 255;
+    }
+  }
+  // 2026-11-25 使用者：肉色模式的臉用新的臉模型（droom/face_mold v2 正面），但不要眉毛、鼻子、嘴巴、眼睛。
+  //   GUIDE=0 NOSE=0 BROW=0 MOUTH=0 node one.cjs → 外框換肉色（three.py noline）→ 去背 → 每列壓成「長度＋色碼」：
+  //   s 肉色、h 陰影、d 深色、. 透明；原圖 256×256 的 (x0,y0) 起、w×h；頭頂 y 50、下巴 y 197、中線 x 128。
+  const FACE_BLANK = { x0: 49, y0: 50, w: 158, h: 206, top: 50, chin: 197, cx: 128,
+    rle: "71.16s71.|65.28s65.|60.38s60.|57.44s57.|54.50s54.|52.54s52.|50.58s50.|47.64s47.|46.66s46.|44.70s44.|42.74s42.|41.76s41.|39.80s39.|38.82s38.|36.86s36.|35.88s35.|34.90s34.|33.92s33.|32.94s32.|31.96s31.|30.98s30.|29.100s29.|28.102s28.|27.104s27.|26.106s26.|25.108s25.|24.110s24.|23.112s23.|23.112s23.|22.114s22.|21.116s21.|21.116s21.|20.118s20.|19.120s19.|19.120s19.|18.122s18.|18.122s18.|17.124s17.|16.126s16.|16.126s16.|16.126s16.|15.128s15.|15.128s15.|14.130s14.|14.130s14.|13.132s13.|13.132s13.|13.132s13.|12.134s12.|12.134s12.|12.134s12.|11.136s11.|11.136s11.|11.136s11.|11.136s11.|11.136s11.|10.138s10.|10.138s10.|10.138s10.|10.138s10.|10.138s10.|10.138s10.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|4.4s1.140s1.4s4.|2.154s2.|2.7s1d138s1d7s2.|1.9s1d136s1d9s1.|1.9s1d136s1d9s1.|1.4s1h4s1d136s1d5s1h3s1.|5s1h4s1d136s1d5s1h4s|1.4s1h4s1d136s1d5s1h3s1.|1.4s1h4s1d136s1d5s1h3s1.|1.5s1h4s1d134s1d5s1h4s1.|1.5s1h4s1d134s1d5s1h4s1.|1.5s1h4s1d134s1d5s1h4s1.|1.6s1h3s1d134s1d4s1h5s1.|1.6s1h3s1d134s1d4s1h5s1.|2.5s1h4s1d132s1d5s1h4s2.|2.6s1h3s1d132s1d4s1h5s2.|3.5s1h3s1d132s1d4s1h4s3.|3.6s1h3s1d130s1d4s1h5s3.|4.5s1h3s1d130s1d4s1h4s4.|5.5s1h2s1d130s1d3s1h4s5.|5.6s1h1s1d130s1d2s1h5s5.|6.5s1h2s1d128s1d3s1h4s6.|7.7s1d128s1d7s7.|8.7s1d126s1d7s8.|9.6s1d126s1d6s9.|10.5s1d126s1d5s10.|12.4s1d124s1d4s12.|14.2s1d124s1d2s14.|15.2s1d122s1d2s15.|16.126s16.|17.124s17.|18.122s18.|19.120s19.|20.118s20.|21.116s21.|22.114s22.|23.112s23.|23.112s23.|24.110s24.|25.108s25.|26.106s26.|27.104s27.|28.102s28.|29.100s29.|30.98s30.|31.96s31.|32.94s32.|33.92s33.|34.90s34.|35.88s35.|35.88s35.|36.86s36.|37.84s37.|39.80s39.|40.78s40.|41.76s41.|43.72s43.|44.70s44.|46.66s46.|48.62s48.|49.60s49.|51.56s51.|53.52s53.|55.48s55.|57.44s57.|60.1s1d34s1d1s60.|60.2s3d28s3d2s60.|60.5s3d22s3d5s60.|60.8s3d16s3d8s60.|60.11s5d6s5d11s60.|60.16s6d16s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|58.42s58.|58.42s58.|58.42s58.|58.42s58.|58.42s58.|58.42s58.|58.42s58.|57.44s57.|57.44s57.|57.44s57.|56.46s56.|56.46s56.|55.48s55.|55.48s55.|54.50s54.|54.50s54." };
+  /** 把空白臉貼到頭上：照頭頂、下巴、中線縮放對位；頭髮在前面的地方不貼（瀏海留著）；只貼到下巴下面一點（脖子用身體的）。 */
+  function paintFace(px, W, Hh, headBox, hairMask, skin) {
+    const F0 = FACE_BLANK;
+    if (!F0.grid) {
+      const g = new Uint8Array(F0.w * F0.h), map = { '.': 0, s: 1, h: 2, d: 3 };
+      F0.rle.split('|').forEach((row, y) => { let x = 0; for (const m of row.matchAll(/(\d+)([.shd])/g)) { const n = +m[1], c = map[m[2]]; for (let k = 0; k < n; k++) g[y * F0.w + x++] = c; } });
+      F0.grid = g;
+    }
+    const k = (headBox.chin - headBox.top) / (F0.chin - F0.top);
+    if (!(k > 0)) return;
+    const SK = skin, SH = SK.map((v) => Math.round(v * .76)), MID = SK.map((v) => Math.round(v * .89));
+    const col = [null, SK, MID, SH];   // 臉模的深色也用陰影色（不要深色的線）
+    const yEnd = Math.min(Hh - 1, Math.round(headBox.top + (F0.chin + 4 - F0.top) * k));
+    const xA = Math.max(0, Math.floor(headBox.cx + (F0.x0 - F0.cx) * k)), xB = Math.min(W - 1, Math.ceil(headBox.cx + (F0.x0 + F0.w - F0.cx) * k));
+    for (let y = Math.max(0, Math.floor(headBox.top)); y <= yEnd; y++) for (let x = xA; x <= xB; x++) {
+      const mx = Math.floor(F0.cx + (x + .5 - headBox.cx) / k) - F0.x0, my = Math.floor(F0.top + (y + .5 - headBox.top) / k) - F0.y0;
+      if (mx < 0 || my < 0 || mx >= F0.w || my >= F0.h) continue;
+      const c = F0.grid[my * F0.w + mx]; if (!c) continue;
+      const i = y * W + x; if (hairMask[i]) continue;
+      const j = i * 4, q = col[c]; px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2]; px[j + 3] = 255;
     }
   }
   /** 衣服的部位標記色：1＝布（T 恤布、胸罩布、蕾絲、褲頭）、2＝滾邊／扣子；0＝不是衣服。 */
@@ -1126,8 +1152,14 @@
     }
     if (Array.isArray(doll._skin)) {   // 2026-11-25 測試：肉色＋一階陰影（頭髮另外畫一層當遮罩，不換色）
       const hr = run(p => p.mat === 1), hp = hr.pixels, hd = hr.depth, rd = r.depth, n = r.width * r.height, hm = new Uint8Array(n);
-      for (let k = 0; k < n; k++) if (hp[k * 4 + 3] && !(rd[k] > hd[k] + .5)) hm[k] = 1;
+      for (let k = 0; k < n; k++) if (hp[k * 4 + 3] && !(rd[k] > hd[k] + .5 / 32)) hm[k] = 1;   // depth＝世界單位/32：身體比頭髮前面半格以上＝不是頭髮（臉蓋在後面的長髮前面）
       skinPass(r.pixels, rd, r.width, r.height, hm, doll._skin, scale);
+      // 臉：用空白臉模（頭頂、下巴、中線照光頭那層的頭找）
+      const hh = run(p => p.part === 'head' && p.mat === 0 && !p.cloth), hpx = hh.pixels, Wd = hh.width;
+      let top = -1, bot = -1, sx = 0, sn = 0;
+      for (let k = 0; k < n; k++) if (hpx[k * 4 + 3]) { const y = Math.floor(k / Wd); if (top < 0) top = y; bot = y; }
+      if (top >= 0) { const mid = Math.round(top + (bot - top) * .45); for (let x = 0; x < Wd; x++) if (hpx[(mid * Wd + x) * 4 + 3]) { sx += x; sn++; } }
+      if (top >= 0 && sn) paintFace(r.pixels, r.width, r.height, { top, chin: bot, cx: sx / sn + .5 }, hm, doll._skin);
     }
     // 衣服那幾層不畫皮膚上的標記（乳房輪廓弧線等 mat 2／摺線、乳暈印子、乳頭：浮在皮膚表面或直接印上去，會穿出衣服、在衣服上留一圈；T 恤做形狀時也不跟著乳頭凸起）
     if (hasU) veil(r.pixels, run(p => (!p.cloth || p.under) && p.mat !== 2 && !p.crease && !p.nip, true).pixels);
@@ -1202,9 +1234,9 @@
         const i = oy * W + ox, j = i * 4;
         const hd = (1.65 * yF - ((oy + .5) / scale - cv.ay)) / 32;   // 跟 render 的 depth 同一套
         if (Number.isFinite(dep[i]) && dep[i] > hd + .03) continue;   // 前面有身體（乳房等）擋住
-        // 肉色模式（2026-11-25 測試）：手是肉色，手的外緣（圖上旁邊是空格）畫深咖啡線
+        // 肉色模式（2026-11-25 測試）：手是肉色，手的外緣（圖上旁邊是空格）用深一階的肉色（不畫黑邊）
         const rim = (yy, xx) => { const rw = S.rows[yy]; const c2 = mir ? sw - 1 - xx : xx; return !rw || c2 < 0 || c2 >= rw.length || rw[c2] !== '#'; };
-        const q = skin ? (rim(sy, sx - 1) || rim(sy, sx + 1) || rim(sy - 1, sx) || rim(sy + 1, sx) ? [Math.round(skin[0] * .42), Math.round(skin[1] * .3), Math.round(skin[2] * .3), 255] : [skin[0], skin[1], skin[2], 255])
+        const q = skin ? (rim(sy, sx - 1) || rim(sy, sx + 1) || rim(sy - 1, sx) || rim(sy + 1, sx) ? [Math.round(skin[0] * .76), Math.round(skin[1] * .76), Math.round(skin[2] * .76), 255] : [skin[0], skin[1], skin[2], 255])
           : dark && px[j + 3] ? [34, 30, 42, 234] : [51, 45, 64, 204];
         px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2]; px[j + 3] = q[3];
       }
@@ -1223,7 +1255,7 @@
       new Function('globalThis', 'module', src)(box, undefined);   // 兩個人偶檔都叫 RoomDoll → 另外裝，不蓋掉房間用的
       F = box.RoomDoll;
       try {
-        const code = `const F=(${F.factorySource})();const reactOf=${reactOf};const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const skinPass=${skinPass};const clothAt=${clothAt};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
+        const code = `const F=(${F.factorySource})();const reactOf=${reactOf};const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const skinPass=${skinPass};const FACE_BLANK=${JSON.stringify({ ...FACE_BLANK, grid: undefined })};const paintFace=${paintFace};const clothAt=${clothAt};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
 onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},j.cv);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
         const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
         for (let i = 0; i < POOL; i++) {
