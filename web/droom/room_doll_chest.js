@@ -334,7 +334,7 @@
       return { H, b, head_h, zc, chin, S, C, T: S - C, knee: C * 0.6, hipz: C + 3.4, ankle: 3.3 };
     }
     const F = (b, k) => b[k] * b.frame;
-    let FOOT_HD = false, TIPTOE = 0, ARM_K = 1;   // pt39u：赤腳走路微墊腳（腳跟抬高量）   // pt38u：build 時 opts.scale≥2 才開
+    let FOOT_HD = false, TIPTOE = 0, ARM_K = 1, HEEL = 0;   // HEEL：高跟鞋跟高（人偶單位，2026-11-25 使用者；站著的姿勢才有）   // pt39u：赤腳走路微墊腳（腳跟抬高量）   // pt38u：build 時 opts.scale≥2 才開
     /** 2026-11-19 大腿模組（坐姿用；使用者參考圖「横座り」）：大腿從根部扭轉——給大腿「正面」朝哪（front），
      *  根部外鼓、股四頭肌、膝蓋骨、小腿肚都照這個方向放（不像 legRaw 假設站著、外側固定是 ±x）。膝關節跟著斜。
      *  side：−1 右腿／＋1 左腿；toe：腳尖方向。坐在地上時 sh.floor 會把貼地那面切平（大腿躺地被壓扁）。 */
@@ -393,6 +393,7 @@
       sh.cone(BODY, knee, cpos, knee_r * .95, calf_r);
       sh.cone(BODY, cpos, ankle, calf_r, 1.55 * Math.min(wC, 1.1) * fr ** .5);
       const [tx, ty, tz] = toe, fl = 6.4 * fr ** .7;   // pt34u 腳掌加大
+      if (HEEL > 0) return heelFoot(sh, P, side, ankle, toe);
       if (!FOOT_HD) { sh.cone(BODY, [ax - tx * .8, ay - .6 - ty * .8, az - 1.6], [ax + tx * fl, ay + ty * fl, Math.max(1.1, az - 2.4 + tz * fl)], 2.1 * fr ** .5, 1.5); return; }
       // 2026-10-30 pt38u：2× 才畫細腳——腳跟、足弓、蹠骨球、五根腳趾、內外踝骨
       // pt39u：2× 腳掌再加大（長 ×1.3、粗 ×1.2）；走路赤腳時腳跟微抬、前掌著地
@@ -419,6 +420,39 @@
       sh.ell(BODY, L(ankle, 1.25 * q, .4), [.85, .85, .9]);                                    // 內踝（較高）
       sh.ell(BODY, L(ankle, -1.3 * q, -.2), [.85, .85, .9]);                                   // 外踝（較低）
       sh.cone(BODY, [ax - tx * 1.0, ay - ty * 1.0 - .4, az + 3.5], [heel[0], heel[1], heel[2] + 1.0], .8 * q, 1.0 * q);   // 阿基里斯腱
+    }
+    /** 2026-11-25 使用者：魅魔都穿高跟鞋（樣品）。腳背繃直：腳跟抬到鞋跟上、前掌和腳趾貼地；黑色尖頭包鞋（cloth 8＝黑色情趣布那個標記色，
+     *  聊天黑影畫成不透明黑）＋細跟。整個人在 build 裡已經墊高 HEEL（P 的高度全部 ＋HEEL），所以這裡腳踝本來就在 3.3＋HEEL。 */
+    function heelFoot(sh, P, side, ankle, toe) {
+      const fr = P.b.frame, q = fr ** .5 * (FOOT_HD ? 1.2 : 1), h = HEEL;
+      const [ax, ay, az] = ankle;
+      let ux = toe[0], uy = toe[1]; const un = Math.hypot(ux, uy) || 1; ux /= un; uy /= un;
+      const U = (p, k, dz = 0) => [p[0] + ux * k, p[1] + uy * k, p[2] + dz];
+      const lift = Math.max(0, az - 3.3 - h);   // 放鬆的那隻腳（腳踝比較高）：前掌也離地一點
+      const heel = U(ankle, -1.1, -1.5);
+      const ballZ = 1.0 + lift * .6, run = Math.max(2.5, (heel[2] - ballZ) / Math.tan(44 * Math.PI / 180));
+      const ball = [heel[0] + ux * run, heel[1] + uy * run, ballZ];
+      const tip = U(ball, 2.2, -.15);
+      // 腳（皮膚）
+      sh.ell(BODY, heel, [1.3 * q, 1.3 * q, 1.2 * q]);
+      sh.cone(BODY, heel, ball, 1.2 * q, 1.05 * q);                                   // 足弓、腳掌
+      sh.cone(BODY, U(ankle, .2, -.6), U(ball, -.3, .55), 1.15 * q, .95 * q);         // 腳背（繃直）
+      sh.cone(BODY, ball, tip, .95 * q, .45 * q);                                      // 腳趾（在鞋裡，比鞋頭細一圈才不會穿出來）
+      let lx = uy, ly = -ux; if (lx * -side < 0) { lx = -lx; ly = -ly; }
+      sh.ell(BODY, [ax + lx * 1.25 * q, ay + ly * 1.25 * q, az + .4], [.85, .85, .9]);    // 內踝
+      sh.ell(BODY, [ax - lx * 1.3 * q, ay - ly * 1.3 * q, az - .2], [.85, .85, .9]);      // 外踝
+      sh.cone(BODY, U(ankle, -1.0, 3.5), U(heel, 0, 1.0), .8 * q, 1.0 * q);             // 阿基里斯腱
+      // 鞋（黑）
+      const c0 = sh.cloth, p0 = sh.part, i0 = sh.prims.length; sh.cloth = 8;
+      try {
+        sh.ell(BODY, U(heel, -.15, -.25), [1.4 * q, 1.4 * q, 1.2 * q]);                 // 後跟包住
+        sh.cone(BODY, U(heel, .1, -.35), U(ball, 0, -.25), 1.3 * q, 1.16 * q);          // 鞋身兩側（腳背上緣露出來，底下照腳底走、足弓下面空著）
+        sh.cone(BODY, U(ball, -.4, .1), U(tip, 1.7, .3), 1.32 * q, .3 * q);              // 尖頭鞋頭
+        sh.cone(BODY, U(ball, -.6, -.75), U(tip, .9, -.55), .5 * q, .3 * q);            // 前掌鞋底
+        const hb = U(heel, -.55, -1.2), ht = [hb[0] - ux * .25, hb[1] - uy * .25, .12];
+        sh.cone(BODY, hb, ht, .5 * q, .2 * q);                                           // 細跟（往下收細）
+        for (let i = i0; i < sh.prims.length; i++) sh.prims[i].shoe = 1;
+      } finally { sh.cloth = c0; sh.part = p0; }
     }
     // 2026-10-30 pt77u：手腳零件標 limb（上衣算軀幹表面時排除），手臂關節記下來給袖子用
     // 2026-11-23 聊天黑影（使用者選 C）：手臂縮短 ARM_K（build 的 opts.armK，黑影給 0.88；房間的人偶不傳＝1 不變）
@@ -2148,6 +2182,9 @@
       FOOT_HD = (opts.scale || 1) >= 2;
       ARM_K = opts.armK || 1;
       const P = proportions(doll), sh = makeShape(), b = P.b;
+      // 2026-11-25 高跟鞋（doll.heels：true＝4 單位≈6 公分，或給數字）：站著的姿勢才穿；整個人墊高 → P 的高度全部 ＋HEEL
+      HEEL = doll.heels && (pose === 'idle' || pose === 'walk') ? (typeof doll.heels === 'number' ? doll.heels : 4) : 0;
+      if (HEEL) for (const k of ['H', 'zc', 'chin', 'S', 'C', 'knee', 'hipz', 'ankle']) P[k] += HEEL;
       const hip_x = 5.1 * F(b, 'hip') * (1 + .3 * (F(b, 'thigh') - 1));
       const kx = () => 2.75 + .65 * F(b, 'thigh');   // 2026-10-31：膝蓋微微靠攏（參考圖 Good 2；原 3.2）
       const hip_out = Math.max(9.0 * F(b, 'hip'), hip_x + 4.7 * F(b, 'thigh'));
