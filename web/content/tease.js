@@ -8,7 +8,7 @@ import {
   gainOpenness,
   opennessHint,
   ACT_UNLOCK,
-} from "./openness.js?v=1";
+} from "./openness.js?v=2";
 
 export const INSERT_ACT = "finger_in";
 export const PULL_ACT = "pull_out";

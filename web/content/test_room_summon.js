@@ -21,7 +21,8 @@ import {
   resetOpenness,
   clearVaginaFingers,
 } from "./body_state.js?v=22";
-import { classifyUserText, applyVerbalTease, verbalTeasePrompt } from "./verbal_tease.js?v=1";
+import { classifyUserText, applyVerbalTease, verbalTeasePrompt } from "./verbal_tease.js?v=2";
+import { classifyRequest, requestPrompt, parseDecision, fallbackYesChance } from "./request_ask.js?v=1";
 import {
   effectiveStun,
   calcStun,
@@ -68,7 +69,7 @@ import {
   occupancyMoanLine,
   occupancyPromptLine,
   occupancyLabel,
-} from "./stun_speech.js?v=27";
+} from "./stun_speech.js?v=28";
 import {
   pickPortraitUrl,
   portraitPathKey,
@@ -85,7 +86,7 @@ import {
   availableActs,
   decayBodyIdle,
   insertUnlocked,
-} from "./tease.js?v=8";
+} from "./tease.js?v=9";
 import {
   ensurePlayer,
   emptyPlayer,
@@ -100,7 +101,7 @@ import {
   semenMaxCc,
   kidneyCheck,
 } from "./player_state.js?v=12";
-import { ensureOpenness, getOpenness } from "./openness.js?v=1";
+import { ensureOpenness, getOpenness } from "./openness.js?v=2";
 import { occupantOf, savedOccupant, blocksSummon, roomFullText as roomFullLine } from "./room_occupancy.js?v=1";
 import {
   ensureInvasion,
@@ -358,7 +359,7 @@ import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=18";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
 import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=21";
-import { moanVoiceId } from "./stun_speech.js?v=27";
+import { moanVoiceId } from "./stun_speech.js?v=28";
 import { ensureFeel as ensureDeskFeel, tickFeel as tickDeskFeel, noteWork as noteDeskWork, feelPromptLines as deskFeelLines, tiredLabel as deskTiredLabel } from "./desk_feel.js?v=1";
 import {
   hungerOn,
@@ -10026,6 +10027,9 @@ async function deliverUserTalk(text, opts = {}) {
   let verbalTease = null;
   if (!opts.actId && !opts.skipBody) {
     const cls = classifyUserText(raw);
+    // 2026-11-25 使用者：用說的請她（摸一下啦／把衣服脫掉／我們做愛吧）→ 她（模型）自己決定答不答應（request_ask.js）
+    const req = classifyRequest(raw, { touchCls: cls, nextLockedAct: nextLockedAct(), actLocked: (id) => !actLockState(girl, id).ok });
+    if (req && requestAllowedNow(req)) { await handleRequest(req, raw); return; }
     if (cls.kind === "touch" && cls.actId && canTease(player) && actLockState(girl, cls.actId).ok) {
       opts = { ...opts, actId: cls.actId, typedAct: true };
       pushDebug(`打字動手 → 當成按「${TALK_ACTS.find((a) => a.id === cls.actId)?.label || cls.actId}」`);
@@ -10042,7 +10046,7 @@ async function deliverUserTalk(text, opts = {}) {
       return;
     }
     const lock = actLockState(girl, opts.actId);
-    if (!lock.ok) {
+    if (!lock.ok && !opts.granted) {   // granted：她剛答應讓你這一下（只准這一下）
       const status = $("summon-status");
       if (status) status.textContent = lock.reason || "尚未解鎖";
       refreshTalkActs();
@@ -10533,6 +10537,131 @@ async function sendTalk(event) {
   deskGiveAsk = null;
   deskAnswerSaid = null;
   if (order) closeAfterOrderReply(order);
+}
+
+// ---------------------------------------------------------------- 用說的請她（2026-11-25 使用者，§13.0 第 4 項）
+const AROUSAL_ZH = { none: "平靜", slight: "微微有感覺", aroused: "有感覺了", wantFill: "很想要", climax: "到了高潮邊緣" };
+const UNDRESS_ZH = ["穿著衣服", "只剩胸罩和內褲", "只剩內褲", "全裸"];
+const REQ_ACT_ZONE = { waist: "waist", butt: "waist", breast: "breast", breast_knead: "breast", breast_suck: "breast", nipple_lick: "breast", labia: "groin", labia_rub: "groin", finger_in: "groin", vagina_finger: "groin", cervix_rub: "groin" };
+/** 下一個還沒解鎖的動作（「摸一下啦」沒說哪裡就是請這個）。 */
+function nextLockedAct() {
+  if (!girl) return "";
+  for (const a of orderedTalkActs()) if (a.id !== "pull_out" && !actLockState(girl, a.id).ok) return a.id;
+  return "";
+}
+/** 現在能不能請：一般聊天、能調戲；做愛還要有精液；脫衣要還沒脫光。 */
+function requestAllowedNow(req) {
+  if (!girl || sceneOpen() || undressChatActive() || sexChatActive() || begDialogActive() || escortDialogActive()) return false;
+  player = ensurePlayer(player);
+  if (!canTease(player)) return false;
+  if (req.kind === "undress" && undressStage(girl) >= 3) return false;
+  return true;
+}
+function requestCtx(req, asked) {
+  const b = girl.bodyState || {};
+  let mood = ""; try { const m = getMoodCarry(girl); if (m && (Number(m.level) || 0) >= 15) mood = MOOD_TYPES[m.type] || m.type; } catch { /* */ }
+  const act = req.kind === "touch" ? TALK_ACTS.find((a) => a.id === req.actId) : null;
+  return {
+    stage: girl.stage || "stranger",
+    asked,
+    what: act ? herView(act.text) : req.kind === "undress" ? (req.all ? "全部脫光" : "脫一件") : "",
+    attitude: teaseAttitudeOf(girl)?.zh || "",
+    arousal: AROUSAL_ZH[arousalStage(b.arousal || 0)] || "",
+    undress: UNDRESS_ZH[undressStage(girl)] || "",
+    nude: undressStage(girl) >= 3,
+    collapsed: isCollapsed(girl),
+    stunned: stunTier(effectiveStun(girl, "")) === "stun",
+    invasion: getInvasion(girl),
+    mood,
+  };
+}
+const REQ_FALLBACK = {
+  touch: { yes: ["……就一下喔。", "真拿你沒辦法……一下下而已。"], no: ["不要。", "想都別想。", "……現在不行。"] },
+  undress: { yes: ["……好啦，你不准一直盯著看。", "真是的……轉過去啦。"], no: ["才不要。", "你想得美。", "……現在不要。"] },
+  sex: { yes: ["……嗯，好。", "……我也想要。"], no: ["不要。我們還沒到那種關係。", "……今天不要。", "不行。"] },
+};
+/**
+ * 她決定答不答應（使用者：交給模型判斷；模型沒回答案才用 fallbackYesChance 擲）。
+ * 答應：摸＝只准這一下（opts.granted 跳過鎖）；脫＝自己脫一件（說脫光就全脫）；做愛＝沒脫光就先脫光，再進做愛。
+ */
+async function handleRequest(req, raw) {
+  const who = girl;
+  if (!who) return;
+  talkBusy = true;
+  setTalkEnabled(true);
+  refreshTalkActs();
+  lines.push({ role: "user", content: raw || (req.kind === "sex" ? "（他說想跟你做愛。）" : "") });
+  typeJob += 1;
+  setTyping(true);
+  $("portrait-name").textContent = who.name;
+  const ctx = requestCtx(req, raw);
+  let dec = { yes: null, line: "" };
+  try { dec = parseDecision(await askGirl(requestPrompt(req.kind, ctx), null)); } catch { dec = { yes: null, line: "" }; }
+  let yes = dec.yes;
+  let how = "她決定";
+  if (yes == null) {
+    const p = fallbackYesChance(req.kind, {
+      stage: ctx.stage, attitudeIdx: teaseAttitudeOf(who)?.idx || 0, arousalStage: arousalStage(who.bodyState?.arousal || 0),
+      nude: ctx.nude, invasion: ctx.invasion, angry: girlAngryNow(who),
+    });
+    yes = Math.random() < p;
+    how = `保底機率 ${Math.round(p * 100)}%`;
+  }
+  const pool = REQ_FALLBACK[req.kind][yes ? "yes" : "no"];
+  const line = cleanLine(dec.line) || pool[Math.floor(Math.random() * pool.length)];
+  setTyping(false);
+  if (girl !== who) return;
+  const what = req.kind === "touch" ? `讓你${TALK_ACTS.find((a) => a.id === req.actId)?.label || "碰"}` : req.kind === "undress" ? (req.all ? "脫光" : "脫衣服") : "做愛";
+  pushDebug(`請求「${what}」→ ${yes ? "答應" : "拒絕"}（${how}）`);
+  renderDebug();
+  lines.push({ role: "assistant", content: line });
+  rememberChat();
+  persistRoom();
+  await typeLine(who.name, line);
+  talkBusy = false;
+  setTalkEnabled(true);
+  refreshTalkActs();
+  if (!yes || girl !== who) return;
+  if (req.kind === "touch") {
+    const act = TALK_ACTS.find((a) => a.id === req.actId);
+    if (act) await deliverUserTalk(act.text, { actId: act.id, granted: true, touchZone: REQ_ACT_ZONE[act.id] || "" });
+    return;
+  }
+  if (req.kind === "undress") { await selfUndressFromRequest(req.all); return; }
+  if (req.kind === "sex") {
+    if (undressStage(who) < 3) await selfUndressFromRequest(true);
+    const dryCc = ensurePlayer(player).semenCc;
+    if (!canStartSexAt(dryCc, { peak: sexPeakNow() })) {
+      const st = $("summon-status");
+      if (st) st.textContent = sexBlockReason(dryCc);
+      return;
+    }
+    openRoomScene("sex");
+  }
+}
+/** 她答應自己脫（一次一件；all＝全脫）。脫光的後續（站立圖、裸體動作圖、做愛開場圖）跟脫衣畫面一樣排。 */
+async function selfUndressFromRequest(all = false) {
+  if (!girl) return;
+  const u = ensureUndress(girl);
+  const before = undressStage(girl);
+  if (before >= 3) return;
+  clearVaginaFingers(girl);
+  u.stage = all || bikiniOutfit(girl) ? 3 : Math.min(3, before + 1);
+  const after = u.stage;
+  if (after >= 3) {
+    u.pantiesBy = "self";
+    u.sexStance = "順從";
+    rollNudeStandee(girl);
+    void queueNudeActionPregen(girl);
+    void queueSexPosePregen(girl);
+  }
+  window.ChatShadow?.undress?.(before, after);
+  const beat = undressBeat(false, "advance", before, after, bikiniOutfit(girl));
+  lines.push({ role: "user", content: herView(beat.canned) });
+  persistRoom();
+  try { paintHalfPortrait(girl); } catch { /* ignore */ }
+  refreshTalkActs();
+  await typeLine("旁白", beat.canned);
 }
 
 async function sendTalkAct(actId, extra = {}) {
@@ -11058,7 +11187,10 @@ function refreshTalkActs() {
       event.preventDefault();
       event.stopPropagation();
       if (btn.disabled) return;
-      openRoomScene("sex");
+      // 2026-11-25 使用者：做愛也要她答應（陌生、朋友就算癱軟也可能拒絕；妻子飢渴頂點／來求的不經過這裡）
+      if (talkBusy) return;
+      if (sexPeakNow()) { openRoomScene("sex"); return; }
+      void handleRequest({ kind: "sex" }, "（他想跟你做愛。）");
     });
     row.append(btn);
   } else if (undressEntryUnlocked(girl)) {

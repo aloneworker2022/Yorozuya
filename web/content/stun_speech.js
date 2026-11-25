@@ -2,7 +2,7 @@
 
 import { ensureBody, talkActById, arousalStage, stimulationState } from "./body_state.js?v=16";
 import { expansionLevel } from "./player_state.js";
-import { insertUnlocked } from "./tease.js?v=7";
+import { insertUnlocked } from "./tease.js?v=9";
 import {
   OCC_PTS,
   OCC_BANDS,

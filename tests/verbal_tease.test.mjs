@@ -27,7 +27,7 @@ await t("分類：只提部位＝言語調戲；動手對得上鈕＝touch＋鈕
   assert.equal(k("親一下").actId, "", "親嘴沒有鈕 → 照舊");
 });
 
-await t("言語調戲上限＝摸陰唇的性奮門檻（含感情折扣、最低 5）：剛好解鎖摸陰唇，揉陰唇不會因此解鎖", () => {
+await t("言語調戲上限＝摸陰唇的原始性奮門檻（含感情折扣、最低 5）；2026-11-25 門檻 ×2 後光靠說話解不開摸陰唇（要用說的請她）", () => {
   assert.equal(V.verbalArousalCap(0), 12);
   assert.equal(V.verbalArousalCap(50), 7);
   assert.equal(V.verbalArousalCap(400), 5);
@@ -35,7 +35,7 @@ await t("言語調戲上限＝摸陰唇的性奮門檻（含感情折扣、最�
     const g = girl(aff);
     for (let i = 0; i < 40; i++) V.applyVerbalTease(g, { id: "vagina" }, { affection: aff, stage: "lover", rng: () => 0 });
     assert.equal(g.bodyState.arousal, V.verbalArousalCap(aff), `aff ${aff}`);
-    assert.ok(Tz.isActUnlocked(g, "labia"), `labia aff ${aff}`);
+    assert.ok(!Tz.isActUnlocked(g, "labia"), `labia aff ${aff}`);
     assert.ok(!Tz.isActUnlocked(g, "labia_rub"), `labia_rub aff ${aff}`);
     assert.ok(!Tz.isActUnlocked(g, "finger_in"));
     assert.notEqual(S.arousalStage(g.bodyState.arousal), "climax");
