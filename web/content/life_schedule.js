@@ -5,9 +5,9 @@ export const HOUR_MS = 60 * 60 * 1000;
 export const WORK_MS = 4 * HOUR_MS;
 export const BROWSE_MS = 30 * 60 * 1000; // 在家上網固定 30 分
 /* 跟 server/life_agent.py、life_data.py 同一套（2026-10-09 加在家的事）。改一邊要改另一邊。 */
-export const OUTSIDE_KINDS = ["work", "stroll", "browse", "sleep", "idle", "tidy", "meal"];
+export const OUTSIDE_KINDS = ["work", "stroll", "browse", "sleep", "idle", "tidy", "meal", "travel"];
 export const HOME_KINDS = ["browse", "idle", "tidy", "meal"];
-export const OUTSIDE_KIND_ZH = { work: "打工", stroll: "溜達", browse: "上網", sleep: "睡覺", idle: "發呆", tidy: "整理房間", meal: "吃飯" };
+export const OUTSIDE_KIND_ZH = { work: "打工", stroll: "溜達", browse: "上網", sleep: "睡覺", idle: "發呆", tidy: "整理房間", meal: "吃飯", travel: "旅遊" };
 export const HOME_DURATIONS_MIN = { idle: [30], browse: [30], tidy: [30, 60] };
 export const MEAL_TIMES = { 早起型: [6, 12, 18], 夜貓子: [12, 18.5, 0.5], 愛睡午覺: [8, 12, 19], 淺眠易怒: [7.5, 12, 19], 隨和好睡: [8.5, 12.5, 19], "": [8, 12, 19] };
 export const MEAL_MIN = [30, 30, 30];
@@ -91,6 +91,19 @@ export function moodStrengthWord(level) {
 
 /** RP5 /api/life 那一列畫進 world。房間（test_room_summon）和名冊（app.js）共用，免得一邊漏抄。
  * 心情只在她人在日本時才蓋（人在房裡時手機是真相）。記憶照 id 去重推進 mind。 */
+/** 2026-11-25 室友的位置一句話（名冊卡、房間狀態用）：在房間／出門打工・還有 2 小時／旅遊（京都）・還有 10 小時。不是室友回空字串。 */
+export function roommateOutLabel(world, now = Date.now()) {
+  if (!world?.roommate) return "";
+  if (world.phase !== "japan") return "在房間";
+  const kind = world.agenda?.kind || "";
+  if (kind === "escort") return "";   // 接客另有標籤
+  const until = Number(world.agenda?.until) || 0;
+  const what = kind === "travel" ? `旅遊${world.travel ? `（${world.travel}）` : ""}` : kind === "work" ? "出門打工" : kind === "stroll" ? "出門溜達" : "出門";
+  if (!until || until <= now) return `${what}・快回來了`;
+  const min = Math.ceil((until - now) / 60000);
+  return `${what}・還有 ${min >= 60 ? `${Math.round(min / 6) / 10} 小時` : `${min} 分`}`;
+}
+
 export function paintLifeRow(world, row) {
   if (!world || !row) return;
   if (row.home?.id) world.home = { id: row.home.id, name: row.home.name };
@@ -98,6 +111,11 @@ export function paintLifeRow(world, row) {
   if (row.job?.name) world.job = { id: row.job.id || "", name: row.job.name };
   world.agenda = row.agenda || null;
   world.activity = row.activity || null;
+  // 2026-11-25 室友：家是房間；出門中／什麼時候回來（roommateOutLabel 用）
+  world.roommate = !!row.roommate;
+  world.phase = row.phase || "";
+  world.travel = row.travel || "";
+  world.nextOutAt = Number(row.nextOutAt) || 0;
   world.shift = row.shift || null;
   world.stroll = row.stroll || null;
   world.browse = row.browse || null;

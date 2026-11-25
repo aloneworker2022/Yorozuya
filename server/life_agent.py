@@ -77,9 +77,24 @@ HOMES = [
 
 JOBS = D.JOBS  # 24 份；舊存檔的 16 份 id 都還在
 
-KINDS = ("work", "stroll", "browse", "sleep", "idle", "tidy", "meal")
+KINDS = ("work", "stroll", "browse", "sleep", "idle", "tidy", "meal", "travel")
 HOME_KINDS = ("browse", "idle", "tidy", "meal")  # 在住所做的事：平平淡淡、不寫各自的記憶（一天一行）
-KIND_ZH = {"work": "打工", "stroll": "溜達", "browse": "上網", "sleep": "睡覺", "idle": "發呆", "tidy": "整理房間", "meal": "吃飯"}
+KIND_ZH = {"work": "打工", "stroll": "溜達", "browse": "上網", "sleep": "睡覺", "idle": "發呆", "tidy": "整理房間", "meal": "吃飯", "travel": "旅遊"}
+
+# ───────────────────────── 室友（2026-11-25 使用者，PLAN §13.0 第 7 項）─────────────────────────
+# 住在召喚者房間的那位（手機 roomMirror 的那位）＝室友：家就是房間（phase "room"），不回日本住所。
+# 出門＝傳送去日本打工／溜達／旅遊（phase "japan"），一趟結束就自己回房間。什麼時候出門由這裡照真實時間決定（手機關著也走）。
+# 出門間隔照個性（主動度）和關係（越黏越少出門）；睡覺時間不出門；旅遊約 7～14 天一次、一趟 12～24 小時。
+# 付錢叫回來：手機在鏡像寫 recallAt（時間戳），這裡看到新的就結束外出、回房間。
+ROOMMATE_V = 1
+OUT_KINDS = ("work", "stroll", "travel", "escort")
+ROOMMATE_GAP_H = (3.0, 6.0)
+ROOMMATE_STAGE_MULT = {"stranger": 0.8, "acquaintance": 0.8, "friend": 0.9, "close_friend": 0.9, "girlfriend": 1.0, "passionate": 1.05,
+                       "lover": 1.1, "wife": 1.3, "devoted_wife": 1.5, "obedient_wife": 1.5, "pathological_wife": 2.0}
+TRAVEL_MS = (12 * HOUR_MS, 24 * HOUR_MS)
+TRAVEL_GAP_DAYS = (7, 14)
+STROLL_OUT_MS = (60 * 60 * 1000, 2 * HOUR_MS)
+TRAVEL_SPOTS = ("京都", "奈良", "大阪", "箱根溫泉", "鎌倉", "日光", "金澤", "輕井澤", "富士五湖", "伊豆", "神戶", "名古屋", "廣島", "函館", "札幌", "沖繩那霸", "熱海", "草津溫泉", "仙台", "福岡")
 
 
 def new_store() -> dict:
@@ -90,6 +105,8 @@ def duration_ms(kind: str, rnd=None) -> int:
     roll = rnd if rnd is not None else random.random
     if kind == "work":
         return WORK_MS
+    if kind == "travel":
+        return int(TRAVEL_MS[0] + float(roll()) * (TRAVEL_MS[1] - TRAVEL_MS[0]))
     if kind == "sleep":
         return HOUR_MS
     if kind == "meal":
@@ -309,6 +326,8 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
     present_id = _mirror_id(mirror) if present else ""
     mirror_girl = mirror.get("girl") if isinstance(mirror.get("girl"), dict) else {}
     visit_until = _ms(mirror_girl.get("roomVisitUntil")) if present else 0
+    # 2026-11-25 室友：房間存檔裡的那位（在不在房裡都算），家是房間。手機新版才在鏡像打 roommate 旗（舊版手機照舊：離房回日本）
+    roommate_id = _mirror_id(mirror) if mirror_girl.get("roommate") is True else ""
 
     for gid in list(store["girls"]):
         if gid not in girls:
@@ -320,7 +339,7 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
         rec = store["girls"].get(gid)
         known = rec is not None
         if rec is None:
-            if not home and gid != present_id:
+            if not home and gid != present_id and gid != roommate_id:
                 continue
             rec = _blank(gid)
             store["girls"][gid] = rec
@@ -371,6 +390,13 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
         job = world.get("job") if isinstance(world.get("job"), dict) else None
         if job and job.get("name") and not (rec.get("job") or {}).get("name"):
             rec["job"] = {"id": str(job.get("id") or ""), "name": str(job["name"])}
+        rec["proactivity"] = _num(stats.get("proactivity"), _num(rec.get("proactivity"), 50)) if stats else _num(rec.get("proactivity"), 50)
+        rec["roommate"] = gid == roommate_id
+        if rec["roommate"]:
+            _absorb_roommate(rec, mine or {}, world, now_ms, roll)
+            continue
+        if rec.get("phase") == "room" and rec.get("roommateV"):
+            rec.pop("roommateV", None)   # 換室友了：原本那位搬回日本（下面照舊離房那條走）
         naked_key = _naked_key(world, mine)
         stay_open = gid == present_id and visit_until > now_ms
         no_deadline_yet = gid == present_id and visit_until == 0 and rec.get("phase") != "japan"
@@ -397,6 +423,25 @@ def absorb(store: dict, data: dict, now_ms: int, rnd=None) -> None:
         go = _escort_flag(world, mine)
         if go and rec.get("phase") == "japan":
             start_escort(rec, int(_num(go.get("debt"), 0)), now_ms, roll, key=str(go["key"]))
+
+
+def _absorb_roommate(rec: dict, mg: dict, world: dict, now_ms: int, roll) -> None:
+    """室友：位置由這裡決定（不看手機的停留期限）。第一次當室友（新召喚、舊存檔住在日本的）＝回房間住；
+    手機寫了新的 recallAt（付錢叫回來）＝結束外出；手機打了接客的旗＝出門接客。"""
+    if rec.get("roommateV") != ROOMMATE_V:
+        rec["roommateV"] = ROOMMATE_V
+        ag = rec.get("agenda") if isinstance(rec.get("agenda"), dict) else None
+        if not (rec.get("phase") == "japan" and ag and ag.get("kind") in OUT_KINDS):
+            to_room(rec, now_ms, roll, "住進召喚者的房間")
+    tok = _ms(mg.get("recallAt"))
+    if tok and tok > _ms(rec.get("recallSeen")):
+        rec["recallSeen"] = tok
+        recall_roommate(rec, now_ms, roll)
+    if rec.get("phase") not in ("room", "japan"):
+        to_room(rec, now_ms, roll)
+    go = _escort_flag(world, mg or None)
+    if go and start_escort(rec, int(_num(go.get("debt"), 0)), now_ms, roll, key=str(go["key"])):
+        rec["phase"] = "japan"   # 出門接客，收工回房間
 
 
 # ───────────────────────── 心情 ─────────────────────────
@@ -690,7 +735,7 @@ def pick_next(rec: dict, now_ms: int, rnd=None) -> tuple[str, int]:
 
 
 def needs_choice(rec: dict) -> bool:
-    if rec.get("phase") != "japan" or not rec.get("homeId"):
+    if rec.get("phase") != "japan" or (not rec.get("homeId") and not rec.get("roommate")):
         return False
     agenda = rec.get("agenda") if isinstance(rec.get("agenda"), dict) else None
     return not agenda or not _ms(agenda.get("until"))
@@ -730,15 +775,81 @@ def arm(rec: dict, kind: str, now_ms: int, rnd=None, ms: int | None = None) -> d
         log = [t for t in (rec.get("workLog") or []) if now_ms - _ms(t) < 48 * HOUR_MS]
         log.append(now_ms)
         rec["workLog"] = log[-6:]
+    if kind == "travel":
+        rec["agenda"]["dest"] = _pick(list(TRAVEL_SPOTS), rnd if rnd is not None else random.random)
     mins = int(round(ms / 60000))
     span = f"{mins // 60}小時{mins % 60}分" if mins >= 60 and mins % 60 else (f"{mins // 60}小時" if mins >= 60 else f"{mins}分鐘")
-    rec["note"] = f"{rec.get('name') or '她'}去{KIND_ZH[kind]}，這趟{span}。"
+    rec["note"] = f"{rec.get('name') or '她'}去{KIND_ZH[kind]}{('（' + rec['agenda']['dest'] + '）') if kind == 'travel' else ''}，這趟{span}。"
     return rec["agenda"]
+
+
+def roommate_gap_ms(rec: dict, rnd=None) -> int:
+    """在房間待多久才出門：3～6 小時 × 關係（越黏越久）× 主動度（50＝×1，90＝×0.76，10＝×1.24）。"""
+    roll = rnd if rnd is not None else random.random
+    h = ROOMMATE_GAP_H[0] + float(roll()) * (ROOMMATE_GAP_H[1] - ROOMMATE_GAP_H[0])
+    pro = max(0.0, min(100.0, _num(rec.get("proactivity"), 50)))
+    mult = ROOMMATE_STAGE_MULT.get(rec.get("stage") or "stranger", 1.0) * (1.3 - 0.6 * pro / 100)
+    return int(h * mult * HOUR_MS)
+
+
+def to_room(rec: dict, now_ms: int, rnd=None, why: str = "") -> None:
+    """回到房間（家）：外出結束、被叫回來、第一次當室友。排下一次出門。"""
+    roll = rnd if rnd is not None else random.random
+    rec["phase"] = "room"
+    rec["agenda"] = None
+    rec["backAt"] = now_ms
+    rec["nextOutAt"] = now_ms + roommate_gap_ms(rec, roll)
+    if not _ms(rec.get("nextTravelAt")):
+        rec["nextTravelAt"] = now_ms + int((TRAVEL_GAP_DAYS[0] + float(roll()) * (TRAVEL_GAP_DAYS[1] - TRAVEL_GAP_DAYS[0])) * 24 * HOUR_MS)
+    rec["note"] = f"{rec.get('name') or '她'}{why or '回到房間'}。"
+
+
+def roommate_out(rec: dict, now_ms: int, rnd=None) -> str:
+    """到點了：出門（打工／溜達／旅遊）。睡覺中、太晚就延後。回傳出門的種類（沒出門回空字串）。"""
+    roll = rnd if rnd is not None else random.random
+    info = sleep_info(rec.get("chrono") or "", now_ms)
+    if info["asleep"]:
+        rec["nextOutAt"] = info["wakeAt"] + int((0.5 + float(roll())) * HOUR_MS)
+        return ""
+    to_sleep = info["nextSleepAt"] - now_ms
+    if now_ms >= _ms(rec.get("nextTravelAt")) and _ms(rec.get("nextTravelAt")):
+        kind, ms = "travel", duration_ms("travel", roll)
+        rec["nextTravelAt"] = now_ms + ms + int((TRAVEL_GAP_DAYS[0] + float(roll()) * (TRAVEL_GAP_DAYS[1] - TRAVEL_GAP_DAYS[0])) * 24 * HOUR_MS)
+    else:
+        if to_sleep < STROLL_OUT_MS[0]:
+            rec["nextOutAt"] = info["nextSleepAt"] + 60 * 1000   # 快睡了：睡醒再說
+            return ""
+        h = jst_hour(now_ms)
+        w = {"stroll": 1.5 * liveliness(rec.get("chrono") or "", h)}
+        if to_sleep >= WORK_LEAD_MS and shifts_in_day(rec, now_ms) < WORK_PER_DAY:
+            w["work"] = (WORK_FIRST if shifts_in_day(rec, now_ms) == 0 else WORK_SECOND) * job_fit(_job_of(rec), h) * 0.5
+        kind = _pick_weighted(w, roll) or "stroll"
+        ms = WORK_MS if kind == "work" else int(STROLL_OUT_MS[0] + float(roll()) * (STROLL_OUT_MS[1] - STROLL_OUT_MS[0]))
+        ms = min(ms, max(30 * 60 * 1000, to_sleep)) if kind == "stroll" else ms
+    rec["phase"] = "japan"
+    arm(rec, kind, now_ms, roll, ms)
+    return kind
+
+
+def recall_roommate(rec: dict, now_ms: int, rnd=None) -> bool:
+    """付錢叫回來：外出到一半就回房間（接客中不能叫）。"""
+    agenda = rec.get("agenda") if isinstance(rec.get("agenda"), dict) else None
+    if rec.get("phase") != "japan" or (agenda and agenda.get("kind") == "escort"):
+        return False
+    kind = (agenda or {}).get("kind") or ""
+    if kind in KIND_ZH and kind in OUT_KINDS:
+        _remember(rec, kind if kind in ("work", "stroll") else "life", f"{KIND_ZH[kind]}到一半被他叫回房間。", now_ms, [KIND_ZH[kind], "被叫回去"])
+    to_room(rec, now_ms, rnd, "被他叫回房間")
+    return True
 
 
 def apply_choice(store: dict, gid: str, kind: str, now_ms: int, rnd=None) -> bool:
     """kind 空白＝照規則擲（pick_next）；有給＝沙盒手動指定。"""
     rec = (store.get("girls") or {}).get(gid)
+    if rec and rec.get("roommate") and rec.get("phase") != "japan" and kind in ("work", "stroll", "travel"):
+        rec["phase"] = "japan"   # 2026-11-25 沙盒：叫室友現在出門
+        arm(rec, kind, now_ms, rnd)
+        return True
     if not rec or rec.get("phase") != "japan" or not needs_choice(rec):
         return False
     if kind in KINDS:
@@ -1135,6 +1246,14 @@ def roll_event(rec: dict, kind: str, now_ms: int, rnd=None) -> dict:
                 ev["emotion"] = _pick_by(D.EMOTIONS, MOOD_EMOTION, mood, level, roll)["name"]
                 ev["person"] = meet_person(rec, "路人", spot, act.get("know", False), now_ms, roll)
                 _roll_bond(rec, ev, act, now_ms, roll)
+    elif kind == "travel":
+        # 旅遊：跟溜達同一套（碰到的人、SCP、色情奇遇、故事卡），地點換成旅遊地
+        dest = (rec.get("agenda") or {}).get("dest") or _pick(list(TRAVEL_SPOTS), roll)
+        ev = roll_event(rec, "stroll", now_ms, roll)
+        ev["kind"] = "travel"
+        ev["travel"] = dest
+        ev["place"] = f"{dest}的{ev.get('place') or '街上'}"
+        return ev
     elif kind == "browse":
         ev["firstToday"] = int((rec.get("homeDay") or {}).get("browse") or 0) == 0
     elif kind == "meal":
@@ -1278,7 +1397,7 @@ ERO_BAN_RE = re.compile(r"學生|制服|校服|少女|少年|女孩|男孩|小�
 def needs_llm(ev: dict) -> bool:
     if ev.get("kind") == "sleep":
         return bool(ev.get("nightmare"))
-    return ev.get("kind") in ("work", "stroll")
+    return ev.get("kind") in ("work", "stroll", "travel")
 
 
 def event_prompt(action: dict) -> tuple[str, str]:
@@ -1290,7 +1409,9 @@ def event_prompt(action: dict) -> tuple[str, str]:
     common = [
         action.get("clock") or "",
         action.get("span") or "",
-        f"人在日本{action.get('groundName') or action.get('regionName') or ''}，住所是{action.get('homeName') or '自己的房間'}。不在召喚者那裡，不要寫召喚者的房間。",
+        (f"你住在召喚者的房間；這趟是從房間出門，傳送到日本{action.get('groundName') or action.get('regionName') or ''}，結束後就回房間。現在人在日本，不要寫召喚者的房間。"
+         if action.get("roommate") else
+         f"人在日本{action.get('groundName') or action.get('regionName') or ''}，住所是{action.get('homeName') or '自己的房間'}。不在召喚者那裡，不要寫召喚者的房間。"),
         f"個性：{persona}。" if persona else "",
         f"出門前的心情是{ev.get('moodBefore') or '平靜'}。",
         f"寫完時她的感覺要接近「{(ev.get('outcome') or {}).get('mood') or '平靜'}」，但不要直接說出這兩個字。",
@@ -1336,6 +1457,8 @@ def event_prompt(action: dict) -> tuple[str, str]:
         body = [f"事情只沿著這個方向：{ev.get('act')}。細節自己編。"]
     if kind == "work":
         lead = f"你是{name}。用「我」寫剛結束的打工裡發生的事，2到4句。打工是「{ev.get('job')}」。"
+    elif ev.get("travel"):
+        lead = f"你是{name}。用「我」寫這趟去{ev['travel']}旅遊時發生的事，2到4句。人就在{ev.get('place')}，不要改到別的地方。這不是打工。"
     else:
         lead = f"你是{name}。用「我」寫在{ev.get('place')}溜達時發生的事，2到4句。人就在{ev.get('place')}，不要改到別的地方。這不是打工。"
     scp = ev.get("scp")
@@ -1347,7 +1470,7 @@ def event_prompt(action: dict) -> tuple[str, str]:
     elif ev.get("story"):
         body = story_lines_for(ev["story"])
         system = "你只寫她自己在那個地方的經過，照骨架走。" + ("她只是旁觀。" if ev["story"].get("deck") == "erotic" else "")
-    elif kind == "stroll":
+    elif kind in ("stroll", "travel"):
         body.insert(0, D.STROLL_TONE_RULE.get(ev.get("tone") or "daily", ""))
     bond = ev.get("bond")
     if bond and p:
@@ -1418,6 +1541,8 @@ def fallback_text(action: dict) -> str:
         if p:
             return f"我在{ev.get('job')}碰到{who}，對方{look}。這一班跟對方{ev.get('act')}，我回了幾句，對方也有反應。"
         return f"我在{ev.get('job')}做完這一班。"
+    if ev.get("travel") and not p:
+        return f"我去{ev['travel']}玩了一趟。在{ev.get('place')}{ev.get('act')}，晚上住在那邊，現在才回來。"
     tail = "心裡發毛，沒有再靠近。" if ev.get("tone") == "horror" else "事情巧得有點過分。" if ev.get("tone") == "wonder" else "待了一會兒就繼續走。"
     if p:
         return f"我在{ev.get('place')}碰到{who}，對方{look}。我們{ev.get('act')}，我回了幾句，對方也有反應。{tail}"
@@ -1739,6 +1864,18 @@ def quick_step(store: dict, now_ms: int, rnd=None) -> list[str]:
     """不用模型的事一次做完：替每個空檔的人排下一件、睡醒但沒做夢的人直接結算。"""
     logs = []
     for gid, rec in (store.get("girls") or {}).items():
+        if rec.get("roommate"):
+            # 室友：在房間到點就出門；外出沒有行程（舊紀錄、剛結束）就回房間
+            if rec.get("phase") != "japan":
+                if now_ms >= _ms(rec.get("nextOutAt")):
+                    k = roommate_out(rec, now_ms, rnd)
+                    if k:
+                        logs.append(f"{rec.get('name') or '她'} 出門{KIND_ZH[k]}")
+                continue
+            if needs_choice(rec):
+                to_room(rec, now_ms, rnd)
+                logs.append(f"{rec.get('name') or '她'} 回房間")
+                continue
         if needs_choice(rec):
             nk, ms = pick_next(rec, now_ms, rnd)
             arm(rec, nk, now_ms, rnd, ms)
@@ -1746,6 +1883,8 @@ def quick_step(store: dict, now_ms: int, rnd=None) -> list[str]:
             continue
         if is_due(rec, now_ms) and rec["agenda"].get("kind") == "escort":
             last = settle_escort(rec, now_ms, rnd)
+            if rec.get("roommate"):
+                to_room(rec, now_ms, rnd, "接客收工，回到房間")
             logs.append(f"{rec.get('name') or '她'} 接客收工：{(last or {}).get('clients')} 位、{(last or {}).get('paid')} 金")
             continue
         if is_due(rec, now_ms) and rec["agenda"].get("kind") in ("idle", "tidy", "meal"):
@@ -1794,6 +1933,7 @@ def prepare_resolve(store: dict, gid: str, now_ms: int, rnd=None) -> dict | None
         "archetype": rec.get("archetype") or "",
         "tone": rec.get("tone") or "",
         "homeName": rec.get("homeName") or "",
+        "roommate": bool(rec.get("roommate")),
         "regionName": rec.get("regionName") or "",
         "groundName": rec.get("groundName") or "",
         "job": (rec.get("job") or {}).get("name") or "",
@@ -2161,6 +2301,8 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
         mem_keys = ["遊盪", ev.get("place") or "", "色情奇遇", ero["title"]]
     elif kind == "stroll":
         mem_keys = ["遊盪", ev.get("place") or "", ev.get("toneName") or "", person_label(p) if p and p.get("named") else ""]
+    elif kind == "travel":
+        mem_keys = ["旅遊", ev.get("travel") or "", ev.get("toneName") or "", person_label(p) if p and p.get("named") else ""]
     elif kind == "sleep":
         mem_keys = ["睡覺", "惡夢" if ev.get("nightmare") else "沒睡好"]
     elif kind == "browse":
@@ -2174,7 +2316,7 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
     if after[0] != "平靜":
         mem_keys.append(after[0])
     # 在家的事不各寫一筆記憶（只有一天第一次上網看新聞寫），晚上睡前併成一行（write_home_day）
-    body = text or (fallback_text({"event": ev}) if kind in ("work", "stroll") or ev.get("nightmare") or ev.get("poor") else "")
+    body = text or (fallback_text({"event": ev}) if kind in ("work", "stroll", "travel") or ev.get("nightmare") or ev.get("poor") else "")
     if kind == "sleep" and ev.get("poor") and not text:
         body = "我半夜被聲音吵醒好幾次，起床氣還在。"
     item = _remember(rec, kind, body, at, mem_keys, extra) if body else None
@@ -2188,6 +2330,9 @@ def settle(store: dict, gid: str, finished_until: int, text: str, now_ms: int, r
     hist.append(kind)
     rec["history"] = hist[-8:]
     rec["agenda"] = None
+    if rec.get("roommate"):
+        to_room(rec, now_ms, roll, f"{KIND_ZH.get(kind, '出門')}完，回到房間")
+        return True
     if next_kind in KINDS:
         arm(rec, next_kind, now_ms, roll)
     else:
@@ -2241,6 +2386,9 @@ def view_of(rec: dict) -> dict:
         sleep = {"pending": True, "until": until, "placeName": rec.get("homeName") or ""}
     elif kind == "escort" and until:
         activity = "escort"
+    elif kind == "travel" and until:
+        activity = "travel"
+        stroll = {"pending": True, "until": until, "travel": agenda.get("dest") or ""}
     elif kind in ("idle", "tidy", "meal") and until:
         activity = kind
         home_act = {"pending": True, "until": until, "kind": kind, "meal": agenda.get("meal") or "", "placeName": rec.get("homeName") or ""}
@@ -2250,6 +2398,12 @@ def view_of(rec: dict) -> dict:
         "name": rec.get("name") or "",
         "phase": rec.get("phase") or "",
         "visitUntil": rec.get("visitUntil") or 0,
+        # 2026-11-25 室友：家是房間；什麼時候出門、回來
+        "roommate": bool(rec.get("roommate")),
+        "nextOutAt": _ms(rec.get("nextOutAt")),
+        "recallSeen": _ms(rec.get("recallSeen")),   # 手機叫回來的 recallAt 這裡收到了沒（沒收到前手機不要照舊的「外出中」把她送出去）
+        "backAt": _ms(rec.get("backAt")),
+        "travel": (agenda or {}).get("dest") or "" if kind == "travel" else "",
         "regionId": rec.get("regionId") or "",
         "home": {"id": rec.get("homeId") or "", "name": rec.get("homeName") or ""} if rec.get("homeId") else None,
         "job": rec.get("job"),

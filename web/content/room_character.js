@@ -143,6 +143,7 @@ self.onmessage=e=>{const j=e.data,t0=performance.now();
   function useLook(spec){
     if(!Doll)return null;
     const doll=Doll.lookToDoll(spec?.look||null,{outfit:spec?.outfit,undressStage:spec?.undressStage,belly:spec?.belly});
+    // 2026-11-25 使用者：房間小人維持黑影，只有聊天黑影改肉色（room_doll.js 的 skinTone 留著、不接）
     const key=Doll.dollKey(doll);
     if(sets.has(key)){const set=sets.get(key);sets.delete(key);sets.set(key,set);return set;}
     const set={key,doll,idle:null,walk:{f:[],fm:[],b:[],bm:[]},sit:new Map(),pose:new Map()};

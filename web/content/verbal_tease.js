@@ -11,7 +11,7 @@
  * 純函式；房間 UI 在 test_room_summon.js deliverUserTalk。
  */
 import { ensureBody, matchBodyHit, textHasTouchVerb, clampBody } from "./body_state.js?v=17";
-import { ACT_UNLOCK, affectionDiscounts } from "./openness.js?v=1";
+import { ACT_UNLOCK, affectionDiscounts } from "./openness.js?v=2";
 import { stageInvasionMult, INVASION_MAX } from "./invasion.js?v=6";
 
 /** 言語調戲每句加的性奮（依部位輕重）。 */

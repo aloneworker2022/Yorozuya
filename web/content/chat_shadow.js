@@ -10,8 +10,21 @@
 (function () {
   'use strict';
   const DROOM_URL = new URL('../droom/room_doll_chest.js?v=31', (document.currentScript && document.currentScript.src) || location.href).href;
-  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8 }, FPS = { breathe: 4, talk: 7 };
+  const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8, col_cb: 8, col_cg: 8, col_yb: 8, col_yg: 8, col_f: 8, col_x: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
+  // 2026-11-25 使用者（調戲不帶感）：反應改跟「態度」走（tease_attitude.js）——拒絕＝stranger（推開、遮住、掙扎）、無奈拒絕＝friend（輕推遮住）、
+  //   無奈順從＝girlfriend（一手遮、嘆氣）、迎合＝wife（不遮、仰頭一顫）。動作名 r_breast_friend…；沒帶後綴的 r_breast 照人偶的關係帶（testword 用）
+  const REACT_T = ['stranger', 'friend', 'girlfriend', 'wife'];
+  for (const r of REACTS) for (const t of REACT_T) NA_OF[r + '_' + t] = NA_OF[r];
+  /** r_breast／r_breast_friend → {zone, tier}（tier 空＝照人偶）；不是反應回 null。 */
+  function reactOf(pose) { const m = /^r_(breast|groin|waist)(?:_(stranger|friend|girlfriend|wife))?$/.exec(String(pose || '')); return m ? { zone: m[1], tier: m[2] || '' } : null; }
+  /** 這次要用的反應動作（RoomLookProvider 給 react；沒有就照關係帶）。 */
+  function reactKey(zone, s) { const t = s && REACT_T.includes(s.react) ? s.react : (s && REACT_T.includes(s.tier) ? s.tier : 'stranger'); return 'r_' + zone + '_' + t; }
+  /** 要先算的反應：現在的態度那三個先，再來這個關係階會用到的其他態度。 */
+  function reactPoses(s) {
+    const now = reactKey('x', s).slice(4), list = [now, ...((s && s.reacts) || []).filter((t) => t !== now && REACT_T.includes(t))];
+    return { now: REACTS.map((r) => r + '_' + now), more: list.slice(1).flatMap((t) => REACTS.map((r) => r + '_' + t)) };
+  }
   /** 脫衣動畫的節奏（使用者：太快、要有節奏）：每一格停多久（毫秒）——伸手慢、解扣子頓一拍、抽出來快、丟下去頓一拍。 */
   const BEAT = {
     shirt: (u) => (u < .12 ? 160 : u < .45 ? 130 : u < .62 ? 120 : u < .8 ? 95 : 150) + (Math.abs(u - .57) < .025 ? 380 : 0),   // 套過頭時卡一下
@@ -129,6 +142,32 @@
     //   col_d 坐下去（一次，最後屁股著地彈一下）、col_s 癱坐著（循環：喘、一抖一抖）。dropFrac＝往下沉到屁股著地的比例（deform 照身形換算）
     // 2026-11-22 使用者（第二版）：忽然沒力、狠狠地坐下去——「碰！」屁股撞地（彈一下），撞地那一下噴水；
     //   一邊噴身體一邊抖（col_q），之後癱坐（col_s）；頭一直往上仰。
+    // 2026-11-25 使用者（§13.0 第 6 項）：癱坐在地上繼續被玩弄——
+    //   col_cb／col_cg：被摸胸／下面，一隻手遮過去、低頭別過臉（下面那個膝蓋往內收一點）（拒絕、無奈拒絕）
+    //   col_yb／col_yg：不遮，往後仰、身體一顫（無奈順從、迎合）
+    //   col_f：坐著被手指插入（循環：腰一頂一頂、頭往後仰、腿張開）；col_x：失神抽動（循環：一抽一抽、頭往後甩）
+    //   都是癱坐（fg.kind 'cs'：手撐地、腿 M 字）；遮的那隻手用 fg.cover／fg.cw
+    if (pose === 'col_cb' || pose === 'col_cg' || pose === 'col_yb' || pose === 'col_yg') {
+      const u = f / (n - 1), sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+      const w = sm(u / .45), shake = u > .45 ? Math.sin((u - .45) * 30) : 0, groin = pose.endsWith('g');
+      if (pose[4] === 'c') {
+        return { ph, br: .3, tilt: 6 - 4 * w, nod: -28 + (groin ? 26 : 22) * w, turn: -4 - 22 * w + 4 * shake * w, gest: 0, bend: -28 + (groin ? 14 : 10) * w, jolt: 0,
+          fg: { kind: 'cs', ph, drop: 0, dropFrac: 1, open: 2.6 - (groin ? .9 : .2) * w, squirt: false, cover: groin ? 'groin' : 'breast', cw: w } };
+      }
+      const J = [0, .9, -.4, .5, -.2, .25, -.1, 0][f] || 0;
+      return { ph, br: .3 + .2 * w, tilt: 6 + 2 * J, nod: -28 - 10 * w - 6 * J, turn: -4, gest: 0, bend: -28 - 5 * w - 2 * J, jolt: 0,
+        fg: { kind: 'cs', ph, drop: 0, dropFrac: 1, open: 2.6 + (groin ? .1 : 0) * w, squirt: false } };
+    }
+    if (pose === 'col_f' || pose === 'col_x') {
+      if (pose === 'col_f') {
+        const q = Math.sin(ph), q2 = Math.sin(2 * ph);
+        return { ph, br: .3 + .2 * q2, tilt: 6 + 3 * q, nod: -30 - 11 * Math.max(0, q2), turn: -4 + 5 * q, gest: 0, bend: -28 - 4 * Math.max(0, q2), jolt: 0,
+          fg: { kind: 'cs', ph, drop: 0, dropFrac: 1, open: 2.5 + .12 * q2, squirt: false } };
+      }
+      const J = [1, -.6, .8, -.3, .6, -.7, .4, -.2][f % 8];
+      return { ph, br: .25, tilt: 7 + 5 * J, nod: -36 - 10 * J, turn: -4 + 6 * J, gest: 0, bend: -29 - 2 * J, jolt: 0,
+        fg: { kind: 'cs', ph, drop: 0, dropFrac: 1, open: 2.5 + .1 * J, squirt: false } };
+    }
     if (pose === 'col_d' || pose === 'col_s' || pose === 'col_q') {
       if (pose === 'col_d') {
         const E = [0, .04, .3, .78, 1.1, .94, 1.03, .99, 1, 1][Math.min(9, f)], J = [0, 0, 0, 0, .45, -.25, .15, -.06, 0, 0][Math.min(9, f)];   // 第 4 格屁股撞地
@@ -192,20 +231,21 @@
       }
       return { ph: 0, br, tilt, nod, turn, gest: 0, ang: { kind: ak ? 'akimbo' : 'cross', w: wa, bounce, wave }, jolt };
     }
-    if (pose === 'r_breast' || pose === 'r_groin' || pose === 'r_waist') {
+    const RI = reactOf(pose);
+    if (RI) {
       // 被摸的反應（使用者：陌生生氣、朋友生氣、女友無奈嫌煩、妻子喜歡調情；摸的時候會反抗、遮擋）：
       //   陌生／朋友：轉頭、低頭，手先推開再遮住被摸的地方，遮著的時候掙扎（頭小幅甩）；陌生多一下驚跳
       //   女友：一隻手遮、頭轉一點點、低頭嘆一口氣；妻子：不遮，頭往後仰、身體一顫、手摀嘴
       const u = f / (n - 1) * .72, sm = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };   // 只算到遮著掙扎完（放下＝倒著播）
       const w = u < .22 ? sm(u / .22) : u < .72 ? 1 : 1 - sm((u - .72) / .28);
       const base = mode ? motion('breathe', 0, 16, sit, mode) : { ph: 0, br: .2, tilt: 0, nod: 0, turn: 0, gest: 0 };
-      const T = tier || 'stranger', shake = u > .22 && u < .72 ? Math.sin((u - .22) * 38) : 0;
+      const T = RI.tier || tier || 'stranger', shake = u > .22 && u < .72 ? Math.sin((u - .22) * 38) : 0;
       const D = { stranger: [-38, 6, -5, .35, 4], friend: [-30, 9, -4, .3, 2.5], girlfriend: [-14, 11, 4, .8, 0], wife: [12, -15, 7, .6, 0] }[T] || [-30, 8, -4, .3, 2];
       const bump = (c, r) => Math.max(0, 1 - Math.abs(u - c) / r);
       const jolt = T === 'wife' ? .45 * bump(.3, .09) : T === 'stranger' ? .3 * bump(.1, .1) : 0;
       return { ph: base.ph, br: base.br + D[3] * w, tilt: base.tilt + D[2] * w, nod: base.nod + D[1] * w,
         turn: Math.max(-62, Math.min(62, (base.turn || 0) + (D[0] + D[4] * shake) * w)), gest: 0, mode: mode || null,
-        react: { zone: pose.slice(2), u, w, tier: T }, jolt };
+        react: { zone: RI.zone, u, w, tier: T }, jolt };
     }
     if (mode && (pose === 'breathe' || pose === 'talk' || pose === 'peak')) {   // 脫光後的動作：手照 mode 擺（deform），這裡只給頭和呼吸
       const talk = pose === 'talk', b = talk ? .65 * (.5 - .5 * Math.cos(2 * ph)) : .5 - .5 * Math.cos(ph);
@@ -520,6 +560,14 @@
           hands[part] = lerp(A2[part].w0, fl, e); poles[part] = [sd, -.9, .25];   // 手肘往後外
         }
         handG.armL = handG.armR = 'open'; handSet.armL = handSet.armR = 1;   // 手掌撐地（張開）
+        // 2026-11-25 癱坐被摸：一隻手（畫面右邊那隻 armL）從地上抬起來遮胸口／遮下面（cw 0～1）
+        if (m.fg.cover && A2.armL && hands.armL) {
+          const cw = Math.max(0, Math.min(1, m.fg.cw || 0));
+          let tgt = null;
+          if (m.fg.cover === 'breast' && BR[0] && BR[1]) tgt = [(BR[0].c[0] + BR[1].c[0]) / 2 + .6, Math.max(BR[0].front, BR[1].front) + .8, (BR[0].c[2] + BR[1].c[2]) / 2];
+          else if (m.fg.cover === 'groin') tgt = [G.cx - .3, frontY(G.cx - .3, G.gz + 1.6) + 1.4, G.gz + 1.6];
+          if (tgt) { hands.armL = lerp(hands.armL, tgt, cw); poles.armL = [-1, cw > .5 ? .35 : -.9, cw > .5 ? -.5 : .25]; if (cw > .5) handG.armL = 'flat'; }
+        }
         // 2026-11-24 使用者：身體往後靠，乳房自然往兩邊攤開、往胸口貼平；從正面看像從乳房下緣往上看＝往上的半球
         //   往後仰 tb：乳房（根部不動）往兩側攤、往身體貼回、下緣往上收；本體往前凸的縮小、左右變寬（越大越明顯）
         const tb = Math.max(0, -(m.bend || 0)) * Math.PI / 180;
@@ -961,6 +1009,79 @@
       if (o) { px[i] = o[0]; px[i + 1] = o[1]; px[i + 2] = o[2]; }
     }
   }
+  /**
+   * 2026-11-25 使用者（測試）：黑影人改肉色＋一階陰影（卡通著色：亮面一色、背光面深一色）。doll._skin＝[r,g,b] 才做。
+   * 身體那層（shade 之後）：身體色／加深的手臂色 → 肉色；照深度圖算表面朝向（光從左上前方來），背光面用深一階的肉色；
+   * 前後疊的地方（深度跳很大）和外框畫深咖啡線；乳暈、乳頭換成粉色系。頭髮（另外畫一層頭髮當遮罩）不動。
+   */
+  function skinPass(px, depth, W, Hh, hairMask, skin, scale) {
+    const SK = skin, SH = SK.map((v) => Math.round(v * .76)), LN = [Math.round(SK[0] * .42), Math.round(SK[1] * .3), Math.round(SK[2] * .3)];
+    const AR = [Math.round(SK[0] * .86), Math.round(SK[1] * .6), Math.round(SK[2] * .62)], NP = [Math.round(SK[0] * .78), Math.round(SK[1] * .5), Math.round(SK[2] * .54)];
+    const near = (i, c, t) => Math.abs(px[i] - c[0]) <= t && Math.abs(px[i + 1] - c[1]) <= t && Math.abs(px[i + 2] - c[2]) <= t;
+    const kind = new Uint8Array(W * Hh);   // 0 不管、1 皮膚、2 線、3 乳暈、4 乳頭
+    for (let k = 0, n = W * Hh; k < n; k++) {
+      const i = k * 4; if (!px[i + 3]) continue;
+      // 身體色一律換（頭髮遮罩只用來分頭髮跟輪廓線：兩個顏色幾乎一樣）
+      if (near(i, [51, 45, 64], 3) || near(i, [34, 30, 42], 3) || near(i, [134, 112, 152], 3)) kind[k] = 1;
+      else if (near(i, [72, 58, 84], 3) || near(i, [48, 38, 55], 3)) kind[k] = 3;
+      else if (near(i, [88, 72, 100], 3) || near(i, [58, 48, 66], 3)) kind[k] = 4;
+      else if (!(hairMask && hairMask[k]) && (near(i, [30, 24, 40], 3) || near(i, [33, 27, 45], 3) || near(i, [20, 16, 26], 3) || near(i, [45, 39, 58], 3) || near(i, [40, 34, 52], 3) || near(i, [35, 29, 46], 3))) kind[k] = 2;
+    }
+    // render 的 depth＝世界單位 /32 → 乘回 32；畫面一格＝1/scale 世界單位 → 坡度＝Δ深度×scale
+    const JUMP = 1.6, K = scale || 2, L = (() => { const v = [-.45, -.6, .66], m = Math.hypot(...v); return v.map((x) => x / m); })();
+    const dAt = (x, y) => (x < 0 || y < 0 || x >= W || y >= Hh || !kind[y * W + x] ? null : depth[y * W + x] * 32);
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+      const k = y * W + x, t = kind[k]; if (!t) continue;
+      const i = k * 4, d0 = depth[k] * 32;
+      let col;
+      {
+        // 深度跳很大（手臂在身體前面、乳房下緣）：比較遠的那一邊畫一條分隔線
+        let edge = false, gx = 0, gy = 0, nx = 0, ny = 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const q = dAt(x + dx, y + dy);
+          if (q == null) { nx += dx; ny += dy; continue; }   // 外面是空的：那個方向就是表面朝外的方向
+          if (q - d0 > JUMP) { edge = true; continue; }
+          if (Math.abs(q - d0) > JUMP) continue;
+          gx += dx * (q - d0) / 2; gy += dy * (q - d0) / 2;
+        }
+        if (edge && (t === 1 || t === 2)) col = SH;   // 2026-11-25 使用者：肉色不要黑色邊框——前後疊的地方用深一階的肉色分開
+        else {
+          // depth 裡混了高度（(y＋z)/32，見下面 T 恤打光那段的「＋1」）：往下一格本來就淺一點，要扣掉，直立的面坡度才是 0
+          let n = [-gx * K + nx * .9, -(gy * K + 1) + ny * .9, 1]; const m = Math.hypot(...n); n = n.map((v) => v / m);
+          const lit = n[0] * L[0] + n[1] * L[1] + n[2] * L[2] > .62;
+          col = t === 3 ? (lit ? AR : AR.map((v) => Math.round(v * .82))) : t === 4 ? NP : lit ? SK : SH;   // t 2（原本的輪廓線）也照亮暗面上色，不畫線
+        }
+      }
+      px[i] = col[0]; px[i + 1] = col[1]; px[i + 2] = col[2]; px[i + 3] = 255;
+    }
+  }
+  // 2026-11-25 使用者：肉色模式的臉用新的臉模型（droom/face_mold v2 正面），但不要眉毛、鼻子、嘴巴、眼睛。
+  //   GUIDE=0 NOSE=0 BROW=0 MOUTH=0 node one.cjs → 外框換肉色（three.py noline）→ 去背 → 每列壓成「長度＋色碼」：
+  //   s 肉色、h 陰影、d 深色、. 透明；原圖 256×256 的 (x0,y0) 起、w×h；頭頂 y 50、下巴 y 197、中線 x 128。
+  const FACE_BLANK = { x0: 49, y0: 50, w: 158, h: 206, top: 50, chin: 197, cx: 128,
+    rle: "71.16s71.|65.28s65.|60.38s60.|57.44s57.|54.50s54.|52.54s52.|50.58s50.|47.64s47.|46.66s46.|44.70s44.|42.74s42.|41.76s41.|39.80s39.|38.82s38.|36.86s36.|35.88s35.|34.90s34.|33.92s33.|32.94s32.|31.96s31.|30.98s30.|29.100s29.|28.102s28.|27.104s27.|26.106s26.|25.108s25.|24.110s24.|23.112s23.|23.112s23.|22.114s22.|21.116s21.|21.116s21.|20.118s20.|19.120s19.|19.120s19.|18.122s18.|18.122s18.|17.124s17.|16.126s16.|16.126s16.|16.126s16.|15.128s15.|15.128s15.|14.130s14.|14.130s14.|13.132s13.|13.132s13.|13.132s13.|12.134s12.|12.134s12.|12.134s12.|11.136s11.|11.136s11.|11.136s11.|11.136s11.|11.136s11.|10.138s10.|10.138s10.|10.138s10.|10.138s10.|10.138s10.|10.138s10.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|4.4s1.140s1.4s4.|2.154s2.|2.7s1d138s1d7s2.|1.9s1d136s1d9s1.|1.9s1d136s1d9s1.|1.4s1h4s1d136s1d5s1h3s1.|5s1h4s1d136s1d5s1h4s|1.4s1h4s1d136s1d5s1h3s1.|1.4s1h4s1d136s1d5s1h3s1.|1.5s1h4s1d134s1d5s1h4s1.|1.5s1h4s1d134s1d5s1h4s1.|1.5s1h4s1d134s1d5s1h4s1.|1.6s1h3s1d134s1d4s1h5s1.|1.6s1h3s1d134s1d4s1h5s1.|2.5s1h4s1d132s1d5s1h4s2.|2.6s1h3s1d132s1d4s1h5s2.|3.5s1h3s1d132s1d4s1h4s3.|3.6s1h3s1d130s1d4s1h5s3.|4.5s1h3s1d130s1d4s1h4s4.|5.5s1h2s1d130s1d3s1h4s5.|5.6s1h1s1d130s1d2s1h5s5.|6.5s1h2s1d128s1d3s1h4s6.|7.7s1d128s1d7s7.|8.7s1d126s1d7s8.|9.6s1d126s1d6s9.|10.5s1d126s1d5s10.|12.4s1d124s1d4s12.|14.2s1d124s1d2s14.|15.2s1d122s1d2s15.|16.126s16.|17.124s17.|18.122s18.|19.120s19.|20.118s20.|21.116s21.|22.114s22.|23.112s23.|23.112s23.|24.110s24.|25.108s25.|26.106s26.|27.104s27.|28.102s28.|29.100s29.|30.98s30.|31.96s31.|32.94s32.|33.92s33.|34.90s34.|35.88s35.|35.88s35.|36.86s36.|37.84s37.|39.80s39.|40.78s40.|41.76s41.|43.72s43.|44.70s44.|46.66s46.|48.62s48.|49.60s49.|51.56s51.|53.52s53.|55.48s55.|57.44s57.|60.1s1d34s1d1s60.|60.2s3d28s3d2s60.|60.5s3d22s3d5s60.|60.8s3d16s3d8s60.|60.11s5d6s5d11s60.|60.16s6d16s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|58.42s58.|58.42s58.|58.42s58.|58.42s58.|58.42s58.|58.42s58.|58.42s58.|57.44s57.|57.44s57.|57.44s57.|56.46s56.|56.46s56.|55.48s55.|55.48s55.|54.50s54.|54.50s54." };
+  /** 把空白臉貼到頭上：照頭頂、下巴、中線縮放對位；頭髮在前面的地方不貼（瀏海留著）；只貼到下巴下面一點（脖子用身體的）。 */
+  function paintFace(px, W, Hh, headBox, hairMask, skin) {
+    const F0 = FACE_BLANK;
+    if (!F0.grid) {
+      const g = new Uint8Array(F0.w * F0.h), map = { '.': 0, s: 1, h: 2, d: 3 };
+      F0.rle.split('|').forEach((row, y) => { let x = 0; for (const m of row.matchAll(/(\d+)([.shd])/g)) { const n = +m[1], c = map[m[2]]; for (let k = 0; k < n; k++) g[y * F0.w + x++] = c; } });
+      F0.grid = g;
+    }
+    const k = (headBox.chin - headBox.top) / (F0.chin - F0.top);
+    if (!(k > 0)) return;
+    const SK = skin, SH = SK.map((v) => Math.round(v * .76)), MID = SK.map((v) => Math.round(v * .89));
+    const col = [null, SK, MID, SH];   // 臉模的深色也用陰影色（不要深色的線）
+    const yEnd = Math.min(Hh - 1, Math.round(headBox.top + (F0.chin + 4 - F0.top) * k));
+    const xA = Math.max(0, Math.floor(headBox.cx + (F0.x0 - F0.cx) * k)), xB = Math.min(W - 1, Math.ceil(headBox.cx + (F0.x0 + F0.w - F0.cx) * k));
+    for (let y = Math.max(0, Math.floor(headBox.top)); y <= yEnd; y++) for (let x = xA; x <= xB; x++) {
+      const mx = Math.floor(F0.cx + (x + .5 - headBox.cx) / k) - F0.x0, my = Math.floor(F0.top + (y + .5 - headBox.top) / k) - F0.y0;
+      if (mx < 0 || my < 0 || mx >= F0.w || my >= F0.h) continue;
+      const c = F0.grid[my * F0.w + mx]; if (!c) continue;
+      const i = y * W + x; if (hairMask[i]) continue;
+      const j = i * 4, q = col[c]; px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2]; px[j + 3] = 255;
+    }
+  }
   /** 衣服的部位標記色：1＝布（T 恤布、胸罩布、蕾絲、褲頭）、2＝滾邊／扣子；0＝不是衣服。 */
   function clothAt(px, i) {
     if (!px[i + 3]) return 0;
@@ -1029,6 +1150,17 @@
         px[j] = px[j] * .66; px[j + 1] = px[j + 1] * .66; px[j + 2] = px[j + 2] * .66; px[j + 3] = Math.min(255, px[j + 3] + 30);
       }
     }
+    if (Array.isArray(doll._skin)) {   // 2026-11-25 測試：肉色＋一階陰影（頭髮另外畫一層當遮罩，不換色）
+      const hr = run(p => p.mat === 1), hp = hr.pixels, hd = hr.depth, rd = r.depth, n = r.width * r.height, hm = new Uint8Array(n);
+      for (let k = 0; k < n; k++) if (hp[k * 4 + 3] && !(rd[k] > hd[k] + .5 / 32)) hm[k] = 1;   // depth＝世界單位/32：身體比頭髮前面半格以上＝不是頭髮（臉蓋在後面的長髮前面）
+      skinPass(r.pixels, rd, r.width, r.height, hm, doll._skin, scale);
+      // 臉：用空白臉模（頭頂、下巴、中線照光頭那層的頭找）
+      const hh = run(p => p.part === 'head' && p.mat === 0 && !p.cloth), hpx = hh.pixels, Wd = hh.width;
+      let top = -1, bot = -1, sx = 0, sn = 0;
+      for (let k = 0; k < n; k++) if (hpx[k * 4 + 3]) { const y = Math.floor(k / Wd); if (top < 0) top = y; bot = y; }
+      if (top >= 0) { const mid = Math.round(top + (bot - top) * .45); for (let x = 0; x < Wd; x++) if (hpx[(mid * Wd + x) * 4 + 3]) { sx += x; sn++; } }
+      if (top >= 0 && sn) paintFace(r.pixels, r.width, r.height, { top, chin: bot, cx: sx / sn + .5 }, hm, doll._skin);
+    }
     // 衣服那幾層不畫皮膚上的標記（乳房輪廓弧線等 mat 2／摺線、乳暈印子、乳頭：浮在皮膚表面或直接印上去，會穿出衣服、在衣服上留一圈；T 恤做形狀時也不跟著乳頭凸起）
     if (hasU) veil(r.pixels, run(p => (!p.cloth || p.under) && p.mat !== 2 && !p.crease && !p.nip, true).pixels);
     if (hasO) {
@@ -1067,7 +1199,7 @@
         px[j] = Math.min(255, px[j] * k); px[j + 1] = Math.min(255, px[j + 1] * k); px[j + 2] = Math.min(255, px[j + 2] * k);
       }
     }
-    if (capH.h) pasteHands(r, capH.h, scale, cv, armDark, hasO);
+    if (capH.h) pasteHands(r, capH.h, scale, cv, armDark, hasO, Array.isArray(doll._skin) ? doll._skin : null);
     return r;
   }
 
@@ -1081,7 +1213,7 @@
     cup: { a: [6, 11.5], d: [0, -1], rows: ['##..##..##..##.', '##..##..##..##.', '.##.##..##.##..', '.##.##..##.##..', '..##.##.##.##..', '..###########..', '##.#########...', '.###########...', '..#########....', '...#######.....', '...######......', '...######......'] },
     fist: { a: [5.5, 9.5], d: [0, -1], rows: ['.##.##.##..', '##########.', '###########', '###########', '###########', '##########.', '.#########.', '..#######..', '...#####...', '...#####...'] },
   };
-  function pasteHands(r, hands, scale, cv, dark, hasO) {
+  function pasteHands(r, hands, scale, cv, dark, hasO, skin) {
     const W = r.width, Hh = r.height, px = r.pixels, dep = r.depth, k = scale / 2;   // 圖是照 scale 2 畫的
     for (const h of hands) {
       if ((h.hide && hasO) || h.g === 'none') continue;   // 伸進衣服裡／塞在手臂下面
@@ -1102,7 +1234,10 @@
         const i = oy * W + ox, j = i * 4;
         const hd = (1.65 * yF - ((oy + .5) / scale - cv.ay)) / 32;   // 跟 render 的 depth 同一套
         if (Number.isFinite(dep[i]) && dep[i] > hd + .03) continue;   // 前面有身體（乳房等）擋住
-        const q = dark && px[j + 3] ? [34, 30, 42, 234] : [51, 45, 64, 204];
+        // 肉色模式（2026-11-25 測試）：手是肉色，手的外緣（圖上旁邊是空格）用深一階的肉色（不畫黑邊）
+        const rim = (yy, xx) => { const rw = S.rows[yy]; const c2 = mir ? sw - 1 - xx : xx; return !rw || c2 < 0 || c2 >= rw.length || rw[c2] !== '#'; };
+        const q = skin ? (rim(sy, sx - 1) || rim(sy, sx + 1) || rim(sy - 1, sx) || rim(sy + 1, sx) ? [Math.round(skin[0] * .76), Math.round(skin[1] * .76), Math.round(skin[2] * .76), 255] : [skin[0], skin[1], skin[2], 255])
+          : dark && px[j + 3] ? [34, 30, 42, 234] : [51, 45, 64, 204];
         px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2]; px[j + 3] = q[3];
       }
     }
@@ -1120,7 +1255,7 @@
       new Function('globalThis', 'module', src)(box, undefined);   // 兩個人偶檔都叫 RoomDoll → 另外裝，不蓋掉房間用的
       F = box.RoomDoll;
       try {
-        const code = `const F=(${F.factorySource})();const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const clothAt=${clothAt};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
+        const code = `const F=(${F.factorySource})();const reactOf=${reactOf};const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const skinPass=${skinPass};const FACE_BLANK=${JSON.stringify({ ...FACE_BLANK, grid: undefined })};const paintFace=${paintFace};const clothAt=${clothAt};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
 onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},j.cv);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
         const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
         for (let i = 0; i < POOL; i++) {
@@ -1305,6 +1440,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   function dollOf(s, st, undressing, mode) {
     const doll = F.lookToDoll(s.look || null, { outfit: s.outfit, undressStage: st, belly: s.belly });
     if (s.noHair) doll._noHair = 1;
+    if (Array.isArray(s.skin)) doll._skin = s.skin;   // 2026-11-25 測試：肉色＋一階陰影（skinPass）
     doll._stance = stanceOf(s.look);   // 2026-11-24 使用者：平常站著手抱胸／放背後／自然放下，每個魅子固定一種   // 2026-11-23 edit_pic 臉模型：同一個姿勢另外算一張光頭（肉臉），AI 畫臉、再蓋回頭髮
     Object.assign(doll, shapeOf(s.look?.breast_shape));
     if (/外擴/.test(String(s.look?.breast_splay || ''))) doll.splay = 'wide';   // 外擴是另一個維度（2026-11-21 使用者：例如木瓜型＋外擴、母乳型＋外擴）
@@ -1340,7 +1476,8 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (!F) { loadDroom().then(sync).catch(e => console.warn('chat_shadow', e)); return false; }
     // 脫衣對話中（使用者）：美人魚坐姿；脫衣進度釘在 pinStage，脫衣動畫播完才換到下一階
     const undressing = pinStage != null;
-    const st = Math.max(0, Math.min(3, Number(undressing ? pinStage : s.undressStage) || 0));
+    // 2026-11-25 站著脫（一般聊天）：動畫播完那一件才換到下一階（standPin），不坐下
+    const st = Math.max(0, Math.min(3, Number(undressing ? pinStage : standPin != null ? standPin : s.undressStage) || 0));
     const doll = dollOf(s, st, undressing, null);
     const key = JSON.stringify(doll);
     if (cur && cur.key === key) return isReady(cur);
@@ -1354,9 +1491,11 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     } else {
       // 順序（使用者：摸她沒動作）：先第一格呼吸（人先出來）→ 被摸的反應（站著才摸得到）→ 其他呼吸 → 說話
       todo.push(['breathe', 0]);
-      if (cvOf(doll) === CV) for (const r of REACTS) { job.sets[r] = []; for (let f = 0; f < NA_OF[r]; f++) todo.push([r, f]); }
+      const RP = reactPoses(s);
+      if (cvOf(doll) === CV) for (const r of RP.now) { job.sets[r] = []; for (let f = 0; f < NA_OF[r]; f++) todo.push([r, f]); }
       for (let f = 1; f < N; f++) todo.push(['breathe', f]);
       for (let f = 0; f < N; f++) todo.push(['talk', f]);
+      if (cvOf(doll) === CV) for (const r of RP.more) { job.sets[r] = []; for (let f = 0; f < NA_OF[r]; f++) todo.push([r, f]); }   // 態度變了才用到的反應
       if (cvOf(doll) === CV && !doll._mode) for (const a of ANGS_PLAY) { job.sets[a] = []; for (let f = 0; f < NA_OF[a]; f++) todo.push([a, f]); }   // 生氣說話（站著、還沒脫光）
       if (doll._mode === 'touch') { job.sets.peak = []; for (let f = 0; f < NA_OF.peak; f++) todo.push(['peak', f]); }   // 忽然仰頭（偶爾播）
       if (cvOf(doll) === CV && doll._mode !== 'touch') for (const c of ['col_d', 'col_q', 'col_s']) { job.sets[c] = []; for (let f = 0; f < NA_OF[c]; f++) todo.push([c, f]); }   // 噴水後癱坐（2026-11-22）：先在背景算好（算過的存起來，下次直接拿），放開時才坐得下去
@@ -1391,7 +1530,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (!s) return;
     if (!F) { loadDroom().then(prewarm).catch(() => {}); return; }
     const st = Math.max(0, Math.min(3, Number(s.undressStage) || 0));
-    const k = JSON.stringify([s.look, s.outfit, st, s.tier, s.wife, s.belly]);
+    const k = JSON.stringify([s.look, s.outfit, st, s.tier, s.wife, s.belly, s.reacts, s.skin]);
     if (k === warmKey) return;
     warmKey = k;
     const list = [];
@@ -1400,14 +1539,15 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     for (const md of modes) {
       const d0 = dollOf(s, st, false, md);
       list.push([d0, 'breathe'], [d0, 'talk']);
-      if (stand(d0)) for (const r of REACTS) list.push([d0, r]);
+      if (stand(d0)) { const RP = reactPoses(s); for (const r of [...RP.now, ...RP.more]) list.push([d0, r]); }
       if (stand(d0) && !d0._mode) for (const a of ANGS_PLAY) list.push([d0, a]);
       if (d0._mode === 'touch') list.push([d0, 'peak']);
-      if (stand(d0) && d0._mode !== 'touch') for (const c of ['col_d', 'col_q', 'col_s']) list.push([d0, c]);
+      if (stand(d0) && d0._mode !== 'touch') for (const c of ['col_d', 'col_q', 'col_s', ...COL_PLAY]) list.push([d0, c]);
       if (stand(d0)) for (const f of ['fg_r0', 'fg_w0', 'fg_r1', 'fg_w1', 'fg_r2', 'fg_w2', 'fg_rx', 'fg_wx']) list.push([d0, f]);
     }
     if (st < 3) {
       const du = dollOf(s, st, true, null); list.push([du, animOf(du, st)]);   // 脫下一件的動畫（脫衣對話）
+      const ds = dollOf(s, st, false, null); if (stand(ds)) list.push([ds, animOf(ds, st)]);   // 2026-11-25 站著脫下一件（一般聊天她答應自己脫）
       const d1 = dollOf(s, st + 1, false, null); list.push([d1, 'breathe'], [d1, 'talk']);   // 脫完以後
     }
     list.forEach(([doll, pose], i) => {
@@ -1459,9 +1599,28 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     return y;
   }
   /** 脫衣對話（使用者）：立繪的底端也在對話框上緣上面 2 px（平常的聊天照舊：立繪貼畫面底、下半身被對話框蓋住）。 */
+  // 2026-11-25 使用者：半身立繪時鍵盤出來，立繪不要縮小、位置不要改變——跟黑影一樣：鍵盤出來那一刻把立繪的上緣、高度釘成像素
+  //   （用鍵盤出來之前最後一次排好的位置；畫面本身會變矮的手機一出來就已經被擠了），鍵盤收起來才放開、重新照對話框排。
+  let pPin = null, pLast = null;
+  function pinPortrait(img, sheet) {
+    const shown = !sheet.hidden && !img.hidden;
+    const up = shown && keyboardUp();
+    if (up && !pPin) {
+      const r = pLast || img.getBoundingClientRect();
+      if (r.height > 0) { pPin = { top: r.top, h: r.height }; Object.assign(img.style, { top: r.top + 'px', height: r.height + 'px', bottom: 'auto', maxHeight: 'none' }); }
+    } else if (!up && pPin) {
+      pPin = null; img.style.top = ''; img.style.bottom = ''; img.style.height = ''; img.style.maxHeight = '';
+    }
+    return !!pPin;
+  }
   function placePortrait() {
     const img = document.getElementById('portrait-img'), sheet = document.getElementById('portrait-sheet');
     if (!img || !sheet) return;
+    if (pinPortrait(img, sheet)) return;   // 鍵盤出來：釘住不動
+    placePortrait0(img, sheet);
+    if (!sheet.hidden && !img.hidden) { const r = img.getBoundingClientRect(); if (r.height > 0) pLast = { top: r.top, height: r.height }; } else pLast = null;
+  }
+  function placePortrait0(img, sheet) {
     const box = document.getElementById('talk-box');
     let T = box ? box.getBoundingClientRect().top : 0;
     // 鍵盤出來時對話框會往上移：立繪照鍵盤出來之前的位置算（不縮小，只是被鍵盤蓋住）
@@ -1482,14 +1641,14 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   // 2026-11-21 使用者：打字時鍵盤彈出，黑影不要縮小——照原本的大小、位置，只是被鍵盤蓋住。
   //   鍵盤出來（body.kb-open，或畫面高度突然矮了 80px 以上）那一刻把黑影的上緣、高度釘成像素；鍵盤收起來才放開、照對話框重新對齊。
   //   畫面本身會變矮的手機（adjustResize）：鍵盤一出來黑影就已經被擠小了 → 用鍵盤出來之前最後一次對齊好的位置（lastRect）。
-  let fullH = 0, kbPin = null, lastRect = null;
+  let fullH = window.innerHeight || 0, kbPin = null, lastRect = null;   // 一開始就記全高（立繪模式不會先叫 keyboardUp）
   function keyboardUp() {
     const h = window.innerHeight, ae = document.activeElement;
     if (!kbPin) fullH = Math.max(fullH, h);
     const typing = !!ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable);
     return document.body.classList.contains('kb-open') || (typing && fullH > 0 && h < fullH - 80);
   }
-  window.addEventListener('orientationchange', () => { fullH = 0; });
+  window.addEventListener('orientationchange', () => { fullH = 0; setTimeout(() => { if (!kbPin && !pPin) fullH = window.innerHeight; }, 400); });
   function pinForKeyboard() {
     if (!wrap) return false;
     const up = !wrap.hidden && keyboardUp();
@@ -1525,7 +1684,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   // ---------------------------------------------------------------- 脫衣（使用者：按下脫衣、她脫了 → 黑影表演脫衣動畫）
   let reactPlay = null;   // 被摸的反應 {kind, t0}
   let angPlay = null, angPick = null;   // 生氣說話 {kind, phase, i, at}；angPick：這次生氣用叉腰還是抱胸（30 秒內同一種）
-  let pinStage = null, animPlay = null;   // pinStage：脫衣對話中畫的是哪一階；animPlay：{kind, to, t0, wait}
+  let pinStage = null, animPlay = null, standPin = null;   // standPin：站著脫（一般聊天）時畫的是哪一階   // pinStage：脫衣對話中畫的是哪一階；animPlay：{kind, to, t0, wait}
   /** 這一階要預載哪一段脫衣動畫：一般照 ANIMS；比基尼 0＝解上面（胸罩那段）、1～2＝解下面（內褲那段）。 */
   function animOf(doll, st) {
     const w = doll.wear;
@@ -1534,12 +1693,35 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     return ANIMS[st];
   }
   function animDone(a) {
+    if (a.stand) {   // 站著脫：這件脫完換到下一階；還有下一件（脫光、比基尼下面）就接著播
+      animPlay = null;
+      const next = a.queue && a.queue[0];
+      standPin = next ? a.to : null;
+      sync();
+      if (next && cur) { ensureSet(cur, next.kind); bump(cur, next.kind); animPlay = { kind: next.kind, to: next.to, stand: true, queue: a.queue.slice(1), t0: 0, wait: performance.now() }; play(); }
+      return;
+    }
     animPlay = null; pinStage = a.to; sync();
     if (a.then != null) { animPlay = { kind: 'panties', to: a.then, then: null, t0: 0, wait: performance.now() }; play(); }
   }
+  /** 2026-11-25 站著脫（一般聊天她答應自己脫）：from→to 一件一件播（T 恤 → 胸罩 → 內褲；比基尼＝上面 → 下面），站著、不坐下。 */
+  function standUndress(from, to) {
+    if (!cur || from >= 3 || to <= from || cur.cv !== CV || COL.st !== 'none' || FG.st !== 'idle') { standPin = null; sync(); return; }
+    const steps = [];
+    if (cur.bikini && from === 0) { steps.push({ kind: 'bra', to: 2 }); if (to >= 3) steps.push({ kind: 'panties', to: 3 }); }
+    else for (let k = from; k < to; k++) steps.push({ kind: ANIMS[k], to: k + 1 });
+    standPin = from;
+    sync();
+    if (!cur) return;
+    reactPlay = null; angPlay = null;
+    ensureSet(cur, steps[0].kind); bump(cur, steps[0].kind);
+    animPlay = { kind: steps[0].kind, to: steps[0].to, stand: true, queue: steps.slice(1), t0: 0, wait: performance.now() };
+    play();
+  }
   /** test_room_summon.js 在她決定脫一件時叫（from→to）。動畫還沒算好就等一下（最多 25 秒），算不出來就直接換。 */
   function undress(from, to) {
-    if (pinStage == null || !cur || from >= 3) { if (pinStage != null) { pinStage = to; sync(); } return; }
+    if (pinStage == null) { standUndress(from, to); return; }
+    if (!cur || from >= 3) { pinStage = to; sync(); return; }
     // 2026-11-22 使用者：脫比基尼跟脫胸罩一樣（手伸到背後解開）→ 上面先（胸罩那段），再接下面（解開兩側的結，跟丁字褲一樣）
     const bik = !!(cur.bikini && from === 0 && to >= 3);
     animPlay = { kind: bik ? 'bra' : ANIMS[from], to: bik ? 2 : to, then: bik ? to : null, t0: 0, wait: performance.now() };
@@ -1586,7 +1768,22 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
         else if (t >= sprayEnd && full(Sx, nOf('col_s'))) { COL.st = 'sit'; COL.t0 = t; COL.until = t + COL_SIT; }
         else { k = 'col_d'; i = nd - 1; }
       }
-      if (COL.st === 'sit') { if (t > COL.until) { COL.st = 'up'; COL.t0 = t; } else { k = 'col_s'; i = Math.floor((t - COL.t0) / 1000 * 6) % nOf('col_s'); } }
+      if (COL.st === 'sit') {
+        if (COL.finger) COL.until = t + COL_SIT;   // 手指在裡面：不會起來
+        if (t > COL.until) { COL.st = 'up'; COL.t0 = t; }
+        else {
+          // 2026-11-25：被摸那一下（遮／不遮）→ 坐著被手指插入（循環）→ 失神抽動（循環）→ 一般癱坐
+          const R = COL.react, sp = spec();
+          if (R && full(cur.sets[R.k], nOf(R.k))) {
+            if (!R.t0) R.t0 = t;
+            const q = Math.floor((t - R.t0) / COL_REACT_MS);
+            if (q >= COL_REACT_SEQ.length) COL.react = null; else { k = R.k; i = COL_REACT_SEQ[q]; }
+          } else if (R && t - R.wait > 4000) COL.react = null;
+          if (!k && COL.finger && full(cur.sets.col_f, nOf('col_f'))) { k = 'col_f'; i = Math.floor((t - COL.t0) / 1000 * 8) % nOf('col_f'); }
+          if (!k && sp && sp.stunned && full(cur.sets.col_x, nOf('col_x'))) { k = 'col_x'; i = Math.floor((t - COL.t0) / 1000 * 9) % nOf('col_x'); }
+          if (!k) { k = 'col_s'; i = Math.floor((t - COL.t0) / 1000 * 6) % nOf('col_s'); }
+        }
+      }
       if (COL.st === 'up') { i = nd - 1 - Math.floor((t - COL.t0) / 1000 * COL_FPS); if (i < 0) { colReset(); mode = ''; } else k = 'col_d'; }
       if (k && cur.sets[k] && cur.sets[k][i]) { COL.disp = { k, i }; if (canvas.dataset.f !== k + i) draw(cur.sets[k][i], k + i); }
       if (COL.st !== 'none') { raf = requestAnimationFrame(tick); return; }
@@ -1675,6 +1872,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const undressOn = open && !!sheet?.classList.contains('undress-chat');
     if (undressOn && pinStage == null) { const sp = spec(); pinStage = Math.max(0, Math.min(3, Number(sp?.undressStage) || 0)); }
     if (!undressOn && pinStage != null) { pinStage = null; animPlay = null; }
+    if (!open && standPin != null) { standPin = null; if (animPlay && animPlay.stand) animPlay = null; }   // 關掉聊天：站著脫的動畫不播了，照實際進度
     const s = wanted(sheet);
     const ready = s ? prepare(s) : false;   // 立繪顯示時也照算（脫衣動畫預載）
     // 脫衣中（使用者）：平常是立繪，只有她答應脫、動畫開始播的時候才是黑影
@@ -1766,17 +1964,31 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     canvas.addEventListener('click', (ev) => {
       if (FG.eatClick) { FG.eatClick = false; return; }   // 按住下體（手指插入）放開時的那一下不算摸
       if (performance.now() - openedAt < 450) return;   // 點房間的她打開聊天、手機緊接著補的那一下 click：不算摸她、也不算點背景（不然聊天一開就被關掉）
+      if (COL.st !== 'none') {   // 2026-11-25 使用者：癱軟在地上也能繼續摸（上半身胸部、下半身下體）；坐下去／站起來那幾格不算
+        const [cx0, cy0] = toCanvas(ev), d = COL.disp, img = d && cur && cur.sets[d.k] && cur.sets[d.k][d.i];
+        const xi0 = Math.round(cx0), yi0 = Math.round(cy0), z = colZoneAt(img, xi0, yi0);
+        if (!img || !(img.data[(yi0 * img.width + xi0) * 4 + 3] > 0)) { if (img && xi0 >= 0 && yi0 >= 0 && xi0 < img.width && yi0 < img.height) document.getElementById('portrait-backdrop')?.click(); return; }
+        if ((COL.st === 'sit' || COL.st === 'hold') && z && window.RoomTouch?.zone(z)) {
+          COL.until = performance.now() + COL_SIT;
+          // 遮不遮看態度（拒絕、無奈拒絕＝遮；無奈順從、迎合＝不遮、往後仰一顫）
+          const sp2 = spec(), cover = !sp2 || sp2.react === 'stranger' || sp2.react === 'friend';
+          const rk = 'col_' + (cover ? 'c' : 'y') + (z === 'groin' ? 'g' : 'b');
+          if (cur.sets[rk] && full(cur.sets[rk], nOf(rk))) COL.react = { k: rk, t0: 0, wait: performance.now() };
+          else { ensureSet(cur, rk); bump(cur, rk); colPoke(); }
+        }
+        return;
+      }
       const [x, y] = toCanvas(ev), f = cur && cur.sets[mode] && (cur.sets[mode].find(Boolean));
       if (!f) return;
       const xi = Math.round(x), yi = Math.round(y);
       const solid = xi >= 0 && yi >= 0 && xi < f.width && yi < f.height && f.data[(yi * f.width + xi) * 4 + 3] > 0;
       if (!solid) { document.getElementById('portrait-backdrop')?.click(); return; }
-      if (COL.st !== 'none') return;   // 癱坐在地上：身體位置跟站著不一樣，先不算摸
       const zone = zoneAt(x, y);
       // 摸到就有反應（使用者：摸她沒動作）；還沒解鎖的地方一樣會反抗／遮，只是不算動作、她不說話
       if (zone) {
         window.RoomTouch?.zone(zone);
-        const k = 'r_' + zone;
+        let k = reactKey(zone, spec());
+        if (cur && !cur.sets[k]) ensureSet(cur, k);   // 這個態度的反應還沒排（態度剛變）：插隊先算
         if (cur && cur.sets[k]) { if (!full(cur.sets[k], nOf(k))) bump(cur, k); reactPlay = { kind: k, t0: 0, wait: performance.now() }; play(); }
       }
     });
@@ -1838,6 +2050,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     FG.box0 = [FG.zoom.offsetWidth, FG.zoom.offsetHeight];
     FG.O = O; FG.S = Math.max(1.15, Math.min(5, (top - 10 - chestY) / Math.max(4, groinY - chestY)));   // 陰唇停在對話框上緣上面一點點
     FG.st = 'approach'; FG.p = 0; FG.t = 0; FG.mode = 'idle'; FG.choice = null; FG.pose = ''; FG.squirtAt = 0; FG.squirted = false; FG.colQ = false;
+    FG.seq = Number(spec()?.squirtSeq) || 0;
     fgRun();
     return true;
   }
@@ -1881,17 +2094,58 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   // ---------------------------------------------------------------- 癱坐（2026-11-22 使用者）
   //   被摸到噴水以後，手收回去她不會站著：腿軟、雙腿打開成 M 字、癱坐在地上；屁股著地那一下忍不住又噴（每個妹子不一樣：
   //   once 噴一下／faucet 像水龍頭噴三秒／double 噴一下又再噴一下，summon 的 fgSquirt）。坐一陣子（40 秒）或關掉聊天才起來。
-  const COL = { st: 'none', t0: 0, impactAt: 0, until: 0, style: 'once', disp: null, loop: 0 };
-  const COL_FPS = 16, COL_SIT = 40000, COL_IMPACT = 4, COL_Q_FPS = 14;
+  const COL = { st: 'none', t0: 0, impactAt: 0, until: 0, style: 'once', disp: null, loop: 0, react: null, finger: null };
+  /** 2026-11-25 癱坐中會用到的動作（被摸遮／不遮、坐著被手指插入、失神抽動）。 */
+  const COL_PLAY = ['col_cb', 'col_cg', 'col_yb', 'col_yg', 'col_f', 'col_x'];
+  const COL_REACT_SEQ = [0, 1, 2, 3, 4, 5, 6, 7, 6, 4, 2, 0], COL_REACT_MS = 80;
+  // 2026-11-25 使用者：癱軟不會自己很快站起來——一直被摸就一直坐著，60 秒沒人碰才起來（COL_SIT 每摸一下重算）
+  const COL_FPS = 16, COL_SIT = 60000, COL_IMPACT = 4, COL_Q_FPS = 14;
   const SPRAY = { once: [[0, 300]], faucet: [[0, 3000]], double: [[0, 260], [800, 1060]] };
   function colStart() {
     if (!cur || cur.cv !== CV) return;
     const sp = spec(); COL.style = (sp && SPRAY[sp.fgSquirt]) ? sp.fgSquirt : 'once';
     for (const c of ['col_s', 'col_q', 'col_d']) { ensureSet(cur, c); bump(cur, c); }
-    COL.st = 'wait'; COL.t0 = 0; COL.impactAt = 0; COL.until = 0;
+    for (const c of COL_PLAY) ensureSet(cur, c);   // 坐著被玩弄的動作（排在後面算）
+    COL.st = 'wait'; COL.t0 = 0; COL.impactAt = 0; COL.until = 0; COL.react = null; COL.finger = null;
+    colTell(true);
     play(); colRun();
   }
-  function colReset() { COL.st = 'none'; COL.disp = null; COL.impactAt = 0; if (FG.hand && FG.st === 'idle') FG.hand.hidden = true; }
+  function colReset() { const was = COL.st !== 'none'; COL.st = 'none'; COL.disp = null; COL.impactAt = 0; COL.react = null; if (COL.finger) { COL.finger = null; window.RoomTouch?.finger?.end?.(); } if (FG.hand && FG.st === 'idle') FG.hand.hidden = true; if (was) colTell(false); }
+  /** 2026-11-25：癱軟／起來告訴 summon（只有失神＋癱軟才准唉唉叫，見 stun_speech moanAllowed）。 */
+  function colTell(on) { try { document.dispatchEvent(new CustomEvent('chat-shadow-collapse', { detail: { on: !!on } })); } catch { /* 舊瀏覽器 */ } }
+  /** 2026-11-25：手指插入以外（站著點下面、癱坐時再弄）噴了 → 站著就噴＋癱坐；已經癱坐就坐著再噴一次。 */
+  let seenSeq = null;
+  function squirtWatch() {
+    const sp = spec(), seq = Number(sp && sp.squirtSeq) || 0;
+    if (seenSeq == null || !cur || seq < seenSeq) { seenSeq = seq; return; }
+    if (seq === seenSeq) return;
+    seenSeq = seq;
+    if (FG.st !== 'idle') return;   // 手指插入那段自己處理（放開以後癱坐）
+    if (COL.st === 'none') { if (cur.cv === CV) colStart(); return; }
+    if (COL.st === 'sit' || COL.st === 'hold') { const t = performance.now(); COL.st = 'hold'; COL.impactAt = t; COL.until = t + COL_SIT; play(); colRun(); }
+  }
+  /** 癱坐時點她：上半身＝胸部、下半身＝下體（照這一格看得到的身體上下範圍分）。 */
+  function colZoneAt(img, x, y) {
+    if (!img) return '';
+    const { width: w, height: h, data } = img;
+    if (x < 0 || y < 0 || x >= w || y >= h || !data[(y * w + x) * 4 + 3]) return '';
+    let top = -1, bot = -1;
+    for (let yy = 0; yy < h && top < 0; yy++) for (let xx = 0; xx < w; xx++) if (data[(yy * w + xx) * 4 + 3]) { top = yy; break; }
+    for (let yy = h - 1; yy >= 0 && bot < 0; yy--) for (let xx = 0; xx < w; xx++) if (data[(yy * w + xx) * 4 + 3]) { bot = yy; break; }
+    if (top < 0) return '';
+    const u = (y - top) / Math.max(1, bot - top);
+    return u < .22 ? '' : u < .5 ? 'breast' : 'groin';   // 最上面是頭
+  }
+  /** 坐著被手指插入：按著的時候每 1.1 秒一輪（上一輪她那句出來了才下一輪）。 */
+  function colFingerRound() {
+    const C = COL.finger;
+    if (!C || COL.st === 'none') return;
+    const F2 = window.RoomTouch && window.RoomTouch.finger, now = performance.now();
+    if (F2 && !F2.busy() && now - C.roundAt >= 1100) { if (F2.seat()) C.roundAt = now; }
+    setTimeout(colFingerRound, 250);
+  }
+  /** 癱坐時被摸一下：身體輕輕一顫。 */
+  function colPoke() { try { canvas.animate([{ transform: 'translate(0,0)' }, { transform: 'translate(-1.5px,1px)' }, { transform: 'translate(1.5px,0)' }, { transform: 'translate(0,0)' }], { duration: 240 }); } catch { /* 舊瀏覽器 */ } }
   function colRun() { if (!COL.loop) COL.loop = requestAnimationFrame(colTick); }
   /** 癱坐時手那一層只畫噴水（屁股著地那一下）；撞地「碰！」那一下整個畫面震一下。 */
   function colTick(now) {
@@ -1992,7 +2246,8 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
         else FG.mode = 'idle';
       } else if (!want && !busy && now - FG.roundAt >= FG_ROUND) FG.mode = 'idle';
       // 這一輪做完她到了最高那段 → 噴一次（不是一直噴）
-      if (FG.squirtCheck && now >= FG.squirtCheck && !busy) { FG.squirtCheck = 0; const s2 = spec(); if (s2 && Number(s2.fgLevel) >= 2) { FG.squirtAt = now; if (!FG.squirted) { FG.squirted = true; for (const c of ['col_s', 'col_q', 'col_d']) { ensureSet(cur, c); bump(cur, c); } } } }   // 噴過：放開以後會癱坐——坐下去的格子馬上排到最前面算
+      // 2026-11-25：噴不噴由 summon 決定（下面被弄到高潮、高潮中再弄 3 下＝噴；squirtSeq 加一），不再看到了最高那段就每輪噴
+      if (FG.squirtCheck && now >= FG.squirtCheck && !busy) { FG.squirtCheck = 0; const s2 = spec(), q2 = Number(s2 && s2.squirtSeq) || 0; if (q2 > (FG.seq || 0)) { FG.seq = q2; FG.squirtAt = now; if (!FG.squirted) { FG.squirted = true; for (const c of ['col_s', 'col_q', 'col_d']) { ensureSet(cur, c); bump(cur, c); } } } }   // 噴過：放開以後會癱坐——坐下去的格子馬上排到最前面算
       if (!fgTick.uiAt || now - fgTick.uiAt > 250) { fgTick.uiAt = now; fgSwipe(true); }
     } else if (FG.st === 'out') { FG.t = Math.max(0, FG.t - dt / FG_OUT); if (FG.t <= 0) FG.st = 'back'; }
     const zp = FG.st === 'approach' || FG.st === 'back' ? fgEase(FG.p) : 1;
@@ -2062,6 +2317,22 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   function fingerBind() {
     // 按住下體 0.22 秒：可以玩弄才靠近（不行＝她馬上反抗）；點一下照舊是摸陰唇。按著不放：往左右滑選、放開＝結束
     canvas.addEventListener('pointerdown', (ev) => {
+      // 2026-11-25 癱坐時按住下面：坐著被手指插入（每一輪一個動作；放開就停、手拿出來）
+      if (FG.st === 'idle' && (COL.st === 'sit' || COL.st === 'hold') && cur) {
+        const [cx1, cy1] = toCanvas(ev), d = COL.disp, img = d && cur.sets[d.k] && cur.sets[d.k][d.i];
+        if (colZoneAt(img, Math.round(cx1), Math.round(cy1)) !== 'groin') return;
+        clearTimeout(FG.holdT);
+        const pid = ev.pointerId;
+        FG.holdT = setTimeout(() => {
+          FG.holdT = 0; FG.eatClick = true;
+          const F2 = window.RoomTouch && window.RoomTouch.finger;
+          if (!(F2 && F2.seatCan && F2.seatCan())) { colPoke(); return; }
+          COL.finger = { pid, roundAt: 0 };
+          if (!full(cur.sets.col_f, nOf('col_f'))) { ensureSet(cur, 'col_f'); bump(cur, 'col_f'); }
+          colFingerRound();
+        }, FG_HOLD);
+        return;
+      }
       if (FG.st !== 'idle' || COL.st !== 'none' || !cur || cur.cv !== CV) return;
       const [x, y] = toCanvas(ev); if (zoneAt(x, y) !== 'groin') return;
       clearTimeout(FG.holdT);
@@ -2071,7 +2342,9 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
         const F = window.RoomTouch && window.RoomTouch.finger;
         if (!(F && F.can())) {   // 不能玩弄：不靠近，她馬上反抗
           window.RoomTouch?.zone('groin');
-          if (cur && cur.sets.r_groin) { if (!full(cur.sets.r_groin, nOf('r_groin'))) bump(cur, 'r_groin'); reactPlay = { kind: 'r_groin', t0: 0, wait: performance.now() }; play(); }
+          const kg = reactKey('groin', spec());
+          if (cur && !cur.sets[kg]) ensureSet(cur, kg);
+          if (cur && cur.sets[kg]) { if (!full(cur.sets[kg], nOf(kg))) bump(cur, kg); reactPlay = { kind: kg, t0: 0, wait: performance.now() }; play(); }
           return;
         }
         if (!fgStart()) return;
@@ -2089,7 +2362,11 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
       const dx = ev.clientX - FG.x0;
       FG.choice = dx <= -FG_SWIPE ? 'labia' : dx >= FG_SWIPE ? 'cervix_rub' : null;
     });
-    const up = (ev) => { if (FG.holdT) { clearTimeout(FG.holdT); FG.holdT = 0; } if (FG.pid != null && ev.pointerId === FG.pid) fgEnd(); };
+    const up = (ev) => {
+      if (FG.holdT) { clearTimeout(FG.holdT); FG.holdT = 0; }
+      if (COL.finger && ev.pointerId === COL.finger.pid) { COL.finger = null; window.RoomTouch?.finger?.end?.(); return; }   // 坐著的手指：放開就拿出來
+      if (FG.pid != null && ev.pointerId === FG.pid) fgEnd();
+    };
     canvas.addEventListener('pointerup', up);
     canvas.addEventListener('pointercancel', up);
   }
@@ -2134,11 +2411,14 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (meta) new MutationObserver(talking).observe(meta, { childList: true, subtree: true, characterData: true });
     // 換衣服、脫衣、懷孕肚子變了：開著的時候每 2 秒對一次（同一個身形不重算）
     setInterval(() => { if (!sheet.hidden) sync(); }, 2000);
+    setInterval(() => { if (!sheet.hidden) squirtWatch(); else seenSeq = null; }, 300);   // 2026-11-25：summon 記到新的一次噴水
     // 有空先算（2026-11-24）：魅子在房間裡就先把她的黑影交給 RP5；樣子變了（脫衣、換衣服、關係）才再送
     setTimeout(prewarm, 4000);
     setInterval(prewarm, 30000);
     // 對話框高度、螢幕大小變了：重新對齊腳底
     window.addEventListener('resize', () => placeFeet());
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', () => placeFeet());
+    document.addEventListener('focusin', () => { if (!sheet.hidden) placeFeet(); }, true);   // 點輸入框那一刻（鍵盤還沒出來）先記下立繪／黑影的位置   // iOS：鍵盤出來畫面高度不變，只有 visualViewport 變
     const tb = document.getElementById('talk-box');
     if (tb && typeof ResizeObserver === 'function') new ResizeObserver(() => placeFeet()).observe(tb);
     sync();
@@ -2153,7 +2433,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
   function playSeq(pose) {
     const n = nOf(pose);
     if (pose === 'breathe' || pose === 'talk') return Array.from({ length: n }, (_, i) => [i, 1000 / FPS[pose]]);
-    if (REACTS.includes(pose)) return REACT_SEQ.map((i, k) => [i, REACT_MS[k]]);
+    if (reactOf(pose)) return REACT_SEQ.map((i, k) => [i, REACT_MS[k]]);
     if (ANG[pose]) {
       const A = ANG[pose], out = [];
       for (let i = 0; i < A.enter; i++) out.push([i, A.ms(i)]);

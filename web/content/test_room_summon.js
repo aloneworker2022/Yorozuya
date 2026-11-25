@@ -20,8 +20,10 @@ import {
   decayArousalCool,
   resetOpenness,
   clearVaginaFingers,
-} from "./body_state.js?v=21";
-import { classifyUserText, applyVerbalTease, verbalTeasePrompt } from "./verbal_tease.js?v=1";
+} from "./body_state.js?v=22";
+import { classifyUserText, applyVerbalTease, verbalTeasePrompt } from "./verbal_tease.js?v=2";
+import { classifyRequest, requestPrompt, parseDecision, fallbackYesChance } from "./request_ask.js?v=1";
+import { FLOOR_SHOT_LIST, floorShotKey, buildFloorImgBody } from "./floor_shots.js?v=1";
 import {
   effectiveStun,
   calcStun,
@@ -47,6 +49,13 @@ import {
   moanVoicePromptLines,
   speechMode,
   speechMayBreak,
+  moanAllowed,
+  setCollapsed,
+  isCollapsed,
+  squirtFromAct,
+  noteSquirt,
+  squirtCount,
+  SQUIRT_STUN_AT,
   SPASM_MS,
   SHOCK_MAX,
   AFTERGLOW_FRIEND_MS,
@@ -61,7 +70,7 @@ import {
   occupancyMoanLine,
   occupancyPromptLine,
   occupancyLabel,
-} from "./stun_speech.js?v=25";
+} from "./stun_speech.js?v=28";
 import {
   pickPortraitUrl,
   portraitPathKey,
@@ -78,7 +87,7 @@ import {
   availableActs,
   decayBodyIdle,
   insertUnlocked,
-} from "./tease.js?v=8";
+} from "./tease.js?v=9";
 import {
   ensurePlayer,
   emptyPlayer,
@@ -93,7 +102,7 @@ import {
   semenMaxCc,
   kidneyCheck,
 } from "./player_state.js?v=12";
-import { ensureOpenness, getOpenness } from "./openness.js?v=1";
+import { ensureOpenness, getOpenness } from "./openness.js?v=2";
 import { occupantOf, savedOccupant, blocksSummon, roomFullText as roomFullLine } from "./room_occupancy.js?v=1";
 import {
   ensureInvasion,
@@ -108,7 +117,10 @@ import {
   protestTone,
   protestPromptBlock,
   blendProtestReply,
-} from "./invasion.js?v=9";
+  personalityResistMult,
+  PERSONALITY_RESIST,
+} from "./invasion.js?v=10";
+import { teaseAttitude, teaseSessionCount, noteTeaseSession, attitudeShift, attitudePromptBlock, attitudeRange, nearestAttitude, ATTITUDE_REACT } from "./tease_attitude.js?v=2";
 import {
   ensureMiss,
   getMiss,
@@ -136,7 +148,7 @@ import {
   reckoningFleeNote,
   reckoningMood,
   stunDebtActsText,
-} from "./stun_reckoning.js?v=2";
+} from "./stun_reckoning.js?v=3";
 import {
   SEX_POSES,
   SEX_PREGEN_STEPS,
@@ -217,14 +229,14 @@ import {
   dressedReactionPrompt,
 } from "./undress_shy.js?v=3";
 import { PERSONALITY_FAMILY, familyStageLine, familyOf, scrubHusband as scrubHusbandV } from "./girl_voice.js?v=1";
-import { touchTierOf, touchBankMessages, parseTouchBank, pickTouchLine, moanLevelOf, touchReply, TOUCH_TIERS, TOUCH_BANK_REV } from "./touch_lines.js?v=2";
+import { touchTierOf, touchBankMessages, parseTouchBank, pickTouchLine, moanLevelOf, touchReply, tierAttitudes, TOUCH_TIERS, TOUCH_BANK_REV } from "./touch_lines.js?v=4";
 import { lineEventPromptLines } from "./line_social.js?v=1";
 import {
   TRIGGERS as TALK_TRIGGERS, TRIGGER_ZH as TALK_TRIGGER_ZH, talkEligible, ensureTalkState, talkGate, tickTalk, freshMemory, freshLineEvent,
   pickTrigger as pickTalkTrigger, triggerWeights as talkTriggerWeights, openerAsk as talkOpenerAsk, fallbackOpener as talkFallbackOpener,
   noteOpened as talkNoteOpened, noteReplied as talkNoteReplied, noteClosed as talkNoteClosed, noteIgnored as talkNoteIgnored, waitExpired as talkWaitExpired,
-  talkLabel, TALK_KNOBS,
-} from "./proactive_talk.js?v=1";
+  talkLabel, TALK_KNOBS, noteWant as talkNoteWant,
+} from "./proactive_talk.js?v=2";
 import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines, affairDisclosure } from "./life_memory.js?v=8";
 import { friendRows, applyLifeTraces, recentAffair, FRIEND_STAGES, FRIEND_STAGE_ZH } from "./life_friends.js?v=2";
 import {
@@ -264,7 +276,8 @@ import {
   presetByShot,
   SUMMON_UNDRESS_SHOTS,
   DROPPED_UNDRESS_SHOTS,
-} from "./undress_packs.js?v=9";
+  STAND_UNDRESS_SHOT,
+} from "./undress_packs.js?v=10";
 import {
   mountSuckPackEditor,
   pickRuntimeSuckPack,
@@ -330,7 +343,7 @@ import { nudeActionPacksOn, nudePacksKey, pickActionPackUrl } from "./nude_actio
 import { regionById, rollJapanRegion } from "./japan_regions.js";
 import { climateNote, rollGround } from "./japan_grounds.js";
 import { japanNow, taiwanNow } from "./japan_clock.js?v=2";
-import { neglectMs, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES } from "./life_schedule.js?v=13";
+import { neglectMs, visitDue, outsideMoodNow, moodStrengthWord, paintLifeRow, OUTSIDE_KIND_ZH, applyLifeHunger, SCP_STAGES, ERO_STAGES, roommateOutLabel } from "./life_schedule.js?v=15";
 import { BASE_OUTFIT, pickSummonOutfit, pickChangeOutfit, wornOutfitOf } from "./outfit_pick.js?v=3";
 import { downloadVisitPics, clearVisitPics } from "./visit_pics.js?v=1";
 import { HOMES, sampleHomes } from "./japan_homes.js";
@@ -348,7 +361,7 @@ import { canRental as swapCanAsk } from "./rental.js?v=7";
 import { bindPanel as bindRentalScenePanel, PERSONA_ZH as RENTAL_PERSONA_ZH } from "./rental_scene_gen.js?v=18";
 import { promptLines as rentalPromptLines, aiPayload as rentalAiPayload, VENUES as RENTAL_VENUES } from "./rental.js?v=7";
 import { openEntry as openRentalEntry, openRoom as openRentalRoom } from "./rental_entry.js?v=21";
-import { moanVoiceId } from "./stun_speech.js?v=25";
+import { moanVoiceId } from "./stun_speech.js?v=28";
 import { ensureFeel as ensureDeskFeel, tickFeel as tickDeskFeel, noteWork as noteDeskWork, feelPromptLines as deskFeelLines, tiredLabel as deskTiredLabel } from "./desk_feel.js?v=1";
 import {
   hungerOn,
@@ -396,6 +409,8 @@ import {
 const $ = (id) => document.getElementById(id);
 
 let girl = null;
+/** 2026-11-25 使用者（§13.0 第 7 項）：房間裡這位是室友——住在這裡、自己出門過生活、不會因為沒人理就走。關掉＝舊的「停留到期回日本」。 */
+const ROOMMATE_ON = true;
 /** 房間剪影（room_doll.js）讀她的外觀：身高／體型／罩杯／髮型＋身上那套（裙子）＋脫到第幾階。test_room.js 每秒問一次。 */
 // wife：妻子以上（聊天黑影脫光後的動作：妻子以下害羞遮著、妻子主動——chat_shadow.js）
 /** 聊天黑影用：她現在在生氣嗎（2026-11-21 使用者：生氣時說話會叉腰或雙手抱胸）——情緒餘溫是生氣（被冒犯、被亂摸抗議），
@@ -404,6 +419,29 @@ function girlAngryNow(who) {
   if (!who) return false;
   if ((Number(who._angryUntil) || 0) > Date.now()) return true;
   try { const m = getMoodCarry(who); return !!(m && m.type === "angry" && (Number(m.level) || 0) >= 15); } catch { return false; }
+}
+/** 調戲的態度（2026-11-25 使用者：拒絕／無奈拒絕／無奈順從／迎合；tease_attitude.js）。
+ *  arousal 沒給＝現在的性奮；turnTier／willing＝這一下的抗議語氣階、半推半就（動作結算後才有）。 */
+function teaseAttitudeOf(who, { arousal = null, turnTier = "", willing = false } = {}) {
+  if (!who) return null;
+  const b = who.bodyState || {};
+  const st = who.stage || "stranger";
+  let mood = null; try { mood = getMoodCarry(who); } catch { mood = null; }
+  // 這一場摸出來的氣（情緒餘溫的原因是「剛才對你『摸奶』」）已經算在侵犯值裡，不重複扣；進來前就在氣的才算
+  if (mood && teaseSessionCount(b.teaseSess) > 0 && /^剛才對你「/.test(String(mood.cause || ""))) mood = null;
+  let hunger = 0; if (HUNGER_ON) { try { hunger = peekHunger(who, Date.now(), st) || 0; } catch { hunger = 0; } }
+  let persMult = 1; try { persMult = personalityResistMult(basePersonality(who), who.stats || null, st); } catch { persMult = 1; }
+  return teaseAttitude({
+    stage: st, arousal: arousal ?? b.arousal ?? 0, libido: b.libido || 0, count: teaseSessionCount(b.teaseSess),
+    invasion: b.invasion || 0, mood: mood?.type || "", moodLevel: mood?.level || 0, persMult, hunger, turnTier, willing,
+  });
+}
+/** 黑影被摸的反應（chat_shadow.js）：現在的態度用哪一種動作、這個關係階會用到哪幾種（先算）。 */
+function teaseReactLook(who) {
+  const range = attitudeRange(who?.stage || "stranger");
+  let key = range[0];
+  try { key = nearestAttitude(teaseAttitudeOf(who)?.key || key, range); } catch { /* 用起點 */ }
+  return { react: ATTITUDE_REACT[key] || "stranger", reacts: range.map((k) => ATTITUDE_REACT[k]) };
 }
 /** 手伸進去時她的反應（2026-11-22 使用者）：熱戀以前抗拒、熱戀起迎合；程度照性奮：沒什麼～微微＝普通、興奮～想要＝有感、高潮（剛高潮、痙攣）＝高潮。 */
 function fingerMood(who) {
@@ -416,7 +454,18 @@ function fingerMood(who) {
   const key = String(who?.id || who?.name || ""); let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
   return { fgWelcome: idx >= (STAGE_INDEX.passionate ?? 5), fgLevel: lvl, fgSquirt: ["once", "faucet", "double"][h % 3] };
 }
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl) } : null);
+// 2026-11-25 使用者：黑影人改肉色＋一階陰影（聊天黑影＋房間小人）。預設開（使用者：房間聊天的黑影人沒有變肉色——主畫面沒有開關）；
+//   test_room 除錯列「黑影肉色」按一下關掉（localStorage yoro_shadow_skin＝0），主畫面同一個網址也會跟著變。
+function shadowSkinOn() { try { return localStorage.getItem("yoro_shadow_skin") !== "0"; } catch { return true; } }
+/** 膚色：照特殊特質（古銅小麥／雪白、奶白／白皙），沒有就預設肉色。 */
+function skinRgbOf(who) {
+  const t = (Array.isArray(who?.specialTraits) ? who.specialTraits : []).map((x) => (typeof x === "string" ? x : x?.name || "")).join("、");
+  if (/古銅|小麥/.test(t)) return [198, 146, 108];
+  if (/雪白|奶白/.test(t)) return [250, 226, 214];
+  if (/白皙/.test(t)) return [246, 214, 192];
+  return [242, 204, 177];
+}
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl), ...teaseReactLook(girl), squirtSeq: Number(girl.bodyState?.squirt?.seq) || 0, collapsed: isCollapsed(girl), stunned: inSpasm(girl) || stunTier(effectiveStun(girl, "")) === "stun", ...(shadowSkinOn() ? { skin: skinRgbOf(girl) } : {}) } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
@@ -457,6 +506,73 @@ window.RoomActivityContext = () => {
   if (HUNGER_ON) Object.assign(ctx, activityHunger(girl, { stageKey: girl.stage || "stranger", now: ctx.now, calm: ctx.calm }));
   return ctx;
 };
+// ---------------------------------------------------------------- 在家上網看文章（2026-11-25 使用者，§13.0 第 7 項；server/room_read.py）
+// 她在房間滑手機（躺在地上滑手機／蜷在椅子上滑手機）時，叫 RP5 讀一篇照她興趣的文章（有 Hermes 用 Hermes，沒有就看日本新聞標題）。
+// 最多兩小時一次；讀到的記成記憶（上網），聊天 prompt 帶最近那篇（6 小時內）。
+const READ_ACTS = new Set(["lie_phone", "chair_phone"]);
+const READ_GAP_MS = 2 * 3600e3;
+const READ_FRESH_MS = 6 * 3600e3;
+let roomReadBusy = false;
+async function maybeRoomRead(force = false) {
+  const who = girl;
+  if (!who || roomReadBusy || !girlInRoom()) return null;
+  if (!force && Date.now() - (Number(who.readAt) || 0) < READ_GAP_MS) return null;
+  roomReadBusy = true;
+  who.readAt = Date.now();
+  try {
+    const names = (arr) => (Array.isArray(arr) ? arr : []).map((x) => (typeof x === "string" ? x : x?.name || "")).filter(Boolean).slice(0, 8);
+    const resp = await fetch("/api/room/read", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: who.name || "", hobbies: names(who.hobbies), likes: names(who.likes), persona: basePersonality(who) }),
+    });
+    if (!resp.ok) return null;
+    const { job, topic, via } = await resp.json();
+    pushDebug(`上網：看「${topic}」的文章（${via === "hermes" ? "Hermes" : "新聞標題"}）`);
+    renderDebug();
+    for (let i = 0; i < 80; i++) {   // 最多約 6～7 分鐘
+      await new Promise((r) => setTimeout(r, 5000));
+      const pr = await fetch(`/api/room/read/${encodeURIComponent(job)}`, { cache: "no-store" });
+      if (!pr.ok) return null;
+      const st = await pr.json();
+      if (st.status !== "done") continue;
+      const res = st.result || {};
+      if (!res.ok || girl !== who) { pushDebug(`上網：沒讀成（${res.error || "沒找到"}）`); renderDebug(); return null; }
+      const item = { at: Date.now(), topic: res.topic || topic, title: res.title || "", url: res.url || "", gist: res.gist || "", feel: res.feel || "", via: res.via || via, told: 0 };
+      who.readLog = [...(Array.isArray(who.readLog) ? who.readLog : []), item].slice(-8);
+      try {
+        if (!who.world || typeof who.world !== "object") who.world = {};   // 剛住進來還沒出過門的室友：記憶也放在 world.mind
+        rememberExperience(who, { kind: "browse", text: `我在他房間用手機看了一篇文章「${item.title}」。${item.gist}${item.feel ? `${item.feel}` : ""}`.slice(0, 160), keys: ["上網", item.topic] });
+      } catch { /* */ }
+      pushDebug(`上網：讀完「${item.title.slice(0, 30)}」`);
+      renderDebug();
+      persistRoom();
+      return item;
+    }
+    return null;
+  } catch (err) {
+    console.warn("[room read]", err?.message || err);
+    return null;
+  } finally {
+    roomReadBusy = false;
+  }
+}
+/** 她這句有提到那篇（主題或標題裡的詞）→ 記一次。 */
+function noteReadMentioned(who, line) {
+  const log = Array.isArray(who?.readLog) ? who.readLog : [];
+  const it = log[log.length - 1];
+  if (!it || !line) return;
+  const words = [it.topic, ...String(it.title || "").split(/[\s、，。！？「」『』・｜|:：\-—]+/)].map((w) => String(w || "").trim()).filter((w) => w.length >= 2);
+  if (words.some((w) => line.includes(w))) it.told = (it.told || 0) + 1;
+}
+/** 聊天 prompt：最近（6 小時內）看的那篇；提過兩次就不再塞。 */
+function roomReadPromptLines(who = girl) {
+  const log = Array.isArray(who?.readLog) ? who.readLog : [];
+  const it = log[log.length - 1];
+  if (!it || Date.now() - (Number(it.at) || 0) > READ_FRESH_MS || (it.told || 0) >= 2) return [];
+  const trim = (t) => String(t || "").trim().replace(/[。.]+$/, "");
+  return [`【你剛在房間用手機看的文章】「${it.title}」（${it.topic}）${it.gist ? `：${trim(it.gist)}。` : "。"}${it.feel ? `你的感想：${trim(it.feel)}。` : ""}話題合適、或他問你剛在幹嘛時可以聊；不要每句都提，也不要唸網址。`];
+}
+
 let roomActSavedAt = 0;
 window.RoomActivitySink = (evt) => {
   const A = roomActs(), mem = roomActMem();
@@ -464,6 +580,7 @@ window.RoomActivitySink = (evt) => {
   if (evt.type === "start") {
     A.noteStart(mem, { id: evt.id, at: evt.at, dur: evt.dur, ordered: !!evt.ordered });
     if (evt.id === "hunger_beg" && HUNGER_ON) hungerBegStarted();
+    if (READ_ACTS.has(evt.id)) void maybeRoomRead();   // 2026-11-25 滑手機＝上網看文章（RP5／Hermes）
   } else if (evt.type === "hold" && mem.cur?.id === evt.id) {
     mem.cur.since = evt.at;
     // 2026-10-09 Al：不跳粉紅小卡，直接打開對話框（她開口求、下面只有「做愛／拒絕」）
@@ -731,7 +848,10 @@ async function openBegDialog() {
     if (occ.score >= 95) {
       line = occupancyMoanLine(occ, who) || "……嗯啊…";
     } else {
-      const ask = [
+      const ask = begDialog.kind === "want" ? [
+        talkOpenerAsk("want", { stage: who.stage || "stranger", pet: who.playerPet || "", playerName: who.playerName || "" }),
+        occupancyPromptLine(occ),
+      ].filter(Boolean).join("\n") : [
         `（你忍不住了，自己走到他面前來——就是來求他跟你做愛的${peak ? "，身體已經渴到極點" : ""}。只寫你開口的第一句：直接、撒嬌又難耐地求他現在跟你做愛，一兩句，不要先聊別的，不要旁白。）`,
         occupancyPromptLine(occ),
       ].filter(Boolean).join("\n");
@@ -742,7 +862,8 @@ async function openBegDialog() {
         console.warn("[beg opening]", err?.message || err);
       }
       const clean = scrubHusband(cleanLine(reply), who.stage || "stranger");
-      line = presentOccupied(who, clean || begFallbackLine(), "", occ) || begFallbackLine();
+      const fb = begDialog?.kind === "want" ? talkFallbackOpener("want", who.stage || "stranger") : begFallbackLine();
+      line = presentOccupied(who, clean || fb, "", occ) || fb;
     }
   } catch (err) {
     console.warn("[beg]", err?.message || err);
@@ -977,6 +1098,11 @@ function talkContext(who = girl) {
     wokeAgoMs: h0?.id === "sleep" && mem?.cur?.id !== "sleep" ? Date.now() - (Number(h0.end) || 0) : Infinity,
     usedMemoryId: st?.usedMemoryId || "",
     usedLineT: st?.usedLineT || 0,
+    // 想做愛（妻子以上，2026-11-25）：性慾、飢渴、最近主動要過幾次
+    libido: Number(who.bodyState?.libido) || 0,
+    hunger: HUNGER_ON ? peekHunger(who, Date.now(), who.stage || "stranger") : 0,
+    wantLog: Array.isArray(st?.wantLog) ? st.wantLog : [],
+    now: Date.now(),
   };
 }
 function talkDetail(trigger, ctx) {
@@ -1001,6 +1127,7 @@ function startProactiveTalk(trigger = "", { force = false } = {}) {
   st.lastTrigger = trig;
   if (trig === "memory" && ctx.memory) st.usedMemoryId = ctx.memory.id;
   if (trig === "line" && ctx.lineEvent) st.usedLineT = ctx.lineEvent.t;
+  if (trig === "want") talkNoteWant(st);
   pushDebug(`主動聊天：她想跟你說話（${TALK_TRIGGER_ZH[trig]}）`);
   persistRoom();
   const ok = window.RoomActor?.startActivity?.("approach_talk");
@@ -1081,6 +1208,14 @@ function bindTalkDebug() {
     const ok = startProactiveTalk(t, { force: true });
     pushDebug(ok ? `除錯：叫她走過來聊（${TALK_TRIGGER_ZH[t]}）` : "除錯：她不在房間");
   });
+  onId("dbg-shadow-skin", "click", () => {
+    const on = !shadowSkinOn();
+    try { localStorage.setItem("yoro_shadow_skin", on ? "1" : "0"); } catch { /* */ }
+    const b = $("dbg-shadow-skin"); if (b) b.textContent = on ? "黑影肉色：開" : "黑影肉色：關";
+    pushDebug(on ? "黑影改肉色＋一階陰影（測試）" : "黑影回到原本的深色"); renderDebug();
+    try { window.ChatShadow?.sync?.(); } catch { /* */ }
+  });
+  { const b = $("dbg-shadow-skin"); if (b) b.textContent = shadowSkinOn() ? "黑影肉色：開" : "黑影肉色：關"; }
   onId("dbg-talk-now", "click", () => { const st = talkState(); if (!st) return; st.leftMs = 0; st.closedAt = 0; proactiveTalkTick(); renderTalkDebug(); });
 }
 
@@ -2870,7 +3005,7 @@ document.addEventListener("visibilitychange", () => {
  * 換衣服：clothedOnly，只重畫會露出衣服的。大頭、喜怒哀樂都不在這裡。
  * 手機關了，伺服器仍照清單跑。
  */
-/** 召喚流程裡順便把「摸她的回應」產好（使用者：摸了才等模型太慢）。四個關係帶、每帶胸部／下體／腰臀各幾句；目前的關係帶先產。
+/** 召喚流程裡順便把「摸她的回應」產好（使用者：摸了才等模型太慢）。四個關係帶 × 那一帶會用到的態度（2026-11-25）× 胸部／下體／腰臀各幾句；目前的關係帶先產。
  *  產好存在 who.touchBank（跟著存檔）；舊的那份留到新的產好才換掉。模型失敗＝用 touch_lines.js 內建的。 */
 const touchBankJobs = new Map();
 function pregenTouchBank(who) {
@@ -2887,7 +3022,7 @@ function pregenTouchBank(who) {
         const reply = route.provider === "ollama"
           ? await askOllama(route, msgs, null, { temperature: 0.95 })
           : await askGrok(route, msgs, `roomtouch:${who.id}:${tier}:${Date.now().toString(36)}`, { temperature: 0.95 });
-        const got = parseTouchBank(reply);
+        const got = parseTouchBank(reply, tierAttitudes(tier));
         if (got) {
           tiers[tier] = got;
           // 一帶好了就先用（不用等四帶都好）
@@ -2994,6 +3129,7 @@ function finishSummonArrival(who, mode) {
     resetOpenness(who);
     clearVaginaFingers(who);
   }
+  who.recallAt = Date.now();   // 2026-11-25 室友：付錢叫回來 → RP5 結束她的外出
   window.RoomActor?.setPresent(true);
   // 接客收工回來（2026-10-10）：痕跡（同一套 lifeTraces，只收一次）＋依個性的心情／被發現偷看
   try {
@@ -5885,6 +6021,14 @@ async function collectSummonPortraitItems(who = girl, opts = {}) {
         console.warn("[summon-queue] standee", slot?.id, err?.message || err);
       }
     }
+    // 2026-11-25 癱軟在地上被玩弄（穿著版，跟衣服走）：裸體版第一次脫光癱坐時才產
+    for (const shot of FLOOR_SHOT_LIST) {
+      try {
+        pushItem({ slot: { kind: "undress", shot, outfit: true }, body: buildFloorImgBody(shot, who, engine, { worn }) });
+      } catch (err) {
+        console.warn("[summon-queue] floor", shot, err?.message || err);
+      }
+    }
     if (opts.clothedOnly) return items;
     let undressPacks = [];
     try {
@@ -6013,7 +6157,9 @@ function snapshotUndress(raw) {
     ? raw.pantiesBy
     : "";
   const sexStance = pantiesBy === "self" ? "順從" : pantiesBy === "help" ? "被動" : "";
-  return { stage, shot, pantiesBy, sexStance };
+  // consent（2026-11-25）：她清醒時自己答應脫的——回神不會自己穿回去（settleUndressAfterStun 跳過）
+  const consent = stage > 0 && !!raw?.consent;
+  return { stage, shot, pantiesBy, sexStance, ...(consent ? { consent: true } : {}) };
 }
 
 function ensureUndress(who) {
@@ -6048,6 +6194,7 @@ function settleUndressAfterStun(who = girl) {
   if (stage < 1 || stage >= 3) return false;
   if (who === girl && undressPlayOpen()) return false;
   if (undressDazed(who)) return false;
+  if (who.undress?.consent) return false;   // 她自己答應脫的：不會因為「回神」穿回去
   clearVisitUndress(who);
   return true;
 }
@@ -6096,7 +6243,7 @@ function bikiniOutfit(who) {
 
 function undressBeat(help, outcome, stageBefore, stageAfter, bikini = false) {
   if (bikini && outcome === "flee") {
-    const text = "她掙開你的手，比基尼還在身上，人逃離了房間。";
+    const text = "她掙開你的手，比基尼還在身上，氣得不想再跟你說話。";
     return { text, canned: `（${text}）` };
   }
   if (bikini && outcome === "ignore") {
@@ -6111,7 +6258,7 @@ function undressBeat(help, outcome, stageBefore, stageAfter, bikini = false) {
   }
   if (outcome === "flee") {
     const still = stageBefore <= 0 ? "外衣還在身上" : stageBefore === 1 ? "胸罩和內褲都還在" : "內褲還在";
-    const text = `她掙開你的手，${still}，人逃離了房間。`;
+    const text = `她掙開你的手，${still}，氣得不想再跟你說話。`;
     return { text, canned: `（${text}）` };
   }
   if (outcome === "ignore") {
@@ -6148,7 +6295,7 @@ async function narrateUndress(beat) {
           "只寫這一拍看得見的脫衣：誰的手、哪一件布料離開或沒離開、現在還穿什麼、身體怎麼動。",
           "不要寫「」或『』台詞，不要替她說話。她的回應另外有人寫。",
           "不要寫選項、系統詞、階段名、順從、被動。不要寫插入、抽插、做愛。",
-          "事實不能改：沒脫成就不要寫成脫掉，逃走就不要寫成留下。",
+          "事實不能改：沒脫成就不要寫成脫掉；她掙開了就是不肯，要生氣地結束聊天（人不會離開房間）。",
         ].join("\n"),
       },
       { role: "user", content: `事實：${beat.text}` },
@@ -8796,8 +8943,10 @@ function bumpAffection(delta, reason = "") {
   renderDebug();
 }
 
-/** 閒聊判定只加不減。接住 5、喜歡 3、有趣 1、平常 0、冒犯 0（仍設防備）。 */
-const MARK_AFF = { 接住: 5, 喜歡: 3, 有趣: 1, 冒犯: 0 };
+/** 閒聊判定只加不減。接住 5、喜歡 3、有趣 1、平常 1（2026-11-25 使用者：對話都加一點點）、冒犯 0（仍設防備）。 */
+const MARK_AFF = { 接住: 5, 喜歡: 3, 有趣: 1, 平常: 1, 冒犯: 0 };
+/** 每次調戲（動手）加一點點感情（2026-11-25 使用者：侵犯也會加一點點；只有侵犯滿了才扣，見 ANGER_AFF_DROP）。 */
+const TEASE_AFF = 1;
 
 function applyMark(mark) {
   const delta = MARK_AFF[mark] || 0;
@@ -9047,13 +9196,20 @@ function summonOpener() {
   return `（旁白：${base}妻子／更深：嗔或黏地應他，可問要做什麼，一兩句。${body}只輸出台詞。）`;
 }
 
-/** flee_back：侵犯逃出後再被召喚 */
+/** home_back（2026-11-25 室友）：她剛從外面（打工／溜達／旅遊）自己回到房間（家）。 */
+function homeBackOpener() {
+  const body = openerBodyHint();
+  const what = { work: "打工", stroll: "出去溜達", travel: "旅遊" }[girl?.homeBackKind || ""] || "出門";
+  return `（旁白：你剛${what}完，自己回到他的房間——這裡是你的家。照你們的關係自然地打招呼（「我回來了」那種），可以順口提一下剛才在外面的事，一兩句。${body}只輸出台詞。）`;
+}
+
+/** angry_end：剛才被他惹到生氣、結束聊天後，他又來找她說話（舊存檔的 flee_back 也走這裡）。 */
 function fleeBackOpener() {
   const body = openerBodyHint({ forceBody: true });
   const stage = girl.stage || "stranger";
   const idx = STAGE_INDEX[stage] ?? 0;
   const open = getOpenness(girl);
-  const base = "你剛才因他太過分而逃離房間，現在又被召喚回來。餘怒／害怕／羞耻／彆扭要進第一句。不要說侵犯數字；用「剛才太過分」「你嚇到我了」這類感覺。禁止報日本流水帳。";
+  const base = "你剛才因他太過分，生氣地不跟他說話了；你一直在這間房間裡，現在他又來找你說話。餘怒／害怕／羞耻／彆扭要進第一句。不要說侵犯數字；用「剛才太過分」「你嚇到我了」這類感覺。禁止報日本流水帳。";
   if (idx <= (STAGE_INDEX.friend ?? 2) || open < 30) {
     return `（旁白：${base}低關係或低開放：罵、躲、要他保證不再亂來、或想立刻走，一兩句。${body}只輸出台詞。）`;
   }
@@ -9070,14 +9226,14 @@ function fleeBackOpener() {
  */
 function resolveEnterReason(returning) {
   const reason = girl.chatEnter || "";
-  if (reason === "summon" || reason === "flee_back") return reason;
+  if (reason === "summon" || reason === "flee_back" || reason === "angry_end" || reason === "home_back") return reason;
   if (returning || reason === "reopen") return "reopen";
   return "first";
 }
 
 function consumeEnterReason(reason) {
   if (!girl) return;
-  if (reason === "summon" || reason === "flee_back" || reason === "first" || reason === "reopen") {
+  if (reason === "summon" || reason === "flee_back" || reason === "angry_end" || reason === "home_back" || reason === "first" || reason === "reopen") {
     girl.chatEnter = "reopen";
   }
 }
@@ -9089,9 +9245,10 @@ function freshMeetLine() {
 
 function enterOpener(returning) {
   const reason = resolveEnterReason(returning);
-  if (girl) girl.freshMeet = reason === "summon" || reason === "flee_back";
+  if (girl) girl.freshMeet = reason === "summon" || reason === "flee_back" || reason === "home_back";
   let line = "";
-  if (reason === "flee_back") line = fleeBackOpener();
+  if (reason === "flee_back" || reason === "angry_end") line = fleeBackOpener();
+  else if (reason === "home_back") line = homeBackOpener();
   else if (reason === "summon") line = summonOpener();
   else if (reason === "reopen") line = reopenOpener();
   else line = firstOpener();
@@ -9253,7 +9410,7 @@ let promptActId = "";
 function speechBodyPromptLines() {
   const sm = speechMode(girl, promptActId);
   return [
-    ...bodyPromptLines(girl, { mode: sm.mode, level: sm.level, actId: promptActId }),
+    ...bodyPromptLines(girl, { mode: sm.mode, level: sm.level, actId: promptActId, held: !!sm.held }),
     ...moanVoicePromptLines(girl, promptActId),
   ];
 }
@@ -9352,6 +9509,7 @@ function talkSystem(userText = "") {
     ...kinkRevealLines(),
     ...stageTalk(),
     ...playerNotesPromptLines(girl),
+    ...roomReadPromptLines(girl),
     ...relationshipPreGfPromptLines(girl),
     ...relationshipDatingPromptLines(girl),
     ...relationshipWifePromptLines(girl),
@@ -9535,7 +9693,7 @@ async function openTalk() {
     if (openerOcc.score >= 95) {
       line = occupancyMoanLine(openerOcc, girl) || "……嗯啊…";
       setTyping(false);
-    } else if (openerOcc.score < 65 && !inSpasm(girl) && inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0) {
+    } else if (openerOcc.score < 65 && !inSpasm(girl) && inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0 && moanAllowed(girl, "")) {
       line = afterglowTemplate(girl, "") || "……哈…";
       setTyping(false);
     } else {
@@ -9586,7 +9744,7 @@ async function openTalk() {
 }
 
 /** 回覆後記錄本回合情緒（挑逗→生氣／害羞／羞燥；閒聊判冒犯→生氣／受傷）。 */
-function noteTurnMood(actId, opts, { invAdded = 0, invWilling = false, turnMark = "平常", stunZero = false } = {}) {
+function noteTurnMood(actId, opts, { invAdded = 0, invWilling = false, turnMark = "平常", stunZero = false, teaseIdx = -1 } = {}) {
   if (!girl) return;
   try {
     let m = null;
@@ -9594,10 +9752,12 @@ function noteTurnMood(actId, opts, { invAdded = 0, invWilling = false, turnMark 
       // 事後算帳（閘門開）：痙攣中或失神 ≥75 的動作不記任何情緒餘溫（回神結算時才記）
       if (stunZero) return;
       const label = TALK_ACTS.find((a) => a.id === actId)?.label || "動手動腳";
+      // 態度（2026-11-25）：無奈拒絕＝羞燥（不記成生氣）、無奈順從／迎合＝被撩起；拒絕照侵犯量
+      const softAdded = teaseIdx >= 2 ? Math.min(invAdded, 12) : teaseIdx === 1 ? Math.min(invAdded, 5) : invAdded;
       m = noteMoodFromAct(girl, {
-        added: invAdded,
+        added: softAdded,
         arousal: girl.bodyState?.arousal || 0,
-        willing: invWilling,
+        willing: invWilling || teaseIdx >= 2,
         cause: `剛才對你「${label}」`,
       });
     } else if (!actId && turnMark === "冒犯") {
@@ -9989,6 +10149,9 @@ async function deliverUserTalk(text, opts = {}) {
   let verbalTease = null;
   if (!opts.actId && !opts.skipBody) {
     const cls = classifyUserText(raw);
+    // 2026-11-25 使用者：用說的請她（摸一下啦／把衣服脫掉／我們做愛吧）→ 她（模型）自己決定答不答應（request_ask.js）
+    const req = classifyRequest(raw, { touchCls: cls, nextLockedAct: nextLockedAct(), actLocked: (id) => !actLockState(girl, id).ok });
+    if (req && requestAllowedNow(req)) { await handleRequest(req, raw); return; }
     if (cls.kind === "touch" && cls.actId && canTease(player) && actLockState(girl, cls.actId).ok) {
       opts = { ...opts, actId: cls.actId, typedAct: true };
       pushDebug(`打字動手 → 當成按「${TALK_ACTS.find((a) => a.id === cls.actId)?.label || cls.actId}」`);
@@ -10005,7 +10168,7 @@ async function deliverUserTalk(text, opts = {}) {
       return;
     }
     const lock = actLockState(girl, opts.actId);
-    if (!lock.ok) {
+    if (!lock.ok && !opts.granted) {   // granted：她剛答應讓你這一下（只准這一下）
       const status = $("summon-status");
       if (status) status.textContent = lock.reason || "尚未解鎖";
       refreshTalkActs();
@@ -10078,20 +10241,23 @@ async function deliverUserTalk(text, opts = {}) {
           hungerRelief("touch");
         }
         organDevTouch(TALK_ACTS.find((a) => a.id === opts.actId)?.hitId);
-        if (opts.actId === "butt") void maybeGenButtShot(girl, opts.actId);
-        if (opts.actId === "waist") void maybeGenWaistShot(girl, opts.actId);
-        if (opts.actId === "breast") void maybeGenBreastShot(girl, opts.actId);
-        if (opts.actId === "breast_knead") void maybeGenKneadShot(girl, opts.actId);
-        if (opts.actId === "breast_suck") void maybeGenSuckShot(girl, opts.actId);
-        if (opts.actId === "nipple_lick") void maybeGenLickShot(girl, opts.actId);
-        if (opts.actId === "labia") void maybeGenLabiaShot(girl, opts.actId);
-        if (opts.actId === "labia_rub") void maybeGenLabiaRubShot(girl, opts.actId);
-        if (opts.actId === "pull_out") clearActionFlash();
-        if (opts.actId === "finger_in") void maybeGenFingerShot(girl, opts.actId);
-        if (opts.actId === "vagina_finger" || opts.actId === "cervix_rub") {
-          // x-ray 剖面圖組關著（XRAY_ACTION_PACKS_ON=false）→ 借插入手指的圖（全裸＋閘門開時借裸體版）
-          if (XRAY_ACTION_PACKS_ON) void maybeGenOwnActionShot(girl, opts.actId);
-          else void maybeGenFingerShot(girl, "finger_in");
+        // 2026-11-25 癱坐在地上：閃坐地的動作圖，不閃站著的
+        if (!showFloorShot(girl, opts.actId)) {
+          if (opts.actId === "butt") void maybeGenButtShot(girl, opts.actId);
+          if (opts.actId === "waist") void maybeGenWaistShot(girl, opts.actId);
+          if (opts.actId === "breast") void maybeGenBreastShot(girl, opts.actId);
+          if (opts.actId === "breast_knead") void maybeGenKneadShot(girl, opts.actId);
+          if (opts.actId === "breast_suck") void maybeGenSuckShot(girl, opts.actId);
+          if (opts.actId === "nipple_lick") void maybeGenLickShot(girl, opts.actId);
+          if (opts.actId === "labia") void maybeGenLabiaShot(girl, opts.actId);
+          if (opts.actId === "labia_rub") void maybeGenLabiaRubShot(girl, opts.actId);
+          if (opts.actId === "pull_out") clearActionFlash();
+          if (opts.actId === "finger_in") void maybeGenFingerShot(girl, opts.actId);
+          if (opts.actId === "vagina_finger" || opts.actId === "cervix_rub") {
+            // x-ray 剖面圖組關著（XRAY_ACTION_PACKS_ON=false）→ 借插入手指的圖（全裸＋閘門開時借裸體版）
+            if (XRAY_ACTION_PACKS_ON) void maybeGenOwnActionShot(girl, opts.actId);
+            else void maybeGenFingerShot(girl, "finger_in");
+          }
         }
         // 情感：一般挑逗不加；接近高潮／失神門檻才小幅＋1，痙攣／射精＋2
         const nearClimax = stunBefore >= 50 || arousalBefore >= 22
@@ -10110,6 +10276,18 @@ async function deliverUserTalk(text, opts = {}) {
         if (stageBefore !== "climax" && stageAfter === "climax") {
           noteAfterglow(girl, "hers");
           herClimaxNow = true;
+        }
+        // 噴水（2026-11-25 使用者）：下面被弄到高潮＝噴；已經在高潮裡再弄 3 下＝再噴一次；噴 3 次才失神（stun_speech SQUIRT_*）
+        if (squirtFromAct(girl, opts.actId, { enteredClimax: herClimaxNow, stayedClimax: stageBefore === "climax" && stageAfter === "climax" })) {
+          const sq = noteSquirt(girl);
+          if (!herClimaxNow) { noteAfterglow(girl, "hers"); herClimaxNow = true; }
+          if (!spasmNote) {
+            spasmNote = sq.stunNow
+              ? "（她又噴了出來——已經是第三次，眼神一下子空了，整個人失了神。）"
+              : `（她下面一陣抽緊，噴了出來${sq.n >= 2 ? `——這是第 ${sq.n} 次` : ""}。）`;
+          }
+          pushDebug(`噴水 第 ${sq.n} 次${sq.stunNow ? "・失神" : `（噴 ${SQUIRT_STUN_AT} 次才失神）`}`);
+          renderDebug();
         }
         if (spasm.enteredSpasm || herClimaxNow) { hungerRelief("orgasm"); organDevOrgasm(); }
         const stunAfter = effectiveStun(girl, opts.actId);
@@ -10238,12 +10416,14 @@ async function deliverUserTalk(text, opts = {}) {
     }
     if (climaxLine || spasmNote) persistRoom();
 
-    // 侵犯值：動作後擲骰；滿值則逃離房間。保留本回合 added 供抗議語氣。
+    // 侵犯值：動作後擲骰；滿值則她生氣結束聊天（2026-11-25 起不逃走、不離開房間）。保留本回合 added 供抗議語氣。
     let invAdded = 0;
     let invWilling = false;
     let invToneOpts = { willing: false };
     let invTotal = getInvasion(girl);
     let stunZero = false;
+    let teaseAtt = null;
+    let teaseShift = 0;
     if (opts.actId && !opts.skipBody) {
       ensureInvasion(girl);
       // 事後算帳（閘門開）：痙攣中或失神 ≥75 → 侵犯值一點都不漲，整筆「清醒時本來會漲的量」記成欠帳，回神再結算
@@ -10274,10 +10454,25 @@ async function deliverUserTalk(text, opts = {}) {
         pushDebug(`侵犯 +${invRoll.added}${am} → ${invRoll.invasion}/${INVASION_MAX}${pt.tier !== "none" ? `・抗議${pt.label}` : ""}`);
         renderDebug();
       }
+      // 調戲的態度（2026-11-25）：這一下她是拒絕／無奈拒絕／無奈順從／迎合；記這一場被碰幾下、上一下的態度
+      if (opts.actId !== "pull_out") {
+        const tierNow = stunZero ? "" : protestTone(invAdded, invToneOpts).tier;
+        teaseAtt = teaseAttitudeOf(girl, { arousal: actArousalBefore, turnTier: tierNow, willing: invWilling });
+        if (teaseAtt && girl.bodyState) {
+          girl.bodyState.teaseSess = noteTeaseSession(girl.bodyState.teaseSess, teaseAtt.key);
+          teaseShift = attitudeShift(girl.bodyState.teaseSess.prev, teaseAtt.key);
+          // 拒絕＝生氣（黑影叉腰講）；無奈以上不叉腰
+          if (teaseAtt.key === "refuse" && !stunZero) girl._angryUntil = Date.now() + 6000;
+          else girl._angryUntil = 0;
+          pushDebug(`態度 ${teaseAtt.zh}${teaseShift > 0 ? "↑" : teaseShift < 0 ? "↓" : ""}（${teaseAtt.score}${teaseAtt.reasons.length ? "：" + teaseAtt.reasons.join("、") : ""}）`);
+          renderDebug();
+        }
+      }
+      if (!invRoll.fled && opts.actId !== "pull_out") bumpAffection(TEASE_AFF, "調戲");
       persistRoom();
       refreshTalkActs();
       if (invRoll.fled) {
-        const fleeNote = `（旁白：侵犯感爆滿——${girl.name}推開你，慌忙逃離了房間。）`;
+        const fleeNote = `（旁白：侵犯感爆滿——${girl.name}用力推開你，氣得不想再跟你說話了。）`;
         lines.push({ role: "user", content: herView(fleeNote) });
         await typeLine("旁白", fleeNote);
         persistRoom();
@@ -10287,7 +10482,7 @@ async function deliverUserTalk(text, opts = {}) {
     }
 
     if (verbalTease?.res?.fled) {
-      const fleeNote = `（旁白：侵犯感爆滿——${girl.name}推開你，慌忙逃離了房間。）`;
+      const fleeNote = `（旁白：侵犯感爆滿——${girl.name}用力推開你，氣得不想再跟你說話了。）`;
       lines.push({ role: "user", content: herView(fleeNote) });
       await typeLine("旁白", fleeNote);
       persistRoom();
@@ -10298,7 +10493,7 @@ async function deliverUserTalk(text, opts = {}) {
     // 情緒餘溫：本回合的侵犯／挑逗／冒犯在 finally 記下（LLM 失敗也記），下一句起帶進 prompt
     // 只有語氣真的走「半推半就」（增益 ≤ tokenCap）才把情緒記成羞燥
     // 事後算帳（閘門開）：失神／痙攣中的動作不記情緒，情緒交給回神結算
-    moodTurn = { invAdded, invWilling: invWilling && invAdded <= (invToneOpts.tokenCap ?? 12), turnMark, stunZero };
+    moodTurn = { invAdded, invWilling: invWilling && invAdded <= (invToneOpts.tokenCap ?? 12), turnMark, stunZero, teaseIdx: teaseAtt ? teaseAtt.idx : -1 };
 
     if (!sheetOpen() || talkFor !== girl.id) return;
 
@@ -10318,22 +10513,36 @@ async function deliverUserTalk(text, opts = {}) {
         //   胸部、下體先一聲嬌喘（只有一聲，越接近高潮越嬌），腰臀只在已經興奮時輕輕一聲（2026-11-21 使用者：只是一下而已，不會有一連串叫聲）
         const tier = touchTierOf(girl.stage || "stranger");
         if (!Array.isArray(girl.touchRecent)) girl.touchRecent = [];
-        const base = pickTouchLine(girl.touchBank, tier, opts.touchZone, girl.touchRecent);
+        const base = pickTouchLine(girl.touchBank, tier, opts.touchZone, girl.touchRecent, teaseAtt?.key || "");
         let lvl = moanLevelOf(arousalStage(girl.bodyState?.arousal || 0), { climaxNow: herClimaxNow, spasm: inSpasm(girl) });
         if (occ.score >= 95) lvl = 4; else if (occ.score >= 65) lvl = Math.max(lvl, 3);
+        // 2026-11-25 使用者：不唉唉叫——沒有失神噴水癱軟時，被摸那一下最多一聲輕輕的（嚇一跳／「嗯…♡」）
+        if (!moanAllowed(girl, opts.actId || "")) lvl = Math.min(lvl, 1);
         line = touchReply(scrubHusbandV(base, girl.stage || "stranger", girl.playerPet || ""), opts.touchZone, lvl) || base;
-        pushDebug(`摸（${opts.touchZone}・${tier}${girl.touchBank?.tiers?.[tier] ? "" : "・內建"}）嬌喘 ${lvl}`);
+        pushDebug(`摸（${opts.touchZone}・${tier}${teaseAtt ? "・" + teaseAtt.zh : ""}${girl.touchBank?.tiers?.[tier] ? "" : "・內建"}）嬌喘 ${lvl}`);
         renderDebug();
         setTyping(false);
       } else if (occ.score >= 95) {
         line = occupancyMoanLine(occ, girl) || "……嗯啊…";
         setTyping(false);
-      } else if (occ.score < 65 && !inSpasm(girl) && inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0) {
+      } else if (occ.score < 65 && !inSpasm(girl) && inAfterglow(girl) && (girl.bodyState?.afterglowReplies || 0) > 0 && moanAllowed(girl, actId)) {
         line = afterglowTemplate(girl, actId) || "……哈…腿…軟…";
         setTyping(false);
       } else {
         const streamOk = stun < 25 && occ.score < 10 && !occ.semenOut && !inSpasm(girl) && !inAfterglow(girl);
-        const protestExtra = actId ? protestPromptBlock(invAdded, { invasion: invTotal, ...invToneOpts }) : "";
+        // 態度（2026-11-25）：拒絕＝照侵犯量的抗議語氣＋嘴硬身體誠實；無奈拒絕以上＝態度區塊取代抗議語氣（不再硬塞「放開！」）
+        let protestExtra = "";
+        if (actId) {
+          const pr = PERSONALITY_RESIST[basePersonality(girl)] || PERSONALITY_RESIST["文靜溫柔"];
+          const attBlock = teaseAtt ? attitudePromptBlock(teaseAtt, {
+            stage: girl.stage || "stranger", arousal: actArousalBefore ?? (girl.bodyState?.arousal || 0), shift: teaseShift,
+            hitId: TALK_ACTS.find((a) => a.id === actId)?.hitId || "", persToken: pr?.token || "", persProtest: "",
+          }) : "";
+          const near = teaseAtt && teaseAtt.idx >= 1 && invTotal >= INVASION_MAX - 15 ? "（侵犯感已經快到你受不了的程度：可以暗示再這樣下去你就不理他了。）" : "";
+          protestExtra = !teaseAtt || teaseAtt.idx === 0
+            ? [protestPromptBlock(invAdded, { invasion: invTotal, ...invToneOpts }), attBlock].filter(Boolean).join("\n")
+            : [attBlock, near].filter(Boolean).join("\n");
+        }
         // afterglowPromptLines 已在 talkSystem；若仍餘韻（僅時間門檻）再塞一層
         const agLines = inAfterglow(girl) ? afterglowPromptLines(girl).join("\n") : "";
         const verbalExtra = verbalTease ? verbalTeasePrompt(verbalTease.hit, { blocked: verbalTease.blocked }) : "";
@@ -10352,7 +10561,7 @@ async function deliverUserTalk(text, opts = {}) {
           promptActId = "";
         }
         line = presentOccupied(girl, reply || moodFallbackLine(girl, undressShyFallback(undressStage(girl), girl.stage, "……")), actId, occ) || "……";
-        if (actId && invAdded > 1 && !inAfterglow(girl) && occ.score < 65) line = blendProtestReply(line, invAdded, invToneOpts) || line;
+        if (actId && invAdded > 1 && !inAfterglow(girl) && occ.score < 65 && (!teaseAtt || teaseAtt.idx === 0)) line = blendProtestReply(line, invAdded, invToneOpts) || line;
       }
       if (girl.guard) girl.guard -= 1;
       tickStunAfterReply(girl);
@@ -10364,6 +10573,7 @@ async function deliverUserTalk(text, opts = {}) {
       noteTalkExchange(girl);
       decayFriendSexFlag(girl);
       if (!opts.actId) handlePlayerNotesAfterReply(girl, line);
+      if (!opts.actId) noteReadMentioned(girl, line);
       lines.push({ role: "assistant", content: line });
       rememberChat();
       persistRoom();
@@ -10455,6 +10665,184 @@ async function sendTalk(event) {
   if (order) closeAfterOrderReply(order);
 }
 
+// ---------------------------------------------------------------- 癱軟在地上被玩弄的動作圖（2026-11-25 使用者，§13.0 第 6 項；floor_shots.js）
+const FLOOR_KIND_OF_ACT = { breast: "breast", breast_knead: "breast", breast_suck: "breast", nipple_lick: "breast", labia: "groin", labia_rub: "groin", finger_in: "finger", vagina_finger: "finger", cervix_rub: "finger" };
+const floorJobs = new Map();
+/** 產一張坐地動作圖（缺才產；同一張同時只產一次）。 */
+function ensureFloorShot(who, shot) {
+  if (!who?.id || !shot) return Promise.resolve("");
+  const cached = String(who.portraits?.[shot] || "");
+  if (cached) return Promise.resolve(cached);
+  const key = `${who.id}:${shot}`;
+  if (floorJobs.has(key)) return floorJobs.get(key);
+  const job = (async () => {
+    const engine = await gameImgRoute();
+    await ensureGirlComfyCkpt(who);
+    const result = await waitImage(buildFloorImgBody(shot, who, engine));
+    if (result?.status === "done" && result.result) {
+      who.portraits = who.portraits || {};
+      who.portraits[shot] = stampPortraitUrl(result.result);
+      if (who === girl) persistRoom();
+      return who.portraits[shot];
+    }
+    return "";
+  })().catch((err) => { console.warn("[floor]", shot, err?.message || err); return ""; }).finally(() => floorJobs.delete(key));
+  floorJobs.set(key, job);
+  return job;
+}
+/** 她癱坐時被碰：閃坐地那張（穿著／脫光各一套）；還沒有就背景產，這次不閃。回傳有沒有處理（有＝不要再閃站著的動作圖）。 */
+function showFloorShot(who, actId) {
+  const kind = FLOOR_KIND_OF_ACT[actId];
+  if (!who || !kind || !isCollapsed(who)) return false;
+  const shot = floorShotKey(kind, undressStage(who) >= 3);
+  const url = String(who.portraits?.[shot] || "");
+  if (url) showActionFlash(url, `${who.name}癱坐在地上`);
+  else void ensureFloorShot(who, shot);
+  return true;
+}
+/** 一癱坐就把這身穿著的三張排進背景（之後摸才有圖）。 */
+function pregenFloorShots(who) {
+  if (!who) return;
+  const nude = undressStage(who) >= 3;
+  for (const kind of ["breast", "groin", "finger"]) void ensureFloorShot(who, floorShotKey(kind, nude));
+}
+
+// ---------------------------------------------------------------- 用說的請她（2026-11-25 使用者，§13.0 第 4 項）
+const AROUSAL_ZH = { none: "平靜", slight: "微微有感覺", aroused: "有感覺了", wantFill: "很想要", climax: "到了高潮邊緣" };
+const UNDRESS_ZH = ["穿著衣服", "只剩胸罩和內褲", "只剩內褲", "全裸"];
+const REQ_ACT_ZONE = { waist: "waist", butt: "waist", breast: "breast", breast_knead: "breast", breast_suck: "breast", nipple_lick: "breast", labia: "groin", labia_rub: "groin", finger_in: "groin", vagina_finger: "groin", cervix_rub: "groin" };
+/** 下一個還沒解鎖的動作（「摸一下啦」沒說哪裡就是請這個）。 */
+function nextLockedAct() {
+  if (!girl) return "";
+  for (const a of orderedTalkActs()) if (a.id !== "pull_out" && !actLockState(girl, a.id).ok) return a.id;
+  return "";
+}
+/** 現在能不能請：一般聊天、能調戲；做愛還要有精液；脫衣要還沒脫光。 */
+function requestAllowedNow(req) {
+  if (!girl || sceneOpen() || undressChatActive() || sexChatActive() || begDialogActive() || escortDialogActive()) return false;
+  player = ensurePlayer(player);
+  if (!canTease(player)) return false;
+  if (req.kind === "undress" && undressStage(girl) >= 3) return false;
+  return true;
+}
+function requestCtx(req, asked) {
+  const b = girl.bodyState || {};
+  let mood = ""; try { const m = getMoodCarry(girl); if (m && (Number(m.level) || 0) >= 15) mood = MOOD_TYPES[m.type] || m.type; } catch { /* */ }
+  const act = req.kind === "touch" ? TALK_ACTS.find((a) => a.id === req.actId) : null;
+  return {
+    stage: girl.stage || "stranger",
+    asked,
+    what: act ? herView(act.text) : req.kind === "undress" ? (req.all ? "全部脫光" : "脫一件") : "",
+    attitude: teaseAttitudeOf(girl)?.zh || "",
+    arousal: AROUSAL_ZH[arousalStage(b.arousal || 0)] || "",
+    undress: UNDRESS_ZH[undressStage(girl)] || "",
+    nude: undressStage(girl) >= 3,
+    collapsed: isCollapsed(girl),
+    stunned: stunTier(effectiveStun(girl, "")) === "stun",
+    invasion: getInvasion(girl),
+    mood,
+  };
+}
+const REQ_FALLBACK = {
+  touch: { yes: ["……就一下喔。", "真拿你沒辦法……一下下而已。"], no: ["不要。", "想都別想。", "……現在不行。"] },
+  undress: { yes: ["……好啦，你不准一直盯著看。", "真是的……轉過去啦。"], no: ["才不要。", "你想得美。", "……現在不要。"] },
+  sex: { yes: ["……嗯，好。", "……我也想要。"], no: ["不要。我們還沒到那種關係。", "……今天不要。", "不行。"] },
+};
+/**
+ * 她決定答不答應（使用者：交給模型判斷；模型沒回答案才用 fallbackYesChance 擲）。
+ * 答應：摸＝只准這一下（opts.granted 跳過鎖）；脫＝自己脫一件（說脫光就全脫）；做愛＝沒脫光就先脫光，再進做愛。
+ */
+async function handleRequest(req, raw) {
+  const who = girl;
+  if (!who) return;
+  talkBusy = true;
+  setTalkEnabled(true);
+  refreshTalkActs();
+  lines.push({ role: "user", content: raw || (req.kind === "sex" ? "（他說想跟你做愛。）" : "") });
+  typeJob += 1;
+  setTyping(true);
+  $("portrait-name").textContent = who.name;
+  const ctx = requestCtx(req, raw);
+  let dec = { yes: null, line: "" };
+  try { dec = parseDecision(await askGirl(requestPrompt(req.kind, ctx), null)); } catch { dec = { yes: null, line: "" }; }
+  let yes = dec.yes;
+  let how = "她決定";
+  if (yes == null) {
+    const p = fallbackYesChance(req.kind, {
+      stage: ctx.stage, attitudeIdx: teaseAttitudeOf(who)?.idx || 0, arousalStage: arousalStage(who.bodyState?.arousal || 0),
+      nude: ctx.nude, invasion: ctx.invasion, angry: girlAngryNow(who),
+    });
+    yes = Math.random() < p;
+    how = `保底機率 ${Math.round(p * 100)}%`;
+  }
+  const pool = REQ_FALLBACK[req.kind][yes ? "yes" : "no"];
+  const line = cleanLine(dec.line) || pool[Math.floor(Math.random() * pool.length)];
+  setTyping(false);
+  if (girl !== who) return;
+  const what = req.kind === "touch" ? `讓你${TALK_ACTS.find((a) => a.id === req.actId)?.label || "碰"}` : req.kind === "undress" ? (req.all ? "脫光" : "脫衣服") : "做愛";
+  pushDebug(`請求「${what}」→ ${yes ? "答應" : "拒絕"}（${how}）`);
+  renderDebug();
+  lines.push({ role: "assistant", content: line });
+  rememberChat();
+  persistRoom();
+  await typeLine(who.name, line);
+  talkBusy = false;
+  setTalkEnabled(true);
+  refreshTalkActs();
+  if (!yes || girl !== who) return;
+  if (req.kind === "touch") {
+    const act = TALK_ACTS.find((a) => a.id === req.actId);
+    if (act) await deliverUserTalk(act.text, { actId: act.id, granted: true, touchZone: REQ_ACT_ZONE[act.id] || "" });
+    return;
+  }
+  if (req.kind === "undress") { await selfUndressFromRequest(req.all); return; }
+  if (req.kind === "sex") {
+    if (undressStage(who) < 3) await selfUndressFromRequest(true, { animate: false });
+    const dryCc = ensurePlayer(player).semenCc;
+    if (!canStartSexAt(dryCc, { peak: sexPeakNow() })) {
+      const st = $("summon-status");
+      if (st) st.textContent = sexBlockReason(dryCc);
+      return;
+    }
+    openRoomScene("sex");
+  }
+}
+/**
+ * 她答應自己脫（一次一件；all＝全脫）。脫光的後續（站立圖、裸體動作圖、做愛開場圖）跟脫衣畫面一樣排。
+ * 2026-11-25 使用者（§13.0 第 5 項）：站著脫——聊天黑影站著播脫衣動畫（chat_shadow standUndress），
+ *   同時閃一下「站著脫到一半」的立繪（undress_stand_shirt／bra／panties；還沒產就背景產，下次用）。animate:false＝要直接進做愛，不播。
+ */
+async function selfUndressFromRequest(all = false, { animate = true } = {}) {
+  if (!girl) return;
+  const u = ensureUndress(girl);
+  const before = undressStage(girl);
+  if (before >= 3) return;
+  if (animate) {
+    const shot = bikiniOutfit(girl) ? STAND_UNDRESS_SHOT[1] : STAND_UNDRESS_SHOT[before];
+    const cached = String(girl.portraits?.[shot] || "");
+    if (cached) showActionFlash(cached, `${girl.name}站著脫衣服`);
+    else void ensureUndressPortrait(girl, shot);
+  }
+  clearVaginaFingers(girl);
+  u.stage = all || bikiniOutfit(girl) ? 3 : Math.min(3, before + 1);
+  u.consent = true;
+  const after = u.stage;
+  if (after >= 3) {
+    u.pantiesBy = "self";
+    u.sexStance = "順從";
+    rollNudeStandee(girl);
+    void queueNudeActionPregen(girl);
+    void queueSexPosePregen(girl);
+  }
+  if (animate) window.ChatShadow?.undress?.(before, after);
+  const beat = undressBeat(false, "advance", before, after, bikiniOutfit(girl));
+  lines.push({ role: "user", content: herView(beat.canned) });
+  persistRoom();
+  try { paintHalfPortrait(girl); } catch { /* ignore */ }
+  refreshTalkActs();
+  await typeLine("旁白", beat.canned);
+}
+
 async function sendTalkAct(actId, extra = {}) {
   if (!girl || talkBusy || talkFor !== girl.id) return;
   const act = TALK_ACTS.find((a) => a.id === actId);
@@ -10481,9 +10869,7 @@ function touchZone(zone) {
   if (!ok.length) return false;
   // 台詞庫還沒有（舊的一趟、召喚時模型失敗）：背景補產，這次先用內建的
   if (girl.touchBank?.rev !== TOUCH_BANK_REV && !touchBankJobs.has(girl.id)) void pregenTouchBank(girl).catch(() => null);
-  // 陌生、朋友被摸＝生氣（台詞庫那句就是在罵你）→ 黑影叉腰／抱胸講
-  const tierNow = touchTierOf(girl.stage || "stranger");
-  if (tierNow === "stranger" || tierNow === "friend") girl._angryUntil = Date.now() + 6000;
+  // 生氣（黑影叉腰講）改看態度：動作結算時「拒絕」才生氣（deliverUserTalk 裡設 _angryUntil）
   void sendTalkAct(ok[Math.floor(Math.random() * ok.length)], { touchZone: zone });
   return true;
 }
@@ -10512,7 +10898,23 @@ function fingerEnd() {
   if (!girl) return;
   if (clearVaginaFingers(girl)) { renderBodyPanel(); persistRoom(); }
 }
-window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES, finger: { can: fingerCan, round: fingerRound, end: fingerEnd, busy: () => !!talkBusy } };
+// 2026-11-25：聊天黑影的癱坐開始／起來 → 記在她身上（只有失神＋癱軟才准唉唉叫，stun_speech moanAllowed）
+document.addEventListener("chat-shadow-collapse", (ev) => {
+  if (!girl) return;
+  const on = !!ev?.detail?.on;
+  if (setCollapsed(girl, on)) { pushDebug(on ? "癱軟在地上" : "站起來了"); renderDebug(); persistRoom(); }
+  if (on) pregenFloorShots(girl);
+});
+// 2026-11-25 使用者（§13.0 第 6 項）：癱坐在地上按住下面＝坐著被手指插入。能扣陰道就扣，不能就揉陰唇／摸陰唇（每一輪一個動作，走摸黑影的快路）。
+const SEAT_FINGER_ACTS = ["vagina_finger", "finger_in", "labia_rub", "labia"];
+function seatFingerAct() { return SEAT_FINGER_ACTS.find((id) => fingerCan(id)) || ""; }
+function seatFingerCan() { return !!girl && isCollapsed(girl) && !!seatFingerAct(); }
+function seatFingerRound() {
+  if (!seatFingerCan()) return false;
+  void sendTalkAct(seatFingerAct(), { touchZone: "groin" });
+  return true;
+}
+window.RoomTouch = { zone: touchZone, zones: TOUCH_ZONES, finger: { can: fingerCan, round: fingerRound, end: fingerEnd, seat: seatFingerRound, seatCan: seatFingerCan, busy: () => !!talkBusy } };
 
 function undressPlayOpen() {
   if (undressChatActive()) return sheetOpen();
@@ -10723,7 +11125,7 @@ function advanceUndressPlay() {
   renderUndressPlayChoices();
 }
 
-/** 畫面裡才選。幫她脫：2/3 進一階，1/3 逃走。叫她脫：不逃走，1/3 才進一階。旁白與她的話用下一句分開看。 */
+/** 畫面裡才選。幫她脫：2/3 進一階，1/3 她不肯（掙開、生氣結束聊天，人留在房間）。叫她脫：不會生氣，1/3 才進一階。旁白與她的話用下一句分開看。 */
 async function playUndress(mode) {
   if (!undressPlay || undressPlay.busy || undressPlay.phase !== "choose") return;
   if (!girl || !undressPlayOpen()) return;
@@ -10974,7 +11376,10 @@ function refreshTalkActs() {
       event.preventDefault();
       event.stopPropagation();
       if (btn.disabled) return;
-      openRoomScene("sex");
+      // 2026-11-25 使用者：做愛也要她答應（陌生、朋友就算癱軟也可能拒絕；妻子飢渴頂點／來求的不經過這裡）
+      if (talkBusy) return;
+      if (sexPeakNow()) { openRoomScene("sex"); return; }
+      void handleRequest({ kind: "sex" }, "（他想跟你做愛。）");
     });
     row.append(btn);
   } else if (undressEntryUnlocked(girl)) {
@@ -11236,6 +11641,9 @@ function showSheet() {
   const begNow = !!(wasHidden && girl && HUNGER_ON && !begDialog && begPending(girl));
   // 她主動來找你聊（求歡優先）：這次她先開口
   if (wasHidden && girl && !begNow) takeProactiveOpen();
+  // 2026-11-25 使用者：妻子主動要求做愛（主動聊天的「想做愛」）→ 跟她來求一樣的對話框（做愛／拒絕），口氣是邀不是求
+  const wantNow = !!(wasHidden && girl && !begNow && !begDialog && talkOpenNow?.trigger === "want");
+  if (wantNow) talkOpenNow = null;
   if (wasHidden && girl) activityChatOpen();
   if (!girl) {
     typeJob += 1;
@@ -11259,8 +11667,8 @@ function showSheet() {
     void openEscortDialog();
     return;
   }
-  if (begNow) {
-    begDialog = { phase: "opening", at: Date.now() };
+  if (begNow || wantNow) {
+    begDialog = { phase: "opening", at: Date.now(), kind: wantNow ? "want" : "hunger" };
     void openBegDialog();
     return;
   }
@@ -11296,7 +11704,7 @@ function endTalkSession() {
     girl.bodyState.ejacTalkBan = false;
   }
   clearVaginaFingers(girl);
-  if (girl.chatEnter !== "flee_back" && girl.chatEnter !== "summon") {
+  if (girl.chatEnter !== "flee_back" && girl.chatEnter !== "summon" && girl.chatEnter !== "angry_end" && girl.chatEnter !== "home_back") {
     girl.chatEnter = "reopen";
   }
 }
@@ -11345,6 +11753,8 @@ function spendPlayerSemen(cc, source = "sex") {
 function persistRoom(opts = {}) {
   if (!girl) return;
   try {
+    // 2026-11-25 使用者（§13.0 第 7 項）：房間裡這位＝室友（家是房間；RP5 看鏡像的 roommate 旗決定她出門、回來）
+    if (ROOMMATE_ON) girl.roommate = true;
     player = ensurePlayer(player);
     const payload = {
       girl,
@@ -11683,6 +12093,7 @@ async function adoptRosterGirl(payload) {
 
     // 畫完並下載完才讓她出現。停留從這一刻才開始。
     await cacheVisitPics(girl);
+    girl.recallAt = Date.now();   // 2026-11-25 室友：從名冊叫來（叫回）→ RP5 結束她的外出
     window.RoomActor?.setPresent(true);
     if (!continuingVisit) {
       armRoomVisit(girl);
@@ -12302,52 +12713,10 @@ function closeTalkForLeave() {
   }
 }
 
-/** 幫她脫時逃走：離開房間（脫衣進度清 0）。「裸體」旗已撤掉（NUDE_FLAG_ON=false）。 */
+/** 幫她脫時她不肯（2026-11-25 使用者：沒有逃走，魅魔頂多結束聊天）：推開你、把衣服穿回去、結束聊天，人還在房間。
+ *  只是不肯脫，不扣感情（扣感情只在侵犯滿的時候）。 */
 async function fleeRoomFromUndress() {
-  if (!girl) return;
-  const who = girl;
-  const name = who.name;
-  if (NUDE_FLAG_ON) who.nude = true;
-  who.chatEnter = "flee_back";
-  clearVisitUndress(who);
-  try { clearStunDebt(who); } catch { /* ignore */ }
-  startArousalCool(who);
-  resetOpenness(who);
-  clearVaginaFingers(who);
-  closeTalkForLeave();
-  window.RoomActor?.setPresent(false);
-  dropVisitPics();
-  syncArousalOffChatTimer();
-  activityOpen = false;
-
-  const tail = `${name}掙開你逃離了房間。可再召喚回來。`;
-  if (who.world?.home) {
-    clearShift();
-    renderCard();
-    renderWorld();
-    persistRoom();
-    if ($("summon-status")) $("summon-status").textContent = tail;
-    return;
-  }
-  if (who.world) {
-    ensureWorldHome(who);
-    clearShift();
-    renderCard();
-    renderWorld();
-    persistRoom();
-    const region = placedRegion();
-    const homeName = who.world.home?.name || "某處";
-    if ($("summon-status")) {
-      $("summon-status").textContent = region
-        ? `${name}掙開你逃離了房間。人在日本的${region.name}，住在${homeName}。可再召喚回來。`
-        : tail;
-    }
-    return;
-  }
-  await letHerLeave({ instantHome: true, keepArousal: true });
-  if ($("summon-status")) {
-    $("summon-status").textContent = `${name}掙開你逃離了房間。人已回到日本。可再召喚回來。`;
-  }
+  await endChatAngry({ cause: "硬要脫你衣服", kind: "undress", affDrop: 0 });
 }
 
 /** 失神／痙攣中記一筆欠帳（閘門關或她沒失神就不記）。 */
@@ -12388,7 +12757,7 @@ async function settleStunReckoning({ redressed = false } = {}) {
   }
   const pct = Math.round(r.share * 100);
   if (r.kind === "sweet") pushDebug(`算帳 欠 ${r.debt}・熱戀以上不補${r.sweetDrop ? `，甜 侵犯 −${r.sweetDrop}` : ""} → ${getInvasion(who)}/${INVASION_MAX}`);
-  else pushDebug(`算帳 欠 ${r.debt}×${pct}% → 侵犯 +${r.add} → ${Math.min(INVASION_MAX, invBefore + r.add)}/${INVASION_MAX}${r.fled ? "・逃走" : ""}`);
+  else pushDebug(`算帳 欠 ${r.debt}×${pct}% → 侵犯 +${r.add} → ${Math.min(INVASION_MAX, invBefore + r.add)}/${INVASION_MAX}${r.fled ? "・結束聊天" : ""}`);
   const mood = reckoningMood(r);
   if (mood) {
     try { noteMood(who, { ...mood, cause: "趁你失神的時候對你動手動腳" }); } catch { /* ignore */ }
@@ -12418,7 +12787,7 @@ async function settleStunReckoning({ redressed = false } = {}) {
     lines.push({ role: "user", content: herView(note) });
     await typeLine("旁白", note);
     persistRoom();
-    await fleeRoomFromInvasion({ cause: "趁你失神的時候對你動手動腳，回神後受不了逃走" });
+    await fleeRoomFromInvasion({ cause: "趁你失神的時候對你動手動腳，回神後受不了" });
     return { fled: true, spoke: true, line, r };
   }
   try { paintHalfPortrait(who); } catch { /* ignore */ }
@@ -12441,54 +12810,35 @@ async function runIdleReckoning(waitFor = null) {
   }
 }
 
-/** 侵犯值滿：清侵犯、關對話、趕出房間（需再召喚或再抽）。 */
-async function fleeRoomFromInvasion({ cause = "動手動腳到你受不了逃走" } = {}) {
+/** 侵犯滿了扣多少感情（2026-11-25 使用者：被侵犯生氣到一定值才扣一點點）。 */
+const ANGER_AFF_DROP = 3;
+/** 侵犯值滿（2026-11-25 使用者：不逃走，頂多結束聊天）：扣一點點感情、清侵犯、記最強的氣、關對話，人還在房間。 */
+async function fleeRoomFromInvasion({ cause = "動手動腳到你受不了" } = {}) {
+  await endChatAngry({ cause, kind: "invasion", affDrop: ANGER_AFF_DROP });
+}
+
+/** 她生氣地結束聊天：穿回衣服、情緒餘溫記最強的氣（約 1.5 小時才消）、下次打開聊天用「剛才生氣結束聊天」開場；不離開房間。 */
+async function endChatAngry({ cause = "動手動腳到你受不了", kind = "invasion", affDrop = 0 } = {}) {
   if (!girl) return;
   const who = girl;
   const name = who.name;
-  who.chatEnter = "flee_back";
+  who.chatEnter = "angry_end";
   clearVisitUndress(who);
   clearInvasion(who);
   try { clearStunDebt(who); } catch { /* ignore */ }
-  // 情緒餘溫：侵犯爆滿逃走＝最強的氣（−1/分鐘，約 1.5 小時才消；召回時開場也會帶著）
   try { noteMood(who, { type: "angry", level: 100, cause }); } catch { /* ignore */ }
+  if (affDrop > 0) bumpAffection(-affDrop, kind === "invasion" ? "侵犯到她受不了" : "惹她生氣");
   startArousalCool(who);
   resetOpenness(who);
   clearVaginaFingers(who);
-  // 先關對話／busy／scroll lock，再趕人——避免房間被鎖、找地點卡住
   closeTalkForLeave();
-  window.RoomActor?.setPresent(false);
-  dropVisitPics();
   syncArousalOffChatTimer();
   activityOpen = false;
-
-  if (who.world?.home) {
-    clearShift();
-    renderCard();
-    renderWorld();
-    persistRoom();
-    $("summon-status").textContent = `${name}因侵犯感過重逃離了房間。可再召喚回來。`;
-    return;
-  }
-  if (who.world) {
-    // 半狀態：補住所後離房，勿停在「正在決定她住哪」且召喚鍵被藏
-    ensureWorldHome(who);
-    clearShift();
-    renderCard();
-    renderWorld();
-    persistRoom();
-    const region = placedRegion();
-    const homeName = who.world.home?.name || "某處";
-    $("summon-status").textContent = region
-      ? `${name}因侵犯感過重逃離了房間，人在日本的${region.name}，住在${homeName}。可再召喚回來。`
-      : `${name}因侵犯感過重逃離了房間。可再召喚回來。`;
-    return;
-  }
-  // 尚無 world：同步安置日本＋隨機住所（逃離不等人模選房）
-  await letHerLeave({ instantHome: true, keepArousal: true });
-  if ($("summon-status")) {
-    $("summon-status").textContent = `${name}因侵犯感過重逃離了房間，人已回到日本。可再召喚回來。`;
-  }
+  renderCard();
+  persistRoom();
+  const st = $("summon-status");
+  if (st) st.textContent = kind === "undress" ? `${name}推開你、把衣服穿回去，氣得不想再說話了。` : `${name}受不了了，生氣地結束了聊天。`;
+  try { window.RoomActor?.tip?.(`${name}在生氣，不想理你。`); } catch { /* */ }
 }
 
 
@@ -12497,6 +12847,49 @@ function paintLifeWorld(world, row) {
   paintLifeRow(world, row);
   // 色情奇遇帶回來的飢渴（只加差額，見 applyLifeHunger）
   return girl && world === girl.world ? applyLifeHunger(girl) : 0;
+}
+
+const OUT_ZH = { work: "打工", stroll: "溜達", travel: "旅遊", escort: "接客" };
+/** 室友出門：穿好衣服、走出房間（RP5 已經排好這趟）。 */
+function roommateGoOut(row) {
+  const who = girl;
+  if (!who) return;
+  const kind = row?.agenda?.kind || "";
+  const left = roommateOutLabel({ roommate: true, phase: "japan", agenda: row?.agenda, travel: row?.travel }).split("・")[1] || "";   // clearShift 會清掉行程，先算
+  clearShift();
+  activityOpen = false;
+  dropVisitPics();
+  clearVisitUndress(who);
+  clearRoomVisit(who);
+  resetOpenness(who);
+  clearVaginaFingers(who);
+  try { setCollapsed(who, false); } catch { /* */ }
+  window.RoomActor?.setPresent(false);
+  if (sheetOpen()) hideSheet();
+  else syncArousalOffChatTimer();
+  persistRoom({ quiet: true });
+  try { renderCard(); renderWorld(); } catch { /* ignore */ }
+  const what = OUT_ZH[kind] || "出門";
+  const dest = kind === "travel" && row.travel ? `（${row.travel}）` : "";
+  const st = $("summon-status");
+  if (st) st.textContent = `${who.name}出門去日本${what}${dest}了${left ? `（${left}）` : ""}，結束就會自己回來。想她早點回來可以叫她（3～5 金）。`;
+  pushDebug(`室友出門：${what}${dest}`);
+}
+/** 室友回家：自己走回房間（不用儀式、不用付錢）。打開對話時用「剛回來」的開場。 */
+function roommateComeHome(row) {
+  const who = girl;
+  if (!who) return;
+  if (who.chatEnter !== "flee_back" && who.chatEnter !== "angry_end") who.chatEnter = "home_back";
+  who.homeBackKind = row?.last?.kind || "";
+  who.chatLines = [];
+  who.topicHint = "";
+  who.sessionEnded = true;
+  window.RoomActor?.setPresent(true);
+  persistRoom({ quiet: true });
+  try { renderCard(); renderWorld(); } catch { /* ignore */ }
+  const st = $("summon-status");
+  if (st) st.textContent = `${who.name}回來了。`;
+  pushDebug(`室友回家（${OUT_ZH[who.homeBackKind] || "外出"}完）`);
 }
 
 function applyLifeSnap(snap) {
@@ -12508,6 +12901,20 @@ function applyLifeSnap(snap) {
   const row = snap?.girls?.[girl.gameGirlId || girl.id];
   if (!row) return;
   girl.world = girl.world || {};
+  // 2026-11-25 室友：她出門（RP5 決定）→ 走出房間；回來 → 回到房間。正在說話、做愛、脫衣、場面中等你聊完才走
+  if (row.roommate && row.phase === "japan" && !sheIsOut()) {
+    if (talkBusy || pending || autoLifeBusy || visitClockHeld() || sheetOpen() || stayTalking()) return;
+    if ((Number(girl.recallAt) || 0) > (Number(row.recallSeen) || 0)) return;   // 剛叫她回來，RP5 還沒收到：不要又送出去
+    paintLifeWorld(girl.world, row);
+    roommateGoOut(row);
+    return;
+  }
+  if (row.roommate && row.phase === "room" && sheIsOut()) {
+    if (pending || summoning || summonBackBusy || visitClockHeld()) return;
+    paintLifeWorld(girl.world, row);
+    roommateComeHome(row);
+    return;
+  }
   if (row.phase === "japan" && !sheIsOut()) {
     if (talkBusy || pending || autoLifeBusy || visitClockHeld()) return;
     paintLifeWorld(girl.world, row);
@@ -12551,6 +12958,7 @@ async function pullLifeAgent() {
 
 function stayClockLine() {
   if (!girl || sheIsOut()) return "";
+  if (ROOMMATE_ON) return "你住在他的房間，這裡就是你的家。你會照自己的生活出門（去日本打工、溜達、偶爾旅遊），結束就回來；不會因為他不理你就離開。不要說要回日本的住所。";
   const until = Number(girl.roomVisitUntil);
   if (!Number.isFinite(until) || until < 1e11) return "";
   const min = Math.round(neglectMs(girl.roomStayBand === "wife") / 60000);
@@ -12598,6 +13006,8 @@ async function tickLifeLoop() {
     persistRoom();
   }
   // 到期就離開，日本行程等走出房間才開始。生活線連著也一樣要走，不能把人留在房裡。
+  // 2026-11-25 使用者：室友不會因為沒人理就走——什麼時候出門由 RP5 決定（applyLifeSnap）
+  if (ROOMMATE_ON) { delete girl.leaveAfterErrand; return; }
   if (!sheIsOut() && (girl.leaveAfterErrand || visitDue(girl.roomVisitUntil, Date.now()))) {
     const keptUntil = girl.roomVisitUntil;
     delete girl.leaveAfterErrand;
@@ -12887,6 +13297,7 @@ function bindBodyPanel() {
   const saved = loadRoomSave();
   if (!saved?.girl) return;
   girl = saved.girl;
+  if (ROOMMATE_ON) girl.roommate = true;
   migrateAffectionScale(girl);
   player = ensurePlayer(saved.player);
   stripRetiredNude(girl);
@@ -12932,7 +13343,11 @@ function bindBodyPanel() {
     try { persistRoom(); } catch { /* ignore */ }
   }
   syncArousalOffChatTimer();
-  if ($("summon-status")) $("summon-status").textContent = `${girl.name}還在（狀態已保留）。長按她繼續聊，或讓她離開。`;
+  if ($("summon-status")) {
+    $("summon-status").textContent = ROOMMATE_ON && !girlInRoom()
+      ? `${girl.name}出門了，結束就會自己回來。想她早點回來可以叫她（3～5 金）。`
+      : `${girl.name}還在（狀態已保留）。長按她繼續聊，或讓她離開。`;
+  }
   // 舊房間存檔補綁 Comfy 模型（非 comfy / 已綁定則 no-op）
   ensureGirlComfyCkpt(girl).then(() => {
     if (girl) { try { persistRoom(); } catch { /* */ } renderCard(); }
@@ -13230,6 +13645,16 @@ document.addEventListener("click", (event) => {
 }, true);
 
 window.RoomCompanion = {
+  /** 上網看文章除錯（2026-11-25）：read＝現在叫她讀一篇（不看兩小時冷卻）；log＝讀過的。 */
+  read: { now: () => maybeRoomRead(true), log: () => (girl?.readLog ? [...girl.readLog] : []), lines: () => roomReadPromptLines(girl) },
+  /** 調戲態度除錯（2026-11-25）：attitude＝現在摸她會是哪一種；sess＝這一場的計數；prompt＝給 LLM 的態度區塊；open＝打開對話。 */
+  tease: {
+    attitude: () => (girl ? teaseAttitudeOf(girl) : null),
+    sess: () => (girl?.bodyState?.teaseSess ? { ...girl.bodyState.teaseSess } : null),
+    prompt: (actId = "breast") => (girl ? attitudePromptBlock(teaseAttitudeOf(girl), { stage: girl.stage || "stranger", arousal: girl.bodyState?.arousal || 0, hitId: TALK_ACTS.find((a) => a.id === actId)?.hitId || "", persToken: (PERSONALITY_RESIST[basePersonality(girl)] || {}).token || "" }) : ""),
+    react: () => (girl ? teaseReactLook(girl) : null),
+    open: () => { if (girl && !sheetOpen()) showSheet(); return sheetOpen(); },
+  },
   /** 主動聊天除錯：state＝girl.proactiveTalk；force(trigger)；tick()；ask(trigger)＝開場 prompt；weights()。 */
   talk: {
     state: () => (girl ? JSON.parse(JSON.stringify(talkState())) : null),

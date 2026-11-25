@@ -22,6 +22,20 @@ export const ACT_UNLOCK = {
   cervix_rub:    { label: "揉子宮口", openThr: 78, aroThr: 26, gain: 4 },
 };
 
+/**
+ * 2026-11-25 使用者：每一階解鎖都調難——門檻約 2 倍（開放度最多 100、性奮最多 28＝要到高潮附近），用說的請她可以跳過（request_ask.js）。
+ * ACT_UNLOCK 的原始數字不動（言語調戲上限 verbalArousalCap 照舊用原始的摸陰唇性奮門檻）。
+ */
+export const UNLOCK_SCALE = { open: 2, aro: 2 };
+export const UNLOCK_MAX = { open: 100, aro: 28 };
+function scaledNeed(row, affection) {
+  const { openDisc, aroDisc } = affectionDiscounts(affection);
+  return {
+    needOpen: Math.max(0, Math.min(UNLOCK_MAX.open, row.openThr * UNLOCK_SCALE.open) - openDisc),
+    needAro: Math.max(0, Math.min(UNLOCK_MAX.aro, row.aroThr * UNLOCK_SCALE.aro) - aroDisc),
+  };
+}
+
 /** 感情折扣：每 10 感情 → 開放度門檻 −3、性奮門檻 −1。 */
 export function affectionDiscounts(affection) {
   const steps = Math.max(0, Math.floor((Number(affection) || 0) / 10));
@@ -52,9 +66,7 @@ export function actOpennessLock(who, actId, affection = 0) {
   const row = ACT_UNLOCK[actId];
   if (!row) return { ok: true, locked: false }; // 未列門檻的動作（如 pull_out）另判
   const b = who.bodyState;
-  const { openDisc, aroDisc } = affectionDiscounts(affection);
-  const needOpen = Math.max(0, row.openThr - openDisc);
-  const needAro = Math.max(0, row.aroThr - aroDisc);
+  const { needOpen, needAro } = scaledNeed(row, affection);
   const open = b.openness || 0;
   const aro = b.arousal || 0;
   if (open >= needOpen) return { ok: true, locked: false, via: "openness" };
@@ -87,7 +99,6 @@ export function opennessHint(who, affection = 0) {
   if (!b) return "";
   const open = b.openness || 0;
   const aro = b.arousal || 0;
-  const { openDisc, aroDisc } = affectionDiscounts(affection);
   // 找下一個尚未解鎖的動作
   const order = [
     "waist", "breast", "butt", "breast_knead", "breast_suck", "nipple_lick",
@@ -96,8 +107,7 @@ export function opennessHint(who, affection = 0) {
   for (const id of order) {
     const row = ACT_UNLOCK[id];
     if (!row) continue;
-    const needOpen = Math.max(0, row.openThr - openDisc);
-    const needAro = Math.max(0, row.aroThr - aroDisc);
+    const { needOpen, needAro } = scaledNeed(row, affection);
     if (open >= needOpen || aro >= needAro) continue;
     return `開放度 ${open}・下一解鎖「${row.label}」需≥${needOpen}（或性奮≥${needAro}）`;
   }

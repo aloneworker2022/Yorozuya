@@ -161,3 +161,17 @@ t("每晚沉澱：world.growth 同步、【最近的她】一直在、LINE 不�
 });
 
 console.log(`${pass} passed`);
+
+{
+  // 2026-11-25 室友的位置一句話
+  const L = await import(new URL("../web/content/life_schedule.js", import.meta.url));
+  const now = 1_800_000_000_000;
+  const w = (o) => ({ roommate: true, phase: "japan", ...o });
+  if (L.roommateOutLabel({}, now) !== "") throw new Error("not roommate");
+  if (L.roommateOutLabel(w({ phase: "room" }), now) !== "在房間") throw new Error("room");
+  if (L.roommateOutLabel(w({ agenda: { kind: "work", until: now + 2 * 3600e3 } }), now) !== "出門打工・還有 2 小時") throw new Error(L.roommateOutLabel(w({ agenda: { kind: "work", until: now + 2 * 3600e3 } }), now));
+  if (L.roommateOutLabel(w({ agenda: { kind: "stroll", until: now + 40 * 60e3 } }), now) !== "出門溜達・還有 40 分") throw new Error("stroll");
+  if (L.roommateOutLabel(w({ agenda: { kind: "travel", until: now + 10.5 * 3600e3 }, travel: "京都" }), now) !== "旅遊（京都）・還有 10.5 小時") throw new Error("travel");
+  if (L.roommateOutLabel(w({ agenda: { kind: "escort", until: now + 3600e3 } }), now) !== "") throw new Error("escort has own chip");
+  console.log("ok - roommateOutLabel");
+}

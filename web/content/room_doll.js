@@ -88,7 +88,7 @@
       if (belly > 0) out.belly = belly;
       return out;
     }
-    function dollKey(d) { return [d.height_cm, d.build, d.cup, d.hair, d.skirt || '-'].concat(d.belly ? [d.belly] : []).join('|'); }
+    function dollKey(d) { return [d.height_cm, d.build, d.cup, d.hair, d.skirt || '-'].concat(d.belly ? [d.belly] : [], Array.isArray(d._skin) ? ['skin' + d._skin.join(',')] : []).join('|'); }
     function bparams(name) { return Object.assign({}, BASE, BUILDS[name] || {}); }
 
     // ------------------------------------------------------------ SDF primitives
@@ -1294,6 +1294,7 @@
         }
         if (hit[i]) depth[i] = (2 * tt[i] + (tt[i] - (y + .5 - ay))) / 32;
       }
+      if (Array.isArray(doll._skin)) skinTone(pixels, m, hit, mat, tt, width, height, doll._skin);
       for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {   // pinholes take their neighbours' depth
         const i = y * width + x;
         if (!holes[i]) continue;
@@ -1428,6 +1429,38 @@
         set(i, near ? LINE_RGB : bustEdge(bust, hit, tt, i, x, y, width, height, BUST_DEPTH) ? BUST_RGB : BODY_RGB, BODY_A);
       }
       return { width, height, anchor: { x: ax, y: ay }, pixels, scale: k, box: { half, ay } };
+    }
+    /** 2026-11-25 使用者：肉色模式（聊天黑影同一個開關）——房間小人也上肉色、一階陰影、不描黑線；頭髮不動。
+     *  tt＝射線參數（越大越近）。畫面一格換成「像素世界」：P＝(sx, 2t, t−sy)（x 右、y 朝鏡頭、z 上），
+     *  兩個切線 (1, 2tx, tx)、(0, 2ty, ty−1) 外積 → 法線 (−2tx, 1−ty, 2ty)。光從左上前方來。 */
+    function skinTone(pixels, m, hit, mat, tt, W, Hh, skin) {
+      const SK = skin.map((v) => Math.max(0, Math.min(255, Math.round(v)))), SH = SK.map((v) => Math.round(v * .76));
+      const L = (() => { const v = [-.45, .62, .64], k = Math.hypot(...v); return v.map((a) => a / k); })();
+      const JUMP = 4.5, skinAt = (x, y) => x >= 0 && y >= 0 && x < W && y < Hh && m[y * W + x] && hit[y * W + x] && mat[y * W + x] !== 2;
+      for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        if (!m[i] || mat[i] === 2) continue;
+        let col = SK;
+        if (hit[i]) {
+          const t0 = tt[i];
+          let edge = false, gx = 0, gy = 0, cx = 0, cy = 0, ox = 0, oy = 0;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const x2 = x + dx, y2 = y + dy;
+            if (!skinAt(x2, y2)) { if (!(x2 >= 0 && y2 >= 0 && x2 < W && y2 < Hh && m[y2 * W + x2] && mat[y2 * W + x2] === 2)) { ox += dx; oy += dy; } continue; }
+            const q = tt[y2 * W + x2];
+            if (q - t0 > JUMP) { edge = true; continue; }   // 前面疊著別的部位：這一格是遠的那邊
+            if (t0 - q > JUMP) continue;
+            if (dx) { gx += dx * (q - t0); cx++; } else { gy += dy * (q - t0); cy++; }
+          }
+          if (edge) col = SH;   // 不畫黑線：前後疊的地方用深一階的肉色分開
+          else {
+            const tx = cx ? gx / cx : 0, ty = cy ? gy / cy : 0;
+            let n = [-2 * tx + ox * .9, 1 - ty, 2 * ty - oy * .9]; const k = Math.hypot(...n) || 1; n = n.map((a) => a / k);
+            col = n[0] * L[0] + n[1] * L[1] + n[2] * L[2] > .55 ? SK : SH;
+          }
+        }
+        pixels[i * 4] = col[0]; pixels[i * 4 + 1] = col[1]; pixels[i * 4 + 2] = col[2]; pixels[i * 4 + 3] = 255;
+      }
     }
     function bustEdge(bust, hit, tt, i, x, y, w, h, thr) {
       if (!bust[i]) return false;

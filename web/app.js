@@ -62,7 +62,7 @@ import { collectPaid, repayToast, returnDue, workingNow, peekCost, peekNoticed, 
 import { openWifepayPeek, buildWifepayPeekOpts } from "./content/escort_peek.js?v=36";
 import * as Preg from "./content/pregnancy.js?v=1"; // 懷孕（2026-10-10）
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
-import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord } from "./content/life_schedule.js?v=13";
+import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord, roommateOutLabel } from "./content/life_schedule.js?v=15";
 import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, scrubHusband, isWifeStage, isDatingPlus } from "./content/girl_voice.js?v=1";
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
@@ -8286,7 +8286,9 @@ function roomUndressState(raw) {
     ? raw.pantiesBy
     : "";
   const sexStance = pantiesBy === "self" ? "順從" : pantiesBy === "help" ? "被動" : "";
-  return { stage, shot, pantiesBy, sexStance };
+  // consent（2026-11-25，同 test_room_summon snapshotUndress）：她自己答應脫的，回神不會穿回去
+  const consent = stage > 0 && !!raw?.consent;
+  return { stage, shot, pantiesBy, sexStance, ...(consent ? { consent: true } : {}) };
 }
 
 /** 把名冊妹子編成房間 session 用物件（同 id，進度可回寫） */
@@ -13400,6 +13402,14 @@ function lineWhereabouts(s) {
     return { kind: "room", text: "你的人在召喚者的房間裡。時間以台灣為準。" };
   }
   const home = world?.home?.name ? `「${world.home.name}」` : "";
+  // 2026-11-25 室友：家是他的房間；出門是傳送去日本，做完回房間
+  if (world?.roommate && world?.activity !== "escort") {
+    if (world.phase !== "japan") return { kind: "room", text: "你人在他的房間（你住在這裡），他現在不在旁邊看手機。時間以台灣為準。" };
+    const job = world.job?.name ? `「${world.job.name}」` : "";
+    if (world.activity === "work") return { kind: "work", text: `你從他的房間出門，人在日本的打工場所${job}。做完就回房間。時間以日本為準。` };
+    if (world.activity === "travel") return { kind: "wander", text: `你從他的房間出門，去日本${world.travel ? `「${world.travel}」` : ""}旅遊中，玩完就回房間。時間以日本為準。` };
+    return { kind: "wander", text: "你從他的房間出門，人在日本外面溜達。逛完就回房間。時間以日本為準。" };
+  }
   if (world?.activity === "escort") {
     // 接客還債：群裡只說在工作，絕對不講細節（2026-10-10）
     return { kind: "work", text: "你人在日本，正在工作（為了幫他還債去接客——這件事絕對不在群裡講，只說在忙、在工作）。時間以日本為準。" };
@@ -18896,6 +18906,7 @@ function renderSuccubi() {
           ${!s.ntr && s.summoner?.taken ? `<span class="stage-chip" style="color:var(--red)">→ 被召喚走</span>`
             : isKanban(s.id) ? `<span class="stage-chip" style="color:var(--gold)">★ 在店頭</span>` : ""}
           ${!s.ntr && workingNow(s) ? `<span class="stage-chip escort-chip" style="color:#e88ab4">接客中・第 ${currentClient(s)} 位客人</span>` : ""}
+          ${!s.ntr && !workingNow(s) && roommateOutLabel(s.world) ? `<span class="stage-chip roommate-chip" style="color:#8ec5e8">${esc(roommateOutLabel(s.world))}</span>` : ""}
           ${s.summoner && !s.ntr ? `<span class="stage-chip" style="color:var(--red)">⚠ ${esc(summonerById(s.summoner.id)?.name || "被纏上")}${s.summoner.ringUnlocked ? "・已解環" : ""}</span>` : ""}</div>
         ${affThermoHtml(s)}
       </div>
