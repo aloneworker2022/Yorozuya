@@ -16,11 +16,27 @@ export const TALK_KNOBS = {
   IGNORE_MOOD: { normal: 10, pathological_wife: 18 },
   MEMORY_FRESH_MS: 6 * HR,    // 生活記憶／LINE 事件多新才算「想講」
   WAKE_FRESH_MS: 10 * MIN,
+  /** 2026-11-25 使用者：妻子會主動要求做愛（接在主動聊天裡）。性慾越高、越久沒做（飢渴越高）越常；約一天 1～3 次。 */
+  WANT_LIBIDO: { low: 0.05, mid: 0.12, high: 0.25, peak: 0.45 },
+  WANT_GAP_MS: 4 * HR,        // 兩次之間至少 4 小時
+  WANT_PER_DAY: 3,            // 24 小時內最多 3 次
 };
 const K = TALK_KNOBS;
 
-export const TRIGGERS = ["miss", "share", "vent", "memory", "line", "woke", "bored"];
-export const TRIGGER_ZH = { miss: "想你", share: "心情好想分享", vent: "心情差想討拍", memory: "外面發生的事", line: "LINE 群的事", woke: "剛睡醒", bored: "無聊" };
+export const TRIGGERS = ["miss", "share", "vent", "memory", "line", "woke", "bored", "want"];
+export const TRIGGER_ZH = { miss: "想你", share: "心情好想分享", vent: "心情差想討拍", memory: "外面發生的事", line: "LINE 群的事", woke: "剛睡醒", bored: "無聊", want: "想做愛" };
+
+/** 性慾數值 → 低／中／高／頂（跟 body_state libidoStage 同一套切法）。 */
+function libidoBand(n) { const a = Number(n) || 0; return a <= 7 ? "low" : a <= 15 ? "mid" : a <= 22 ? "high" : "peak"; }
+/** 24 小時內她主動要了幾次（wantLog：時間戳）。 */
+export function wantToday(state, now = Date.now()) {
+  return (Array.isArray(state?.wantLog) ? state.wantLog : []).filter((t) => now - t < 24 * HR).length;
+}
+/** 記一次「她主動要」（只留 24 小時內的）。 */
+export function noteWant(state, now = Date.now()) {
+  if (!state) return;
+  state.wantLog = [...(Array.isArray(state.wantLog) ? state.wantLog : []).filter((t) => now - t < 24 * HR), now];
+}
 
 /** 女友以上才會主動來聊。 */
 export function talkEligible(stageKey) { return stageIndexOf(stageKey) >= STAGE_IDX.girlfriend; }
@@ -118,6 +134,17 @@ export function triggerWeights(ctx = {}) {
   if (ctx.lineEvent && ctx.lineEvent.t !== ctx.usedLineT) w.line = JEALOUS.has(ctx.lineEvent.kind) ? 2.5 * (patho ? 1.5 : 1) : 1.5;
   if (Number.isFinite(ctx.wokeAgoMs) && ctx.wokeAgoMs < K.WAKE_FRESH_MS) w.woke = 3;
   if (patho) w.bored *= 1.4;
+  // 想做愛（妻子以上）：性慾 × 飢渴；兩次至少隔 4 小時、一天最多 3 次；正在氣你就不來
+  if (isWifeStage(stage) && !(mt === "angry" && ml >= 30)) {
+    const log = Array.isArray(ctx.wantLog) ? ctx.wantLog : [];
+    const now = Number(ctx.now) || Date.now();
+    const last = log.length ? Math.max(...log) : 0;
+    const today = log.filter((t) => now - t < 24 * HR).length;
+    if (now - last >= K.WANT_GAP_MS && today < K.WANT_PER_DAY) {
+      const hunger = Math.max(0, Math.min(100, Number(ctx.hunger) || 0));
+      w.want = (K.WANT_LIBIDO[libidoBand(ctx.libido)] || K.WANT_LIBIDO.mid) * (0.5 + hunger / 50) * (patho ? 1.5 : 1);
+    }
+  }
   return w;
 }
 export function pickTrigger(ctx = {}, rnd = Math.random) {
@@ -140,11 +167,14 @@ export function openerAsk(trigger, { stage = "girlfriend", pet = "", playerName 
       : `你很在意 LINE 群裡的事：${d.lineText || ""}。你有點吃醋或不是滋味，想當面問他${d.withName ? `、提到${d.withName}口氣會差一點` : ""}`,
     woke: "你剛在房間裡睡醒，迷迷糊糊地走過來找他說話",
     bored: "你閒著沒事、有點無聊，走過來找他聊天",
+    want: "你想跟他做愛了，自己走過來邀他",
   }[trigger] || "你想找他聊天";
   const patho = stage === "pathological_wife" ? "你很黏、很依賴，帶一點佔有慾。" : "";
   return [
     `（你自己走到他面前，主動找他說話：${why}。${patho}`,
-    "只寫你開口的第一句（一到兩句），用你平常的口氣，不要旁白，不要求他做愛、不要提性。",
+    trigger === "want"
+      ? "只寫你開口的第一句（一到兩句）：撒嬌、害羞或直白都可以（照你的個性），問他要不要跟你做。不要旁白。"
+      : "只寫你開口的第一句（一到兩句），用你平常的口氣，不要旁白，不要求他做愛、不要提性。",
     `${addressRule(stage, pet, playerName)}`,
     "外面跟別人越線的事是秘密，不要提。）",
   ].join("");
@@ -158,12 +188,13 @@ const FALLBACK = {
   line: ["你剛剛在群裡幹嘛一直回她？", "……群裡那個是怎樣？你說清楚。"],
   woke: ["嗯…我睡醒了…你在幹嘛…", "哈啊…睡好久…陪我說話。"],
   bored: ["好無聊喔～跟我聊天嘛。", "欸，你在忙嗎？"],
+  want: ["老公……今天想要了，陪我好不好？", "欸……要不要做？我想要你。"],
 };
 export function fallbackOpener(trigger, stage = "girlfriend", rnd = Math.random) {
   const pool = FALLBACK[trigger] || FALLBACK.bored;
   let line = pool[Math.floor(rnd() * pool.length)];
-  if (trigger === "line" && !isWifeStage(stage)) line = line.replace(/老公/g, "");
-  if (isWifeStage(stage) && trigger !== "line" && rnd() < .5) line = `老公，${line}`;
+  if (!isWifeStage(stage)) line = line.replace(/老公/g, "");
+  if (isWifeStage(stage) && trigger !== "line" && trigger !== "want" && rnd() < .5) line = `老公，${line}`;
   return line;
 }
 

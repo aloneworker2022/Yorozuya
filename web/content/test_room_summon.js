@@ -234,8 +234,8 @@ import {
   TRIGGERS as TALK_TRIGGERS, TRIGGER_ZH as TALK_TRIGGER_ZH, talkEligible, ensureTalkState, talkGate, tickTalk, freshMemory, freshLineEvent,
   pickTrigger as pickTalkTrigger, triggerWeights as talkTriggerWeights, openerAsk as talkOpenerAsk, fallbackOpener as talkFallbackOpener,
   noteOpened as talkNoteOpened, noteReplied as talkNoteReplied, noteClosed as talkNoteClosed, noteIgnored as talkNoteIgnored, waitExpired as talkWaitExpired,
-  talkLabel, TALK_KNOBS,
-} from "./proactive_talk.js?v=1";
+  talkLabel, TALK_KNOBS, noteWant as talkNoteWant,
+} from "./proactive_talk.js?v=2";
 import { ensureMind, rememberExperience, rememberHomeReturn, lifeMemoryPromptLines, affairDisclosure } from "./life_memory.js?v=8";
 import { friendRows, applyLifeTraces, recentAffair, FRIEND_STAGES, FRIEND_STAGE_ZH } from "./life_friends.js?v=2";
 import {
@@ -765,7 +765,10 @@ async function openBegDialog() {
     if (occ.score >= 95) {
       line = occupancyMoanLine(occ, who) || "……嗯啊…";
     } else {
-      const ask = [
+      const ask = begDialog.kind === "want" ? [
+        talkOpenerAsk("want", { stage: who.stage || "stranger", pet: who.playerPet || "", playerName: who.playerName || "" }),
+        occupancyPromptLine(occ),
+      ].filter(Boolean).join("\n") : [
         `（你忍不住了，自己走到他面前來——就是來求他跟你做愛的${peak ? "，身體已經渴到極點" : ""}。只寫你開口的第一句：直接、撒嬌又難耐地求他現在跟你做愛，一兩句，不要先聊別的，不要旁白。）`,
         occupancyPromptLine(occ),
       ].filter(Boolean).join("\n");
@@ -776,7 +779,8 @@ async function openBegDialog() {
         console.warn("[beg opening]", err?.message || err);
       }
       const clean = scrubHusband(cleanLine(reply), who.stage || "stranger");
-      line = presentOccupied(who, clean || begFallbackLine(), "", occ) || begFallbackLine();
+      const fb = begDialog?.kind === "want" ? talkFallbackOpener("want", who.stage || "stranger") : begFallbackLine();
+      line = presentOccupied(who, clean || fb, "", occ) || fb;
     }
   } catch (err) {
     console.warn("[beg]", err?.message || err);
@@ -1011,6 +1015,11 @@ function talkContext(who = girl) {
     wokeAgoMs: h0?.id === "sleep" && mem?.cur?.id !== "sleep" ? Date.now() - (Number(h0.end) || 0) : Infinity,
     usedMemoryId: st?.usedMemoryId || "",
     usedLineT: st?.usedLineT || 0,
+    // 想做愛（妻子以上，2026-11-25）：性慾、飢渴、最近主動要過幾次
+    libido: Number(who.bodyState?.libido) || 0,
+    hunger: HUNGER_ON ? peekHunger(who, Date.now(), who.stage || "stranger") : 0,
+    wantLog: Array.isArray(st?.wantLog) ? st.wantLog : [],
+    now: Date.now(),
   };
 }
 function talkDetail(trigger, ctx) {
@@ -1035,6 +1044,7 @@ function startProactiveTalk(trigger = "", { force = false } = {}) {
   st.lastTrigger = trig;
   if (trig === "memory" && ctx.memory) st.usedMemoryId = ctx.memory.id;
   if (trig === "line" && ctx.lineEvent) st.usedLineT = ctx.lineEvent.t;
+  if (trig === "want") talkNoteWant(st);
   pushDebug(`主動聊天：她想跟你說話（${TALK_TRIGGER_ZH[trig]}）`);
   persistRoom();
   const ok = window.RoomActor?.startActivity?.("approach_talk");
@@ -11452,6 +11462,9 @@ function showSheet() {
   const begNow = !!(wasHidden && girl && HUNGER_ON && !begDialog && begPending(girl));
   // 她主動來找你聊（求歡優先）：這次她先開口
   if (wasHidden && girl && !begNow) takeProactiveOpen();
+  // 2026-11-25 使用者：妻子主動要求做愛（主動聊天的「想做愛」）→ 跟她來求一樣的對話框（做愛／拒絕），口氣是邀不是求
+  const wantNow = !!(wasHidden && girl && !begNow && !begDialog && talkOpenNow?.trigger === "want");
+  if (wantNow) talkOpenNow = null;
   if (wasHidden && girl) activityChatOpen();
   if (!girl) {
     typeJob += 1;
@@ -11475,8 +11488,8 @@ function showSheet() {
     void openEscortDialog();
     return;
   }
-  if (begNow) {
-    begDialog = { phase: "opening", at: Date.now() };
+  if (begNow || wantNow) {
+    begDialog = { phase: "opening", at: Date.now(), kind: wantNow ? "want" : "hunger" };
     void openBegDialog();
     return;
   }

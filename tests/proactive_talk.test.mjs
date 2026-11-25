@@ -110,4 +110,18 @@ t("活動 approach_talk：前面、正面、權重 0（不會自己亂抽）、�
   const hit = A.interrupt(mem, { now: T0 + 60e3 });
   assert.equal(hit.affection, 0); assert.equal(hit.mood, null);
 });
+t("2026-11-25 想做愛：只有妻子以上；性慾、飢渴越高越常；隔 4 小時、一天最多 3 次；在氣你就不來", () => {
+  const now = 10 * 24 * 3600e3;
+  const w = (o) => P.triggerWeights({ stage: "wife", libido: 12, hunger: 25, now, ...o }).want || 0;
+  assert.equal(P.triggerWeights({ stage: "lover", libido: 30, hunger: 90, now }).want || 0, 0);
+  assert.ok(w({}) > 0);
+  assert.ok(w({ libido: 30, hunger: 80 }) > w({ libido: 3, hunger: 5 }) * 5);
+  assert.equal(w({ wantLog: [now - 3600e3] }), 0, "一小時前才要過");
+  assert.equal(w({ wantLog: [now - 20 * 3600e3, now - 15 * 3600e3, now - 10 * 3600e3] }), 0, "一天三次了");
+  assert.ok(w({ wantLog: [now - 5 * 3600e3] }) > 0);
+  assert.equal(w({ mood: { type: "angry", level: 60 } }), 0);
+  const st = {}; P.noteWant(st, now); P.noteWant(st, now + 1);
+  assert.equal(P.wantToday(st, now + 2), 2);
+  assert.match(P.openerAsk("want", { stage: "wife" }), /要不要跟你做/);
+});
 console.log(`\n${pass} passed`);
