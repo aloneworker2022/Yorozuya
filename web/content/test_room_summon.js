@@ -5971,7 +5971,7 @@ async function maybeGenOwnActionShot(who, actId) {
 
 /** 組繪圖單。clothedOnly＝換衣服（半身、立繪、穿衣動作）。否則再加裸體動作、脫衣。剖面只在召喚。 */
 async function collectSummonPortraitItems(who = girl, opts = {}) {
-  if (!who || (who === girl && sheIsOut() && !summoning && !pending && !summonBackBusy)) return [];
+  if (!who || (who === girl && sheIsOut() && !summoning && !pending && !summonBackBusy && !bgLookAllowOut)) return [];   // bgLookAllowOut：她出門時在背景先畫回來要穿的那套
   if (pregenning) throw new Error("預產進行中");
   pregenning = true;
   try {
@@ -12921,7 +12921,65 @@ function roommateGoOut(row) {
   const st = $("summon-status");
   if (st) st.textContent = `${who.name}出門去日本${what}${dest}了${left ? `（${left}）` : ""}，結束就會自己回來。想她早點回來可以叫她（3～5 金）。`;
   pushDebug(`室友出門：${what}${dest}`);
+  // 2026-11-26 回來要穿的那套：照回來的時段抽，她不在的時候背景先畫
+  const until = Number(row?.agenda?.until) || 0, back = until > Date.now() ? (until - Date.now()) / 3.6e6 : 3;
+  if (changeOutfitQuiet(who, (taiwanNow().hour + Math.round(back)) % 24)) pushDebug(`回來要穿：${who.outfitName}`);
+  persistRoom({ quiet: true });
+  void refreshLooks(who, "出門");
 }
+/**
+ * 2026-11-26 使用者：新版（室友住房間、不會再被召喚）什麼時候換衣服、產新圖——
+ *   ① 出門時：照回來的時段抽一套新衣服，她不在的時候交給 RP5 先畫（手機關了也照跑），回家就穿新的；
+ *   ② 每天早上（台灣時間 6 點後第一次看到她醒著、在房間、沒脫衣）：換一套、背景補圖；
+ *   ③ 關係升階：補這一階才會用到、還沒產的圖。
+ *   都跟召喚同一套產圖清單（缺的、換了衣服的、上一趟出現過的才畫），只是不走儀式、不擋聊天。
+ */
+let bgLookBusy = false, bgLookAllowOut = false;
+function lookDayKey() { return taiwanNow().label.split(" ")[0]; }
+/** 照時段換一套（不顯示換衣服的過程）。換了回 true。 */
+function changeOutfitQuiet(who, hour) {
+  if (!who) return false;
+  rememberPicOutfit(who);   // 記住畫面上的穿衣圖是哪一套 → 產圖清單會重畫穿衣那些
+  let picked = pickSummonOutfit(who.look, { hour });
+  for (let k = 0; k < 6 && picked && picked.name === who.outfitName; k++) picked = pickSummonOutfit(who.look, { hour });   // 盡量換一套不一樣的（衣櫃只有白 T 就照穿）
+  if (!picked || picked.name === who.outfitName) return false;
+  applyWornPick(who, picked);
+  try { clearVisitUndress(who); } catch { /* */ }
+  return true;
+}
+async function refreshLooks(who, why) {
+  if (!who || who !== girl || bgLookBusy || pregenning || summoning || pending || summonBackBusy) return false;
+  bgLookBusy = true; bgLookAllowOut = true;
+  pushDebug(`背景補圖（${why}）：${who.outfitName || wornOutfit(who)}`);
+  let q = null;
+  try { q = await pregenSummonBundle(who, { portraits: true, sex: true, mode: "back", reuseShown: true }); }
+  catch (err) { console.warn("[looks]", err?.message || err); }
+  finally { bgLookAllowOut = false; bgLookBusy = false; }
+  if (girl !== who) return false;
+  beginShownVisit(who, q);
+  if (q?.finished && q.id) { try { await ackSummonQueue(q.id); } catch { /* */ } }
+  if (!sheIsOut()) { try { await cacheVisitPics(who); paintHalfPortrait(who); } catch { /* */ } }
+  persistRoom({ quiet: true });
+  return true;
+}
+function looksTick() {
+  if (!girl || bgLookBusy || pregenning || summoning || pending || summonBackBusy || talkBusy || sheetOpen() || sheIsOut()) return;
+  const t = taiwanNow(), day = lookDayKey(), si = STAGE_INDEX[girl.roomStage || girl.stage] ?? 0;
+  if (girl.lookStage == null) { girl.lookStage = si; persistRoom({ quiet: true }); }
+  if (!girl.lookDay) { girl.lookDay = day; persistRoom({ quiet: true }); return; }   // 第一次（剛更新）：今天先不換
+  const asleep = window.RoomActor?.activity?.()?.kind === "sleep";
+  if (girl.lookDay !== day && t.hour >= 6 && !asleep && undressStage(girl) === 0 && !isCollapsed(girl) && !girl.errand) {
+    girl.lookDay = day;
+    if (changeOutfitQuiet(girl, t.hour)) pushDebug(`早上換衣服：${girl.outfitName}`);
+    girl.lookStage = si;
+    void refreshLooks(girl, "早上");
+    return;
+  }
+  if (si > girl.lookStage) { girl.lookStage = si; void refreshLooks(girl, "關係升階"); }
+  else if (si < girl.lookStage) girl.lookStage = si;
+}
+if (typeof window !== "undefined") setInterval(() => { try { looksTick(); } catch (err) { console.warn("[looks tick]", err?.message || err); } }, 60000);
+
 /** 室友回家：自己走回房間（不用儀式、不用付錢）。打開對話時用「剛回來」的開場。 */
 function roommateComeHome(row) {
   const who = girl;
@@ -12937,6 +12995,8 @@ function roommateComeHome(row) {
   const st = $("summon-status");
   if (st) st.textContent = `${who.name}回來了。`;
   pushDebug(`室友回家（${OUT_ZH[who.homeBackKind] || "外出"}完）`);
+  who.lookDay = lookDayKey();   // 出門回來已經換過了，今天早上那次不用再換
+  void refreshLooks(who, "回家");   // 出門時沒畫完的接著補；下載到手機
 }
 
 function applyLifeSnap(snap) {
@@ -13860,6 +13920,8 @@ window.RoomCompanion = {
   occupant: roomOccupant,
   /** 2026-11-26 請房間這位回日本（名冊換人用）。 */
   sendHome: sendRoommateHome,
+  /** 2026-11-26 換衣服＋產圖時機除錯：tick＝跑一次早上／升階檢查；refresh＝現在背景補圖；change(hour)＝照時段換一套；state＝記錄。 */
+  looks: { tick: () => looksTick(), refresh: (why = "除錯") => refreshLooks(girl, why), change: (h = taiwanNow().hour) => changeOutfitQuiet(girl, h), state: () => (girl ? { lookDay: girl.lookDay, lookStage: girl.lookStage, outfit: girl.outfitName, busy: bgLookBusy } : null) },
   /** 上一次 adopt 被拒的原因 { reason, occupant?, text }。 */
   lastRefusal: () => lastAdoptRefusal,
   summonFromRoster: summonRosterGirlIntoRoom,
