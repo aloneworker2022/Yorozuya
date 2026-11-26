@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=32', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=33', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8, col_cb: 8, col_cg: 8, col_yb: 8, col_yg: 8, col_f: 8, col_x: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   // 2026-11-25 使用者（調戲不帶感）：反應改跟「態度」走（tease_attitude.js）——拒絕＝stranger（推開、遮住、掙扎）、無奈拒絕＝friend（輕推遮住）、
@@ -1215,9 +1215,12 @@
     return 0;
   }
   /** 衣服（使用者：灰色、微微透明，黑影模式）：身體那層上面，內衣、外衣各疊一層灰；看得到底下的身體輪廓，T 恤底下隱約看到胸罩。 */
-  function veil(out, layer, outer) {
+  // 2026-11-26 使用者：白色 T 恤做得不對（灰灰的、領口袖口下襬一圈深色像 polo 衫）→ 預設那件 T 恤（doll.cloth＝tee）用白色：
+  //   布 #ececf0、滾邊（羅紋領、袖口、下襬）只比布暗一點點 #e0e0e7（看得出縫線、不是深色一圈）；布疊在布上的邊（LO 標記色）暗 8%＝看得出袖子、皺褶
+  const TEE_WHITE = { 1: [236, 236, 240], 2: [224, 224, 231], 3: [220, 220, 228] };
+  function veil(out, layer, outer, pal) {
     // 2026-11-21 使用者：T 恤不要這麼透明（90% 還是太透）→ 外衣完全不透明（胸型改用布離身體多遠的陰影表現，見 drawFrame）；內衣照舊微微透明
-    const GRAY = { 1: [168, 168, 180], 2: [124, 124, 138], 3: [132, 131, 146] }, K = outer ? { 1: 1, 2: 1, 3: 1 } : { 1: .72, 2: .82, 3: .72 }, OUT = { 1: [118, 116, 130, 200], 2: [96, 94, 110, 220], 3: [100, 98, 114, 210] };
+    const GRAY = pal || { 1: [168, 168, 180], 2: [124, 124, 138], 3: [132, 131, 146] }, K = outer ? { 1: 1, 2: 1, 3: 1 } : { 1: .72, 2: .82, 3: .72 }, OUT = { 1: [118, 116, 130, 200], 2: [96, 94, 110, 220], 3: [100, 98, 114, 210] };
     for (let i = 0; i < out.length; i += 4) {
       const c = clothAt(layer, i); if (!c) continue;
       // 2026-11-21 第二階段的布（外衣那層，照標記色）：黑色情趣布（255,128,0）不透明黑；絲襪（128,0,0）半透明深色；薄紗／濕身（0,255,255／0,170,170）半透明白、看得到乳暈
@@ -1233,7 +1236,8 @@
         const braCloth = (r0 === 250 && g0 === 250 && b0 === 252) || (r0 === 214 && g0 === 216 && b0 === 228), braTrim = r0 === 255 && g0 === 0 && b0 === 0;
         if (braCloth || braTrim) { const q = braTrim ? [60, 55, 74] : [22, 19, 28]; out[i] = q[0]; out[i + 1] = q[1]; out[i + 2] = q[2]; out[i + 3] = 245; continue; }
       }
-      const g = GRAY[c], k = K[c];
+      let g = GRAY[c]; const k = K[c];
+      if (pal && layer[i] === 214 && layer[i + 1] === 216 && layer[i + 2] === 228) g = g.map((v) => v * .92);   // 布疊布的邊
       if (out[i + 3]) {
         // 衣服底下不透出乳暈、乳頭（只透出身體輪廓）
         if ((out[i] === 72 && out[i + 1] === 58 && out[i + 2] === 84) || (out[i] === 88 && out[i + 1] === 72 && out[i + 2] === 100)) { out[i] = 51; out[i + 1] = 45; out[i + 2] = 64; }
@@ -1298,7 +1302,7 @@
           if (l && rr && u2 && dn) fill.push([j, l - 1]);   // 用左邊那塊布的顏色補（黑馬甲上的洞補黑的）
         }
         for (const [j, from] of fill) { op[j] = op[from]; op[j + 1] = op[from + 1]; op[j + 2] = op[from + 2]; op[j + 3] = 255; } }
-      veil(px, o.pixels, true);
+      veil(px, o.pixels, true, doll.cloth === 'tee' ? TEE_WHITE : null);
       // 外衣不透明，胸型靠 T 恤自己的形狀打光（光從上面來）：布面往下、往後斜（乳房下面垂下來那一片）暗一點，往上斜（上胸）亮一點。
       //   深度＝(y＋z)/32 → 往下一列：每往下 1 格人偶單位，布往前多少 s＝32·Δ深度·scale＋1（直立的面＝0）。先平均一下去掉雜訊。
       const Wd = o.width, Hd = o.height, n = Wd * Hd, sv = new Float32Array(n), wt = new Float32Array(n), op = o.pixels;
@@ -1378,7 +1382,7 @@
       new Function('globalThis', 'module', src)(box, undefined);   // 兩個人偶檔都叫 RoomDoll → 另外裝，不蓋掉房間用的
       F = box.RoomDoll;
       try {
-        const code = `const F=(${F.factorySource})();const reactOf=${reactOf};const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const skinShadow=${skinShadow};const skinPass=${skinPass};const FACE_BLANK=${JSON.stringify(FACE_BLANK, (kk, v) => (kk === 'grid' ? undefined : v))};const paintFace=${paintFace};const clothAt=${clothAt};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
+        const code = `const F=(${F.factorySource})();const reactOf=${reactOf};const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const skinShadow=${skinShadow};const skinPass=${skinPass};const FACE_BLANK=${JSON.stringify(FACE_BLANK, (kk, v) => (kk === 'grid' ? undefined : v))};const paintFace=${paintFace};const clothAt=${clothAt};const TEE_WHITE=${JSON.stringify(TEE_WHITE)};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
 onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},j.cv);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
         const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
         for (let i = 0; i < POOL; i++) {

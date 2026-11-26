@@ -1182,7 +1182,7 @@
       const Zs = [], G = [];   // G[j][k]＝第 j 層、第 k 角的布面點
       for (let j = 0; j <= nz; j++) {
         const z = top - (top - hem) * j / nz, yc = tor.yl(z) + .8, raw = [];
-        if (z > tor.C - .5) for (let k = 0; k < K; k++) { const t = 2 * Math.PI * k / K, dir = [-Math.sin(t), -Math.cos(t), 0], q = rayHit(sh, [-dir[0] * 22, yc - dir[1] * 22, z], dir, o.shirt ? null : (p) => !p.nip, 44, .12); if (q) raw.push([q[0], q[1]]); }
+        if (z > tor.C - .5) for (let k = 0; k < K; k++) { const t = 2 * Math.PI * k / K, dir = [-Math.sin(t), -Math.cos(t), 0], q = rayHit(sh, [-dir[0] * 22, yc - dir[1] * 22, z], dir, o.shirt ? null : (p) => !p.nip && !(o.tee2 && (p.part === 'armL' || p.part === 'armR')), 44, .12); if (q) raw.push([q[0], q[1]]); }
         const HL = z <= tor.C - .5 ? crossHull(sh, z, yc, p => p.mat === 0 && p.part !== 'armL' && p.part !== 'armR' && p.part !== 'head') : null;   // 長過胯下（睡袍）：連兩條腿一起算
         if (raw.length < 3 && !HL) { Zs.push(z); G.push(null); continue; }
         const H = HL || hull2(raw), row = [];   // 凸包：乳溝、腋下都不陷進去
@@ -1260,15 +1260,15 @@
       }
       for (const [s0, e] of o.shirt || o.long || o.cami ? [] : sh._arms || []) {
         // 2026-11-21 使用者：肩膀很腫、像有墊肩 → 袖山貼著肩膀（原本從肩上 1.6 格、半徑粗一大圈開始），袖子只比手臂寬一點
-        const m = s0.map((v, i) => v + (e[i] - v) * (o.over ? .78 : .45)), up = [s0[0] * .9, s0[1], s0[2] - .3], wo = o.over ? .7 : 0;   // oversize：袖子到手肘、寬
+        const m = s0.map((v, i) => v + (e[i] - v) * (o.over ? .78 : .45)), up = [s0[0] * .9, s0[1], s0[2] - .9], wo = o.over ? .7 : 0;   // 2026-11-26 袖山再低一點（肩膀不要鼓成泡泡袖）   // oversize：袖子到手肘、寬
         const tag = () => { sh.prims[sh.prims.length - 1].sleeve = 1; };   // 聊天黑影：袖子跟上臂走
-        sh.cone(BODY, up, s0, 2.5 * wA + wo, 2.8 * wA + .12 + wo); tag(); sh.cone(BODY, s0, m, 2.8 * wA + .15 + wo, 2.45 * wA + .3 + wo); tag();
-        sh.cloth = 2; sh.cone(BODY, m, m.map((v, i) => v + (e[i] - s0[i]) * .04), 2.55 * wA + .38 + wo, 2.55 * wA + .38 + wo); tag(); sh.cloth = FAB;
+        const sw = o.tee2 ? .55 : 0; sh.cone(BODY, up, s0, 2.3 * wA + wo, 2.6 * wA + .12 + wo); tag(); sh.cone(BODY, s0, m, 2.6 * wA + .15 + wo, 2.45 * wA + .3 + wo + sw); tag();   // 袖子直直的；白 T（tee2）袖口往外鬆開一點（不是往內收＝泡泡袖）
+        sh.cloth = 2; sh.cone(BODY, m, m.map((v, i) => v + (e[i] - s0[i]) * .04), 2.45 * wA + .33 + wo + sw, 2.45 * wA + .33 + wo + sw); tag(); sh.cloth = FAB;   // 2026-11-26 袖口：只是一條車縫（不要鼓出來一圈）
       }
       // 下襬、圓領滾邊
       sh.cloth = 2;
       const last = o.shirt ? Array.from({ length: K }, (_, k) => { let q = null; for (const r of G) if (r && r[k]) q = r[k]; return q; }) : G.filter(Boolean).pop(), first = G.find(Boolean);
-      if (last && last.every(Boolean)) sh.chain(BODY, last.concat([last[0]]).map(q => [q[0], q[1], q[2] + .1]), last.map(() => o.shirt ? RC + .15 : .7).concat([o.shirt ? RC + .15 : .7]));   // 襯衫的滾邊要比加粗的布再粗一點才看得到
+      if (last && last.every(Boolean)) sh.chain(BODY, last.concat([last[0]]).map(q => [q[0], q[1], q[2] + .1]), last.map(() => o.shirt ? RC + .15 : .5).concat([o.shirt ? RC + .15 : .5]));   // 襯衫的滾邊要比加粗的布再粗一點才看得到
       if (first && o.cami) {   // 細肩帶：上緣滾邊＋兩條細肩帶（上緣外側 → 越過肩膀 → 背後）
         sh.chain(BODY, first.filter(Boolean).concat([first.find(Boolean)]).map(q => [q[0], q[1], q[2] + .15]), first.filter(Boolean).map(() => .45).concat([.45]));
         for (const sd of [-1, 1]) {
@@ -1585,7 +1585,7 @@
       if (doll.underBra && c !== 'bra') under(() => bra(sh, P, doll, tor));   // pt78u：外衣裡面穿胸罩
       if (c.startsWith('napkin')) napkin(sh, P, doll, tor, c.split('_')[1] || 'bell');
       else if (c === 'bra') under(() => bra(sh, P, doll, tor));
-      else if (c === 'tee') tee(sh, P, doll, tor);
+      else if (c === 'tee') tee(sh, P, doll, tor, { tee2: true });   // 2026-11-26 預設白 T：布不包手臂（肩膀不要鼓成泡泡袖）
       else if (c === 'shirt') tee(sh, P, doll, tor, { shirt: true });
     }
 
