@@ -1175,8 +1175,8 @@
     function tee(sh, P, doll, tor, o = {}) {
       // 2026-11-21 衣櫃的衣服（使用者：畫她衣櫃裡的衣服）：o.crop 短版（下襬在乳房下）、o.over 寬鬆 oversize（鬆、長到屁股、袖子到手肘）、
       //   o.cami 細肩帶（上緣在胸口、沒袖子、兩條細肩帶）、o.long 長袖、o.hemZ 指定下襬（洋裝上半身＝腰）
-      // 2026-11-26 使用者：白 T 改露肚臍——tee2 下襬在腰（肚臍上面一點），肚臍和整個下腹露出來
-      const S = tor.S, top = o.shirt ? S + 1.2 : o.cami ? tor.zB + tor.cupr * .85 : S + .3, hem = o.hemZ != null ? o.hemZ : o.tee2 ? (tor.zW != null ? tor.zW : (tor.C + tor.S) / 2) - .4 : o.shirt ? tor.C - 3 : o.crop ? tor.zB - tor.cupr * 1.25 : o.over ? tor.C - 3.5 : tor.C + 5.5, K = o.shirt ? 32 : 44, nz = Math.max(8, Math.round((top - hem) / (o.shirt ? 1.15 : .8))), RC = o.shirt ? 1.0 : .62, RR = o.shirt ? .8 : .52;   // 2026-11-21 使用者：肩膀很腫 → T 恤的布管做細一點（.75／.55 → .62／.52；再細層和層之間會有縫、一條條）   // T 恤照 droom 原本（跟 sheets 的樣本一樣）；襯衫織粗一點
+      // 2026-11-26 使用者：白 T 改露肚臍——tee2 下襬在腰（肚臍上面一點），肚臍和整個下腹露出來；大胸部的下緣比腰還低時，下襬至少在乳房下面（布從胸前垂下來，不會截在乳房中間）
+      const S = tor.S, top = o.shirt ? S + 1.2 : o.cami ? tor.zB + tor.cupr * .85 : S + .3, hem = o.hemZ != null ? o.hemZ : o.tee2 ? Math.min((tor.zW != null ? tor.zW : (tor.C + tor.S) / 2) - .4, tor.zB - (tor.cupr || 3) * 1.25 - .2) : o.shirt ? tor.C - 3 : o.crop ? tor.zB - tor.cupr * 1.25 : o.over ? tor.C - 3.5 : tor.C + 5.5, K = o.shirt ? 32 : 44, nz = Math.max(8, Math.round((top - hem) / (o.shirt ? 1.15 : .8))), RC = o.shirt ? 1.0 : .62, RR = o.shirt ? .8 : .52;   // 2026-11-21 使用者：肩膀很腫 → T 恤的布管做細一點（.75／.55 → .62／.52；再細層和層之間會有縫、一條條）   // T 恤照 droom 原本（跟 sheets 的樣本一樣）；襯衫織粗一點
       const FAB = o.fab || 1;   // 布的標記色：1 一般、7 半透明白（薄紗、濕身）、8 黑色情趣布（聊天黑影 veil 照標記色上色）
       const vBot = o.open ? hem - 2 : S - 10;   // 襯衫：V 字領的底（最上面兩顆沒扣，看得到胸罩和乳溝）；o.open 整件前面敞開（睡袍、不扣鈕的襯衫）
       // 2026-11-21 使用者：T 恤應該是 V 領，不會包到脖子 → 領口開在脖子根部（脖子那一圈挖掉）、前面 V 字開到 S−5.5

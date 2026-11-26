@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=36', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=37', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8, col_cb: 8, col_cg: 8, col_yb: 8, col_yg: 8, col_f: 8, col_x: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   // 2026-11-25 使用者（調戲不帶感）：反應改跟「態度」走（tease_attitude.js）——拒絕＝stranger（推開、遮住、掙扎）、無奈拒絕＝friend（輕推遮住）、
@@ -860,6 +860,10 @@
         if (front(p) <= lim) return true;
         overBreast.delete(p); return false;
       });
+      // 2026-11-26：露肚臍的短 T＋抱胸——手臂下面只剩下襬那一小條（布被壓到手臂後面了），看起來像飄著一條白線 → 那一小條也拿掉（短 T 看起來就收在手臂後面）
+      const outerC = (p) => p.cloth && !p.under && !p.sleeve && !p.shoe && p.part !== 'legs' && p.garm !== 'bot' && p.part !== 'armL' && p.part !== 'armR';   // 整圈（兩側腰旁邊也是）
+      const below = sh.prims.filter((p) => outerC(p) && span(p)[1] < crossBand.zLo + 2.4);   // 前臂中心（zLo＋3.2）往下一點以下的布
+      if (below.length && Math.min(...below.map((p) => span(p)[0])) > crossBand.zLo - 4.5) { const rm = new Set(below); sh.prims = sh.prims.filter((p) => !rm.has(p)); }
     }
     // 腿軟／大腿打開（手指插入的反應）：上半身整個往下 drop、腳底不動 → 膝蓋往前往外彎；大腿往外打開 open（腳往外移一點）
     if (!anim && m.fg && (m.fg.drop || m.fg.dropFrac || m.fg.open)) {
