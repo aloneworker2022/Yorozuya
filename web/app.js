@@ -578,16 +578,16 @@ const STAGES = [["stranger", "陌生", 0], ["friend", "朋友", 50], ["girlfrien
 // 名冊感情數字用房間十一階。顯示現在的分數，還沒到下一階就順便寫門檻。
 const AFF_LADDER = [
   ["stranger", "陌生", 0],
-  ["acquaintance", "普通", 30],
-  ["friend", "朋友", 70],
-  ["close_friend", "親密好友", 120],
-  ["girlfriend", "女友", 200],
-  ["passionate", "熱戀", 280],
-  ["lover", "愛人", 360],
-  ["wife", "妻子", 460],
-  ["devoted_wife", "貼心妻子", 560],
-  ["obedient_wife", "順從妻子", 660],
-  ["pathological_wife", "病態妻子", 760],
+  ["acquaintance", "普通", 40],
+  ["friend", "朋友", 100],
+  ["close_friend", "親密好友", 180],
+  ["girlfriend", "女友", 300],
+  ["passionate", "熱戀", 420],
+  ["lover", "愛人", 560],
+  ["wife", "妻子", 720],
+  ["devoted_wife", "貼心妻子", 900],
+  ["obedient_wife", "順從妻子", 1100],
+  ["pathological_wife", "病態妻子", 1320],
 ];
 const AFF_LADDER_ZH = Object.fromEntries(AFF_LADDER.map((s) => [s[0], s[1]]));
 // 名冊 s.stage 是主線四階（告白／求婚／贖回／升階都靠它）；房間 11 階梯另存 s.roomStage，
@@ -610,8 +610,19 @@ function gameStageOf(stage) {
 // stageLock（房間除錯跳階）優先。
 const ROOM_STAGE_INDEX = Object.fromEntries(AFF_LADDER.map((x, i) => [x[0], i]));
 const ROOM_STAGE_AT = Object.fromEntries(AFF_LADDER.map((x) => [x[0], x[2]]));
-/** 2026-10-07 門檻翻倍。舊檔感情乘 2 一次，affGen===2 的不再乘。 */
-const AFF_GEN = 2;
+/** 2026-10-07 門檻翻倍。舊檔感情乘 2 一次，affGen===2 的不再乘。2026-11-26 門檻加難（affGen 3）。 */
+const AFF_GEN = 3;
+const LADDER_KEYS_FOR_MIGRATE = AFF_LADDER.map((x) => x[0]);
+/** 2026-11-26 使用者：感情升級要難一點（陌生→朋友要 100 點左右）→ 門檻改成 0／40／100／180／300／420／560／720／900／1100／1320。
+ *  舊檔（affGen 2）的感情照「在哪一階、走了那一階的幾成」等比例換到新門檻（階段不變、進度不變）；affGen 1 的先照舊乘 2。 */
+const AFF_AT_GEN2 = [0, 30, 70, 120, 200, 280, 360, 460, 560, 660, 760];
+function remapAffectionGen2(v, NEW) {
+  const A = AFF_AT_GEN2, n = A.length - 1;
+  if (!(v > 0)) return v;
+  for (let i = n; i >= 0; i--) if (v >= A[i]) return i === n ? NEW[n] + (v - A[n]) * (NEW[n] - NEW[n - 1]) / (A[n] - A[n - 1]) : NEW[i] + (v - A[i]) * (NEW[i + 1] - NEW[i]) / (A[i + 1] - A[i]);
+  return v;
+}
+
 function ladderStageKey(who) {
   if (who.roomStage && Object.prototype.hasOwnProperty.call(ROOM_STAGE_AT, who.roomStage)) return who.roomStage;
   if (who.stage && Object.prototype.hasOwnProperty.call(ROOM_STAGE_AT, who.stage)) return who.stage;
@@ -619,17 +630,18 @@ function ladderStageKey(who) {
 }
 function migrateAffectionScale(who) {
   if (!who || typeof who !== "object" || who.affGen === AFF_GEN) return false;
-  const cur = Number(who.affection);
-  who.affection = Number.isFinite(cur) ? Math.round(cur * 2) : 0;
+  const gen = Number(who.affGen) || 1;
+  let cur = Number(who.affection); if (!Number.isFinite(cur)) cur = 0;
+  if (gen < 2) cur *= 2;                      // 2026-10-07 門檻翻倍
+  const oldV = cur;
+  if (gen < 3) cur = remapAffectionGen2(cur, AFF_LADDER.map((x) => x[2]));   // 2026-11-26 門檻加難
+  who.affection = Math.round(cur);
   who.affGen = AFF_GEN;
-  // 舊檔停在門檻下 5 點緩衝的下半，乘 2 後會掉出名。只把這一段抬回新緩衝線。
+  // 舊檔停在門檻下 5 點緩衝裡（階段還在、感情差一點）：換算後也留在新緩衝線上，不要掉一階
   if (!who.stageLock) {
-    const key = ladderStageKey(who);
-    const gate = key ? (ROOM_STAGE_AT[key] || 0) : 0;
-    const hold = gate - ROOM_STAGE_HYSTERESIS;
-    if (gate > 0 && who.affection >= gate - ROOM_STAGE_HYSTERESIS * 2 && who.affection < hold) {
-      who.affection = hold;
-    }
+    const key = ladderStageKey(who), idx = LADDER_KEYS_FOR_MIGRATE.indexOf(key);
+    const gate = key ? (ROOM_STAGE_AT[key] || 0) : 0, oldGate = idx >= 0 ? AFF_AT_GEN2[idx] : 0;
+    if (gate > 0 && oldV >= oldGate - ROOM_STAGE_HYSTERESIS * (gen < 2 ? 2 : 1) && who.affection < gate - ROOM_STAGE_HYSTERESIS) who.affection = gate - ROOM_STAGE_HYSTERESIS;
   }
   return true;
 }
@@ -2908,7 +2920,7 @@ function summonWithCount(n) {
   const base = {
     id: uid(),
     affection: 0,
-    affGen: 2,
+    affGen: AFF_GEN,
     stage: "stranger",
     portraitReady: false,
     summonedAt: Date.now(),

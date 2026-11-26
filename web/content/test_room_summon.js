@@ -7468,22 +7468,33 @@ function namesOf(list) {
 const STAGE_HYSTERESIS = 5;
 const STAGE_LADDER = [
   { key: "stranger", name: "陌生", at: 0 },
-  { key: "acquaintance", name: "普通", at: 30 },
-  { key: "friend", name: "朋友", at: 70 },
-  { key: "close_friend", name: "親密好友", at: 120 },
-  { key: "girlfriend", name: "女友", at: 200 },
-  { key: "passionate", name: "熱戀", at: 280 },
-  { key: "lover", name: "愛人", at: 360 },
-  { key: "wife", name: "妻子", at: 460 },
-  { key: "devoted_wife", name: "貼心妻子", at: 560 },
-  { key: "obedient_wife", name: "順從妻子", at: 660 },
-  { key: "pathological_wife", name: "病態妻子", at: 760 },
+  { key: "acquaintance", name: "普通", at: 40 },
+  { key: "friend", name: "朋友", at: 100 },
+  { key: "close_friend", name: "親密好友", at: 180 },
+  { key: "girlfriend", name: "女友", at: 300 },
+  { key: "passionate", name: "熱戀", at: 420 },
+  { key: "lover", name: "愛人", at: 560 },
+  { key: "wife", name: "妻子", at: 720 },
+  { key: "devoted_wife", name: "貼心妻子", at: 900 },
+  { key: "obedient_wife", name: "順從妻子", at: 1100 },
+  { key: "pathological_wife", name: "病態妻子", at: 1320 },
 ];
 const STAGE_NAME = Object.fromEntries(STAGE_LADDER.map((s) => [s.key, s.name]));
 const STAGE_AT = Object.fromEntries(STAGE_LADDER.map((s) => [s.key, s.at]));
 const STAGE_INDEX = Object.fromEntries(STAGE_LADDER.map((s, i) => [s.key, i]));
-/** 2026-10-07 門檻翻倍。舊檔感情乘 2 一次。 */
-const AFF_GEN = 2;
+/** 2026-10-07 門檻翻倍。舊檔感情乘 2 一次。2026-11-26 門檻加難（affGen 3）。 */
+const AFF_GEN = 3;
+const LADDER_KEYS_FOR_MIGRATE = STAGE_LADDER.map((x) => x.key);
+/** 2026-11-26 使用者：感情升級要難一點（陌生→朋友要 100 點左右）→ 門檻改成 0／40／100／180／300／420／560／720／900／1100／1320。
+ *  舊檔（affGen 2）的感情照「在哪一階、走了那一階的幾成」等比例換到新門檻（階段不變、進度不變）；affGen 1 的先照舊乘 2。 */
+const AFF_AT_GEN2 = [0, 30, 70, 120, 200, 280, 360, 460, 560, 660, 760];
+function remapAffectionGen2(v, NEW) {
+  const A = AFF_AT_GEN2, n = A.length - 1;
+  if (!(v > 0)) return v;
+  for (let i = n; i >= 0; i--) if (v >= A[i]) return i === n ? NEW[n] + (v - A[n]) * (NEW[n] - NEW[n - 1]) / (A[n] - A[n - 1]) : NEW[i] + (v - A[i]) * (NEW[i + 1] - NEW[i]) / (A[i + 1] - A[i]);
+  return v;
+}
+
 function ladderStageKey(who) {
   if (who.roomStage && STAGE_NAME[who.roomStage]) return who.roomStage;
   if (who.stage && STAGE_NAME[who.stage]) return who.stage;
@@ -7491,17 +7502,18 @@ function ladderStageKey(who) {
 }
 function migrateAffectionScale(who) {
   if (!who || typeof who !== "object" || who.affGen === AFF_GEN) return false;
-  const cur = Number(who.affection);
-  who.affection = Number.isFinite(cur) ? Math.round(cur * 2) : 0;
+  const gen = Number(who.affGen) || 1;
+  let cur = Number(who.affection); if (!Number.isFinite(cur)) cur = 0;
+  if (gen < 2) cur *= 2;                      // 2026-10-07 門檻翻倍
+  const oldV = cur;
+  if (gen < 3) cur = remapAffectionGen2(cur, STAGE_LADDER.map((x) => x.at));   // 2026-11-26 門檻加難
+  who.affection = Math.round(cur);
   who.affGen = AFF_GEN;
-  // 舊檔停在門檻下 5 點緩衝的下半，乘 2 後會掉出名。只把這一段抬回新緩衝線。
+  // 舊檔停在門檻下 5 點緩衝裡（階段還在、感情差一點）：換算後也留在新緩衝線上，不要掉一階
   if (!who.stageLock) {
-    const key = ladderStageKey(who);
-    const gate = key ? (STAGE_AT[key] || 0) : 0;
-    const hold = gate - STAGE_HYSTERESIS;
-    if (gate > 0 && who.affection >= gate - STAGE_HYSTERESIS * 2 && who.affection < hold) {
-      who.affection = hold;
-    }
+    const key = ladderStageKey(who), idx = LADDER_KEYS_FOR_MIGRATE.indexOf(key);
+    const gate = key ? (STAGE_AT[key] || 0) : 0, oldGate = idx >= 0 ? AFF_AT_GEN2[idx] : 0;
+    if (gate > 0 && oldV >= oldGate - STAGE_HYSTERESIS * (gen < 2 ? 2 : 1) && who.affection < gate - STAGE_HYSTERESIS) who.affection = gate - STAGE_HYSTERESIS;
   }
   return true;
 }
@@ -11342,7 +11354,7 @@ function refreshTalkActs() {
       btn.type = "button";
       btn.dataset.romance = "propose";
       btn.textContent = "求婚";
-      btn.title = "消耗戒指（50%）· 成功率＝感情/200";
+      btn.title = `消耗戒指（50%）· 成功率＝感情/${(STAGE_AT.girlfriend ?? 300) * 2}`;
       btn.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
