@@ -1094,8 +1094,6 @@
     const SK = skin, SH = skinShadow(SK);
     const AR = [Math.round(SK[0] * .86), Math.round(SK[1] * .6), Math.round(SK[2] * .62)], NP = [Math.round(SK[0] * .78), Math.round(SK[1] * .5), Math.round(SK[2] * .54)];
     const AR2 = skinShadow(AR, .86, -6, 1.1), NAV = skinShadow(SK, .72, -16, 1.4);   // 肚臍：比陰影再深一點
-    // 2026-11-26 使用者：聊天的黑影加入亮色——正對光的地方（肩膀、乳房上緣、大腿、手臂外側）一小塊亮色：亮一點、彩度低一點、色相往黃偏（像素畫的亮面做法）
-    const HL = skinShadow(SK, 1.06, 7, .72);
     const near = (i, c, t) => Math.abs(px[i] - c[0]) <= t && Math.abs(px[i + 1] - c[1]) <= t && Math.abs(px[i + 2] - c[2]) <= t;
     const n = W * Hh, kind = new Uint8Array(n);   // 0 不管、1 皮膚、2 線、3 乳暈、4 乳頭
     for (let k = 0; k < n; k++) {
@@ -1136,39 +1134,29 @@
         if (Math.abs(q - d0) > JUMP) continue;
         gx += dx * (q - d0) / 2; gy += dy * (q - d0) / 2;
       }
-      let lit, dot = 0;
+      let lit;
       if (edge) lit = false;
       else {
         let nn = [-gx * K + nx * .9, -gy * K + ny * .9, 1]; const m = Math.hypot(...nn); nn = nn.map((v) => v / m);
-        dot = nn[0] * L[0] + nn[1] * L[1] + nn[2] * L[2];
-        lit = dot > .62 && !castShadow(x, y, d0);
+        lit = nn[0] * L[0] + nn[1] * L[1] + nn[2] * L[2] > .62 && !castShadow(x, y, d0);
       }
-      tone[k] = lit ? (dot > .93 && t === 1 ? 3 : 1) : 2;   // 3＝亮色
+      tone[k] = lit ? 1 : 2;
     }
-    // 陰影成塊：上下左右（皮膚格）有 3 格以上跟自己不同階 → 併過去（跑兩次）；亮色算亮面那一階
-    const LT = (v) => (v === 3 ? 1 : v);
+    // 陰影成塊：上下左右（皮膚格）有 3 格以上跟自己不同階 → 併過去（跑兩次）
     for (let pass = 0; pass < 2; pass++) {
       const t2 = tone.slice();
       for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
         const k = y * W + x; if (!tone[k] || kind[k] > 2) continue;
-        let other = 0, cnt = 0;
-        for (const j of [x > 0 ? k - 1 : -1, x < W - 1 ? k + 1 : -1, y > 0 ? k - W : -1, y < Hh - 1 ? k + W : -1]) if (j >= 0 && tone[j] && kind[j] <= 2) { cnt++; if (LT(tone[j]) !== LT(tone[k])) other++; }
-        if (cnt >= 3 && other >= 3) t2[k] = 3 - LT(tone[k]);
+        let same = 0, other = 0, cnt = 0;
+        for (const j of [x > 0 ? k - 1 : -1, x < W - 1 ? k + 1 : -1, y > 0 ? k - W : -1, y < Hh - 1 ? k + W : -1]) if (j >= 0 && tone[j] && kind[j] <= 2) { cnt++; if (tone[j] === tone[k]) same++; else other++; }
+        if (cnt >= 3 && other >= 3) t2[k] = 3 - tone[k];
       }
       tone.set(t2);
     }
-    // 亮色要成小塊：周圍 8 格少於 3 格亮色的點退回亮面（不要一顆顆雜點）
-    { const t2 = tone.slice();
-      for (let y = 1; y < Hh - 1; y++) for (let x = 1; x < W - 1; x++) {
-        const k = y * W + x; if (tone[k] !== 3) continue;
-        let c = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && tone[k + dy * W + dx] === 3) c++;
-        if (c < 3) t2[k] = 1;
-      }
-      tone.set(t2); }
     for (let k = 0; k < n; k++) {
       const t = kind[k]; if (!t) continue;
-      const i = k * 4, lit = tone[k] === 1 || tone[k] === 3;
-      const col = t === 5 ? NAV : t === 3 ? (lit ? AR : AR2) : t === 4 ? NP : tone[k] === 3 ? HL : lit ? SK : SH;   // t 2（原本的輪廓線）也照亮暗面上色，不畫線
+      const i = k * 4, lit = tone[k] === 1;
+      const col = t === 5 ? NAV : t === 3 ? (lit ? AR : AR2) : t === 4 ? NP : lit ? SK : SH;   // t 2（原本的輪廓線）也照亮暗面上色，不畫線
       px[i] = col[0]; px[i + 1] = col[1]; px[i + 2] = col[2]; px[i + 3] = 255;
     }
     return tone;
