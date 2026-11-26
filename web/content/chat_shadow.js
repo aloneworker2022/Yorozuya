@@ -1031,8 +1031,10 @@
    *    ——從每格往光的方向在深度圖上走，前面有東西擋（比光線高）就是陰影；③ 陰影色用色相偏移（skinShadow）；
    *  ④ 陰影要成塊：上下左右多數跟自己不同階的孤立點併過去（不要雜點、不要一格一格的鋸齒）。深度跳很大的前後疊：遠的那邊用陰影色（不描黑線）。
    */
-  function skinPass(px, depth, W, Hh, hairMask, skin, scale) {
+  function skinPass(px, depth, W, Hh, hairMask, skin, scale, crease) {
     const SK = skin, SH = skinShadow(SK);
+    // 2026-11-26 高解析樣品（scale≥3，使用者：解析度高了細節要多）：亮面＋中間調＋暗面三階、小亮點、身體結構線
+    const HD = (scale || 2) >= 3, HL = skinShadow(SK, 1.03, 5, .82), MID = skinShadow(SK, .92, -6, 1.12), SH2 = skinShadow(SK, .72, -18, 1.45);
     const AR = [Math.round(SK[0] * .86), Math.round(SK[1] * .6), Math.round(SK[2] * .62)], NP = [Math.round(SK[0] * .78), Math.round(SK[1] * .5), Math.round(SK[2] * .54)];
     const AR2 = skinShadow(AR, .86, -6, 1.1);
     const near = (i, c, t) => Math.abs(px[i] - c[0]) <= t && Math.abs(px[i + 1] - c[1]) <= t && Math.abs(px[i + 2] - c[2]) <= t;
@@ -1074,32 +1076,98 @@
         if (Math.abs(q - d0) > JUMP) continue;
         gx += dx * (q - d0) / 2; gy += dy * (q - d0) / 2;
       }
-      let lit;
+      let lit, dot = 0;
       if (edge) lit = false;
       else {
         let nn = [-gx * K + nx * .9, -gy * K + ny * .9, 1]; const m = Math.hypot(...nn); nn = nn.map((v) => v / m);
-        lit = nn[0] * L[0] + nn[1] * L[1] + nn[2] * L[2] > .62 && !castShadow(x, y, d0);
+        dot = nn[0] * L[0] + nn[1] * L[1] + nn[2] * L[2];
+        lit = dot > .62 && !castShadow(x, y, d0);
       }
       tone[k] = lit ? 1 : 2;
+      if (HD && tone[k] === 1 && dot > .975) tone[k] = 5;          // 小亮點（正對光的地方：肩膀、乳房上緣、大腿外側）
+      else if (HD && tone[k] === 2 && !edge && dot > .44 && !castShadow(x, y, d0)) tone[k] = 6;   // 明暗交界：中間調
     }
     // 陰影成塊：上下左右（皮膚格）有 3 格以上跟自己不同階 → 併過去（跑兩次）
     for (let pass = 0; pass < 2; pass++) {
       const t2 = tone.slice();
       for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
         const k = y * W + x; if (!tone[k] || kind[k] > 2) continue;
-        let same = 0, other = 0, cnt = 0;
-        for (const j of [x > 0 ? k - 1 : -1, x < W - 1 ? k + 1 : -1, y > 0 ? k - W : -1, y < Hh - 1 ? k + W : -1]) if (j >= 0 && tone[j] && kind[j] <= 2) { cnt++; if (tone[j] === tone[k]) same++; else other++; }
-        if (cnt >= 3 && other >= 3) t2[k] = 3 - tone[k];
+        const cnt4 = [0, 0, 0, 0, 0, 0, 0]; let cnt = 0;
+        for (const j of [x > 0 ? k - 1 : -1, x < W - 1 ? k + 1 : -1, y > 0 ? k - W : -1, y < Hh - 1 ? k + W : -1]) if (j >= 0 && tone[j] && kind[j] <= 2) { cnt++; cnt4[tone[j]]++; }
+        if (!HD) { if (cnt >= 3 && cnt - cnt4[tone[k]] >= 3) t2[k] = 3 - tone[k]; }   // 一般解析度：照舊（兩階互換）
+        else if (cnt >= 3 && cnt4[tone[k]] <= 0) { let best = 1; for (let t = 1; t < 7; t++) if (cnt4[t] > cnt4[best]) best = t; t2[k] = best; }
       }
       tone.set(t2);
     }
+    // 身體結構線（只有高解析）：人偶本來就有的鎖骨、肚臍、鼠蹊、手掌紋等標記線（crease）＋深度圖的凹處（乳下、膝蓋、腋下、腳踝）→ 比旁邊深一階
+    const line = new Uint8Array(n);
+    if (HD) {
+      const R = Math.max(2, Math.round(K * .75)), TH = 1.0;
+      for (let y = R; y < Hh - R; y++) for (let x = R; x < W - R; x++) {
+        const k = y * W + x; if (kind[k] !== 1 && kind[k] !== 2) continue;
+        if (crease && crease[k]) { line[k] = 1; continue; }
+        const a = D[k - R], b = D[k + R], c = D[k - R * W], d = D[k + R * W], d0 = D[k];
+        if (!(kind[k - R] && kind[k + R] && kind[k - R * W] && kind[k + R * W])) continue;
+        if (Math.max(Math.abs(a - d0), Math.abs(b - d0), Math.abs(c - d0), Math.abs(d - d0)) > JUMP * 2) continue;
+        const lh = (a + b) / 2 - d0, lv = (c + d) / 2 - d0;   // 兩邊都比中間近＝凹下去的溝
+        if (Math.max(lh, lv) > TH) line[k] = 1;
+      }
+      // 只留連成線的（8 方向至少 2 格也是線），零星的點不要
+      for (let pass = 0; pass < 2; pass++) {
+        const keep = line.slice();
+        for (let y = 1; y < Hh - 1; y++) for (let x = 1; x < W - 1; x++) {
+          const k = y * W + x; if (!line[k] || (crease && crease[k])) continue;
+          let c = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if ((dx || dy) && line[k + dy * W + dx]) c++;
+          if (c < 2) keep[k] = 0;
+        }
+        line.set(keep);
+      }
+    }
     for (let k = 0; k < n; k++) {
       const t = kind[k]; if (!t) continue;
-      const i = k * 4, lit = tone[k] === 1;
-      const col = t === 3 ? (lit ? AR : AR2) : t === 4 ? NP : lit ? SK : SH;   // t 2（原本的輪廓線）也照亮暗面上色，不畫線
+      const i = k * 4, tk = tone[k], lit = tk === 1 || tk === 5;
+      let col = t === 3 ? (lit || tk === 6 ? AR : AR2) : t === 4 ? NP : tk === 5 ? HL : tk === 6 ? MID : lit ? SK : SH;   // t 2（原本的輪廓線）也照亮暗面上色，不畫線
+      if (line[k] && t <= 2) col = tk === 5 || tk === 1 ? MID : tk === 6 ? SH : SH2;
       px[i] = col[0]; px[i + 1] = col[1]; px[i + 2] = col[2]; px[i + 3] = 255;
     }
     return tone;
+  }
+  /** 2026-11-26 高解析樣品：頭髮三階＋髮絲＋天使光圈。hd＝只有頭髮那層的深度；hm＝看得到的頭髮格；head＝{top, chin, cx, w}。 */
+  function hairPass(px, hd, hm, W, Hh, scale, head) {
+    const K = scale || 4, n = W * Hh, DK = [22, 17, 31], BS = [36, 28, 50], LT = [56, 45, 76], SHEEN = [104, 90, 134];
+    const L = (() => { const v = [-.45, -.6, .66], m = Math.hypot(...v); return v.map((x) => x / m); })();
+    const D = new Float32Array(n).fill(-1e9);
+    for (let k = 0; k < n; k++) if (hm[k] && Number.isFinite(hd[k])) D[k] = hd[k] * 32 + Math.floor(k / W) / K;
+    const ok = (x, y) => x >= 0 && y >= 0 && x < W && y < Hh && hm[y * W + x] && D[y * W + x] > -1e8;
+    // 頭髮是一串串小球拼的：往下（順著髮流）平均一段再算朝向，不然每顆球各有明暗＝一節一節的香腸
+    const Ds = new Float32Array(n).fill(-1e9), BR = Math.round(K * 2.5);
+    for (let x = 0; x < W; x++) for (let y = 0; y < Hh; y++) {
+      const k = y * W + x; if (!(D[k] > -1e8)) continue;
+      let a = 0, c = 0; for (let t = -BR; t <= BR; t++) { const yy = y + t; if (yy < 0 || yy >= Hh) continue; const q = D[yy * W + x]; if (q > -1e8 && Math.abs(q - D[k]) < 3) { a += q; c++; } }
+      Ds[k] = a / c;
+    }
+    const hh = Math.max(1, head.chin - head.top), hw = Math.max(1, head.w || hh * .8), R = Math.max(2, Math.round(K * .6));
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+      const k = y * W + x; if (!hm[k] || !(D[k] > -1e8)) continue;
+      const d0 = Ds[k]; let gx = 0, gy = 0, nx = 0, ny = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (!ok(x + dx, y + dy)) { nx += dx; ny += dy; continue; }
+        const q = Ds[(y + dy) * W + x + dx]; if (Math.abs(q - d0) > 2) continue;
+        gx += dx * (q - d0) / 2; gy += dy * (q - d0) / 2;
+      }
+      let nn = [-gx * K + nx * .9, -gy * K + ny * .9, 1]; const m = Math.hypot(...nn); nn = nn.map((v) => v / m);
+      const dot = nn[0] * L[0] + nn[1] * L[1] + nn[2] * L[2];
+      let col = dot > .8 ? LT : dot > .5 ? BS : DK;
+      // 髮絲：頭髮一束一束之間凹下去的地方深一階
+      if (ok(x - R, y) && ok(x + R, y)) { const lh = (Ds[k - R] + Ds[k + R]) / 2 - d0; if (lh > .3) col = col === LT ? BS : DK; }
+      // 天使光圈：頭頂往下約 3 成、往兩邊往下彎的一條亮帶，斷斷續續（像一絲一絲）
+      const u = (x + .5 - head.cx) / (hw * .5);
+      if (Math.abs(u) < .95 && y > head.top && y < head.top + hh * .6) {
+        const yc = head.top + hh * (.26 + .14 * u * u), half = hh * .035 * (1 - .5 * u * u) + .6;
+        if (Math.abs(y + .5 - yc) < half && dot > .35 && ((x + (y >> 1)) % 7) > 1) col = SHEEN;
+      }
+      const i = k * 4; px[i] = col[0]; px[i + 1] = col[1]; px[i + 2] = col[2]; px[i + 3] = 255;
+    }
   }
   // 2026-11-25 使用者：肉色模式的臉用新的臉模型（droom/face_mold v2 正面），但不要眉毛、鼻子、嘴巴、眼睛。
   //   GUIDE=0 NOSE=0 BROW=0 MOUTH=0 node one.cjs → 外框換肉色（three.py noline）→ 去背 → 每列壓成「長度＋色碼」：
@@ -1171,7 +1239,7 @@
   /** 一格：同一個身形只建一次模型（襯衫／胸罩建模要好幾秒），每格複製一份再照動作變形、畫、上黑影色。worker 裡也用。 */
   function drawFrame(F, cache, doll, pose, f, n, scale, cv) {
     const key = JSON.stringify(doll), body = doll._body || 'idle';   // _body：站著 idle／脫衣時坐著 mermaid
-    if (cache.key !== key) { cache.key = key; cache.base = F.build(doll, body, 0, 0, { armK: .88 }); }
+    if (cache.key !== key + scale) { cache.key = key + scale; cache.base = F.build(doll, body, 0, 0, Object.assign({ armK: .88 }, scale >= 3 ? { scale, pixHands: true } : {})); }   // 高解析（樣品）：細腳（腳趾、腳踝），手照樣貼像素手
     const base = cache.base;
     const shape = () => ({ P: base.P, sh: Object.assign({}, base.sh, { prims: base.sh.prims.map(p => Object.assign({}, p)), areolaStamps: (base.sh.areolaStamps || []).map(q => Object.assign({}, q)) }) });
     const m = motion(pose, f, n, body === 'mermaid', doll._mode || null, doll._tier || null);
@@ -1185,6 +1253,12 @@
     const run = (keep, bare) => F.render(doll, body, 0, 0, { scale, cv, shape, deform: (sh, P, H) => { deform(sh, P, H, m); if (!capH.h) capH.h = sh._hands; sh.prims = sh.prims.filter(doll._noHair ? (p) => p.mat !== 1 && keep(p) : keep); if (bare && sh.areolaStamps) sh.areolaStamps.length = 0; } });   // bare：衣服那幾層不畫乳暈印子（印子會蓋在衣服上面）
     const hasU = base.sh.prims.some(p => p.cloth && p.under), hasO = base.sh.prims.some(p => p.cloth && !p.under);
     const r = run(p => !p.cloth);
+    let crease = null;
+    if (Array.isArray(doll._skin) && scale >= 3) {   // 高解析：人偶的標記線（鎖骨、肚臍、鼠蹊、指縫、掌紋）先記下來，shade 會把它們變回身體色
+      const p0 = r.pixels, nn = r.width * r.height; crease = new Uint8Array(nn);
+      for (let k = 0; k < nn; k++) { const i = k * 4; if (!p0[i + 3]) continue; const a = p0[i], b = p0[i + 1], c = p0[i + 2];
+        if ((a === 90 && b === 60 && c === 60) || (a === 110 && b === 75 && c === 75) || (a === 33 && b === 27 && c === 45)) crease[k] = 1; }
+    }
     shade(r.pixels);
     const armDark = !!(doll._mode || m.react || m.ang || doll._stance === 'cross' || (m.fg && /^c[dsq]$/.test(m.fg.kind)));   // 癱坐：撐地的手臂在身體兩側，要看得出來
     if (armDark) {   // 脫光後的姿勢、被摸的反應、生氣說話、站姿抱胸（2026-11-24）：手臂疊在身體前面的地方加深（使用者：半透明的影子疊兩層＝比較深；不用淺色）
@@ -1200,12 +1274,13 @@
     if (Array.isArray(doll._skin)) {   // 2026-11-25 測試：肉色＋一階陰影（頭髮另外畫一層當遮罩，不換色）
       const hr = run(p => p.mat === 1), hp = hr.pixels, hd = hr.depth, rd = r.depth, n = r.width * r.height, hm = new Uint8Array(n);
       for (let k = 0; k < n; k++) if (hp[k * 4 + 3] && !(rd[k] > hd[k] + .5 / 32)) hm[k] = 1;   // depth＝世界單位/32：身體比頭髮前面半格以上＝不是頭髮（臉蓋在後面的長髮前面）
-      const tone = skinPass(r.pixels, rd, r.width, r.height, hm, doll._skin, scale);
       // 臉：用空白臉模（頭頂、下巴、中線照光頭那層的頭找）
       const hh = run(p => p.part === 'head' && p.mat === 0 && !p.cloth), hpx = hh.pixels, Wd = hh.width;
       let top = -1, bot = -1, sx = 0, sn = 0;
       for (let k = 0; k < n; k++) if (hpx[k * 4 + 3]) { const y = Math.floor(k / Wd); if (top < 0) top = y; bot = y; }
       if (top >= 0) { const mid = Math.round(top + (bot - top) * .45); for (let x = 0; x < Wd; x++) if (hpx[(mid * Wd + x) * 4 + 3]) { sx += x; sn++; } }
+      const tone = skinPass(r.pixels, rd, r.width, r.height, hm, doll._skin, scale, crease);
+      if (scale >= 3 && top >= 0 && sn) hairPass(r.pixels, hd, hm, r.width, r.height, scale, { top, chin: bot, cx: sx / sn + .5, w: sn });
       if (top >= 0 && sn) paintFace(r.pixels, r.width, r.height, { top, chin: bot, cx: sx / sn + .5 }, hm, doll._skin, tone);
     }
     // 衣服那幾層不畫皮膚上的標記（乳房輪廓弧線等 mat 2／摺線、乳暈印子、乳頭：浮在皮膚表面或直接印上去，會穿出衣服、在衣服上留一圈；T 恤做形狀時也不跟著乳頭凸起）
@@ -1261,10 +1336,14 @@
     fist: { a: [5.5, 9.5], d: [0, -1], rows: ['.##.##.##..', '##########.', '###########', '###########', '###########', '##########.', '.#########.', '..#######..', '...#####...', '...#####...'] },
   };
   function pasteHands(r, hands, scale, cv, dark, hasO, skin) {
-    const W = r.width, Hh = r.height, px = r.pixels, dep = r.depth, k = scale / 2;   // 圖是照 scale 2 畫的
+    const W = r.width, Hh = r.height, px = r.pixels, dep = r.depth, k0 = scale / 2;   // 圖是照 scale 2 畫的
+    const HMASK = scale >= 3 && skin ? new Uint8Array(W * Hh) : null;
     for (const h of hands) {
       if ((h.hide && hasO) || h.g === 'none') continue;   // 伸進衣服裡／塞在手臂下面
-      const S = HAND_SPR[h.g] || HAND_SPR.flat, mir = h.part === 'armR', sw = Math.max(...S.rows.map(q => q.length));
+      let S = HAND_SPR[h.g] || HAND_SPR.flat;
+      const HDH = scale >= 3 && !!skin;   // 高解析樣品：像素手放大兩倍時用 Scale2x（斜邊變圓、手指分得開），每格縮一半
+      if (HDH) S = handX2(S);
+      const mir = h.part === 'armR', sw = Math.max(...S.rows.map(q => q.length)), k = HDH ? k0 / 2 : k0;
       const a = mir ? [sw - S.a[0], S.a[1]] : S.a, bd = mir ? [-S.d[0], S.d[1]] : S.d;
       const wx = (cv.ax + 1.1 * h.w[0]) * scale, wy = (cv.ay - h.w[2]) * scale;   // 正面：畫面 x＝世界 x × GIRTH 1.1
       let tx = h.d[0] * 1.1, ty = -h.d[2]; const tl = Math.hypot(tx, ty);
@@ -1286,8 +1365,32 @@
         const q = skin ? (rim(sy, sx - 1) || rim(sy, sx + 1) || rim(sy - 1, sx) || rim(sy + 1, sx) ? [...skinShadow(skin), 255] : [skin[0], skin[1], skin[2], 255])
           : dark && px[j + 3] ? [34, 30, 42, 234] : [51, 45, 64, 204];
         px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2]; px[j + 3] = q[3];
+        if (HMASK) HMASK[i] = 1;
       }
     }
+    if (HMASK) {   // 高解析：手兩階——右下（背光）那邊的邊、手指縫的右邊用陰影色，其他亮色；不畫黑線
+      const SKc = [skin[0], skin[1], skin[2], 255], SHc = [...skinShadow(skin), 255];
+      for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x; if (!HMASK[i]) continue;
+        const dark = (x + 1 >= W || !HMASK[i + 1]) || (y + 1 >= Hh || !HMASK[i + W]) || (x + 1 < W && y + 1 < Hh && !HMASK[i + W + 1]);
+        const q = dark ? SHc : SKc, j = i * 4; px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2];
+      }
+    }
+  }
+  /** Scale2x（EPX）：像素圖放大兩倍，斜的地方補成斜邊（不是一格變四格的方塊）。結果記在圖上，只算一次。 */
+  function handX2(S) {
+    if (S._x2) return S._x2;
+    const R = S.rows, h = R.length, w = Math.max(...R.map((q) => q.length)), at = (x, y) => (y >= 0 && y < h && x >= 0 && x < (R[y] || '').length && R[y][x] === '#');
+    const out = Array.from({ length: h * 2 }, () => new Array(w * 2).fill('.'));
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const P = at(x, y), A = at(x, y - 1), B = at(x + 1, y), C = at(x - 1, y), D = at(x, y + 1);
+      const e0 = (C === A && C !== D && A !== B) ? A : P, e1 = (A === B && A !== C && B !== D) ? B : P;
+      const e2 = (D === C && D !== B && C !== A) ? C : P, e3 = (B === D && B !== A && D !== C) ? D : P;
+      out[2 * y][2 * x] = e0 ? '#' : '.'; out[2 * y][2 * x + 1] = e1 ? '#' : '.'; out[2 * y + 1][2 * x] = e2 ? '#' : '.'; out[2 * y + 1][2 * x + 1] = e3 ? '#' : '.';
+    }
+    const r2 = { a: [S.a[0] * 2, S.a[1] * 2], d: S.d, rows: out.map((q) => q.join('')) };
+    try { Object.defineProperty(S, '_x2', { value: r2, enumerable: false }); } catch { /* frozen */ }
+    return r2;
   }
 
   // ---------------------------------------------------------------- droom 人偶＋worker
@@ -1302,7 +1405,7 @@
       new Function('globalThis', 'module', src)(box, undefined);   // 兩個人偶檔都叫 RoomDoll → 另外裝，不蓋掉房間用的
       F = box.RoomDoll;
       try {
-        const code = `const F=(${F.factorySource})();const reactOf=${reactOf};const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const skinShadow=${skinShadow};const skinPass=${skinPass};const FACE_BLANK=${JSON.stringify({ ...FACE_BLANK, grid: undefined })};const paintFace=${paintFace};const clothAt=${clothAt};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
+        const code = `const F=(${F.factorySource})();const reactOf=${reactOf};const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const skinShadow=${skinShadow};const skinPass=${skinPass};const hairPass=${hairPass};const handX2=${handX2};const FACE_BLANK=${JSON.stringify({ ...FACE_BLANK, grid: undefined })};const paintFace=${paintFace};const clothAt=${clothAt};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
 onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},j.cv);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
         const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
         for (let i = 0; i < POOL; i++) {
@@ -1329,7 +1432,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
 
   // ---------------------------------------------------------------- 算好的格子存在手機裡（IndexedDB，PNG）
   //   鑰匙＝程式版本（動作／變形／畫法的原始碼雜湊＋人偶檔）＋身形＋第幾格；程式一改就自動作廢（開頁時清掉舊版本的）。
-  const CODE_HASH = (() => { const t = DROOM_URL + SCALE + String(motion) + String(fgArmPts) + String(fgArm) + String(braPiece) + String(pantyPiece) + String(deform) + String(drawFrame) + String(pasteHands) + JSON.stringify(HAND_SPR) + String(shade) + String(veil) + String(clothAt) + String(skinShadow) + String(skinPass) + String(paintFace); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36); })();
+  const CODE_HASH = (() => { const t = DROOM_URL + SCALE + String(motion) + String(fgArmPts) + String(fgArm) + String(braPiece) + String(pantyPiece) + String(deform) + String(drawFrame) + String(pasteHands) + JSON.stringify(HAND_SPR) + String(shade) + String(veil) + String(clothAt) + String(skinShadow) + String(skinPass) + String(paintFace) + String(hairPass) + String(handX2); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36); })();
   let dbP = null;
   function db() {
     if (!dbP) dbP = new Promise((res) => {

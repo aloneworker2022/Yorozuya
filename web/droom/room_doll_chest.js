@@ -334,7 +334,7 @@
       return { H, b, head_h, zc, chin, S, C, T: S - C, knee: C * 0.6, hipz: C + 3.4, ankle: 3.3 };
     }
     const F = (b, k) => b[k] * b.frame;
-    let FOOT_HD = false, TIPTOE = 0, ARM_K = 1, HEEL = 0;   // HEEL：高跟鞋跟高（人偶單位，2026-11-25 使用者；站著的姿勢才有）   // pt39u：赤腳走路微墊腳（腳跟抬高量）   // pt38u：build 時 opts.scale≥2 才開
+    let FOOT_HD = false, TIPTOE = 0, ARM_K = 1, HEEL = 0, PIX_HANDS = false;   // HEEL：高跟鞋跟高（人偶單位，2026-11-25 使用者；站著的姿勢才有）   // pt39u：赤腳走路微墊腳（腳跟抬高量）   // pt38u：build 時 opts.scale≥2 才開
     /** 2026-11-19 大腿模組（坐姿用；使用者參考圖「横座り」）：大腿從根部扭轉——給大腿「正面」朝哪（front），
      *  根部外鼓、股四頭肌、膝蓋骨、小腿肚都照這個方向放（不像 legRaw 假設站著、外側固定是 ±x）。膝關節跟著斜。
      *  side：−1 右腿／＋1 左腿；toe：腳尖方向。坐在地上時 sh.floor 會把貼地那面切平（大腿躺地被壓扁）。 */
@@ -426,7 +426,7 @@
      *  包鞋只包腳趾和腳底邊，腳背露出來（正面看主要看到的就是這條斜的腳背）；③ 站姿腳尖往外開（idle 裡改方向），細跟才從側面露出來；
      *  ④ 腳小、腳踝細。鞋：cloth 8（聊天黑影畫成不透明黑）。整個人在 build 裡已經墊高 HEEL，這裡腳踝本來就在 3.3＋HEEL。 */
     function heelFoot(sh, P, side, ankle, toe) {
-      const fr = P.b.frame, q = fr ** .5 * (FOOT_HD ? 1.25 : 1.05);
+      const fr = P.b.frame, q = fr ** .5 * 1.05;
       const [ax, ay, az] = ankle;
       let ux = toe[0], uy = toe[1]; const un = Math.hypot(ux, uy) || 1; ux /= un; uy /= un;
       const U = (p, k, dz = 0) => [p[0] + ux * k, p[1] + uy * k, p[2] + dz];
@@ -483,7 +483,7 @@
         let d = [wrist[0] - elbow[0], wrist[1] - elbow[1], wrist[2] - elbow[2]];
         const n = hypot3(d[0], d[1], d[2]) || 1; d = d.map(v => v / n);
         const L = 3.8 * fr ** .7;
-        if (!FOOT_HD) { sh.cone(BODY, wrist, wrist.map((w, i) => w + d[i] * L), 1.65 * fr ** .5, 1.1 * fr ** .5); sh.prims[sh.prims.length - 1].hand = 1; return; }   // hand：聊天黑影拿掉、改貼像素手
+        if (!FOOT_HD || PIX_HANDS) { sh.cone(BODY, wrist, wrist.map((w, i) => w + d[i] * L), 1.65 * fr ** .5, 1.1 * fr ** .5); sh.prims[sh.prims.length - 1].hand = 1; return; }   // PIX_HANDS：聊天黑影高解析（細腳）但手照樣貼像素手   // hand：聊天黑影拿掉、改貼像素手
         // 2026-10-30 pt76u：2× 才畫細手——掌心肉墊、手背、四指＋拇指、指縫／掌紋 MARK
         const side = shoulder[0] >= 0 ? 1 : -1, q = fr ** .5;
         const orth = (v) => { const k = v[0] * d[0] + v[1] * d[1] + v[2] * d[2]; let o = v.map((x, i) => x - k * d[i]); const m = hypot3(o[0], o[1], o[2]) || 1; return o.map(x => x / m); };
@@ -2184,7 +2184,7 @@
       return res;
     }
     function build(doll, pose, frame, yaw, opts = {}) {
-      FOOT_HD = (opts.scale || 1) >= 2;
+      FOOT_HD = (opts.scale || 1) >= 2; PIX_HANDS = !!opts.pixHands;
       ARM_K = opts.armK || 1;
       const P = proportions(doll), sh = makeShape(), b = P.b;
       // 2026-11-25 高跟鞋（doll.heels：true＝4 單位≈6 公分，或給數字）：站著的姿勢才穿；整個人墊高 → P 的高度全部 ＋HEEL
