@@ -456,6 +456,29 @@ function fingerMood(who) {
 }
 // 2026-11-25 使用者：黑影人改肉色＋一階陰影（聊天黑影＋房間小人）。預設開（使用者：房間聊天的黑影人沒有變肉色——主畫面沒有開關）；
 //   test_room 除錯列「黑影肉色」按一下關掉（localStorage yoro_shadow_skin＝0），主畫面同一個網址也會跟著變。
+// 2026-11-26 使用者：聊天時的站姿多種（性感／普通／大剌剌／不耐煩／快樂／害羞）＋腳的動作（不耐煩敲地板）。照順序看：
+//   除錯指定（localStorage yoro_posture）→ 心情餘溫（生氣→不耐煩、害羞慌亂／委屈→害羞、被撩起來→性感）→ 性慾高（≥70）且女友以上→性感
+//   → 個性＋關係（御姊、熱戀以上、清純反差的女友以上→性感；活潑開朗→大剌剌；天然呆→快樂；文靜溫柔、清純反差在朋友以下→害羞；高冷、傲嬌→普通）。
+const POSTURES = ["normal", "sexy", "casual", "impatient", "happy", "shy"];
+const POSTURE_ZH = { normal: "普通", sexy: "性感", casual: "大剌剌", impatient: "不耐煩", happy: "快樂", shy: "害羞" };
+function postureOf(who) {
+  if (!who) return "normal";
+  try { const o = localStorage.getItem("yoro_posture"); if (POSTURES.includes(o)) return o; } catch { /* */ }
+  let mood = null; try { mood = getMoodCarry(who); } catch { mood = null; }
+  const lv = Number(mood?.level) || 0;
+  if (girlAngryNow(who) || (mood?.type === "angry" && lv >= 10)) return "impatient";
+  if ((mood?.type === "flustered" || mood?.type === "hurt") && lv >= 15) return "shy";
+  const si = STAGE_INDEX[who.roomStage || who.stage] ?? 0, lib = Number(who.bodyState?.libido) || 0;
+  if (mood?.type === "aroused" && lv >= 15 && si >= STAGE_INDEX.friend) return "sexy";
+  if (lib >= 70 && si >= STAGE_INDEX.girlfriend) return "sexy";
+  const per = basePersonality(who);
+  if (per === "御姊" || si >= STAGE_INDEX.passionate) return per === "天然呆" ? "happy" : "sexy";
+  if (per === "清純反差") return si >= STAGE_INDEX.girlfriend ? "sexy" : si <= STAGE_INDEX.friend ? "shy" : "normal";
+  if (per === "活潑開朗") return "casual";
+  if (per === "天然呆") return "happy";
+  if (per === "文靜溫柔") return si <= STAGE_INDEX.friend ? "shy" : "normal";
+  return "normal";
+}
 function shadowSkinOn() { try { return localStorage.getItem("yoro_shadow_skin") !== "0"; } catch { return true; } }
 /** 膚色：照特殊特質（古銅小麥／雪白、奶白／白皙），沒有就預設肉色。 */
 function skinRgbOf(who) {
@@ -465,7 +488,7 @@ function skinRgbOf(who) {
   if (/白皙/.test(t)) return [246, 214, 192];
   return [242, 204, 177];
 }
-window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl), ...teaseReactLook(girl), squirtSeq: Number(girl.bodyState?.squirt?.seq) || 0, collapsed: isCollapsed(girl), stunned: inSpasm(girl) || stunTier(effectiveStun(girl, "")) === "stun", ...(shadowSkinOn() ? { skin: skinRgbOf(girl) } : {}) } : null);
+window.RoomLookProvider = () => (girl ? { look: girl.look || null, outfit: wornOutfit(girl), undressStage: undressStage(girl), belly: Preg.bellyOf(girl), wife: isWifeStage(girl.stage), tier: touchTierOf(girl.stage), angry: girlAngryNow(girl), happy: (Number(girl._happyUntil) || 0) > Date.now(), fingerIn: girl.bodyState?.organs?.vagina?.stuffed === "fingers", ...fingerMood(girl), ...teaseReactLook(girl), squirtSeq: Number(girl.bodyState?.squirt?.seq) || 0, collapsed: isCollapsed(girl), stunned: inSpasm(girl) || stunTier(effectiveStun(girl, "")) === "stun", ...(shadowSkinOn() ? { skin: skinRgbOf(girl) } : {}), posture: postureOf(girl) } : null);
 
 // ---------------------------------------------------------------- 房間活動（room_activity.js，房間層執行）
 // 她在房間裡做什麼由 room_character.js 依這裡給的情境挑；開始／定下來的事件回寫到 girl.roomActivity
@@ -1216,6 +1239,17 @@ function bindTalkDebug() {
     try { window.ChatShadow?.sync?.(); } catch { /* */ }
   });
   { const b = $("dbg-shadow-skin"); if (b) b.textContent = shadowSkinOn() ? "黑影肉色：開" : "黑影肉色：關"; }
+  // 2026-11-26 站姿除錯：自動 → 普通 → 性感 → 大剌剌 → 不耐煩 → 快樂 → 害羞 → 自動
+  const postureLabel = () => { let o = ""; try { o = localStorage.getItem("yoro_posture") || ""; } catch { /* */ } return "站姿：" + (POSTURE_ZH[o] || `自動（${POSTURE_ZH[postureOf(girl)] || "—"}）`); };
+  onId("dbg-posture", "click", () => {
+    let o = ""; try { o = localStorage.getItem("yoro_posture") || ""; } catch { /* */ }
+    const next = ["", ...POSTURES][(["", ...POSTURES].indexOf(o) + 1) % (POSTURES.length + 1)];
+    try { if (next) localStorage.setItem("yoro_posture", next); else localStorage.removeItem("yoro_posture"); } catch { /* */ }
+    const b = $("dbg-posture"); if (b) b.textContent = postureLabel();
+    pushDebug(next ? `站姿固定：${POSTURE_ZH[next]}` : "站姿：照心情、個性、關係自動"); renderDebug();
+    try { window.ChatShadow?.sync?.(); } catch { /* */ }
+  });
+  { const b = $("dbg-posture"); if (b) b.textContent = postureLabel(); }
   onId("dbg-talk-now", "click", () => { const st = talkState(); if (!st) return; st.leftMs = 0; st.closedAt = 0; proactiveTalkTick(); renderTalkDebug(); });
 }
 

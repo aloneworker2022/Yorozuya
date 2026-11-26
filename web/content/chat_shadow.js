@@ -906,6 +906,59 @@
         for (const st of sh.areolaStamps || []) st.q = [st.q[0], st.q[1], st.q[2] - d];
       }
     }
+    // 2026-11-26 使用者：站姿多種＋聊天時腳的動作（不耐煩會敲地板）。m.posture：
+    //   normal 普通（原本的稍息）、sexy 性感（屁股往站的那隻腳推、另一隻腳交叉到前面）、casual 大剌剌（兩腳大開、重心左右換）、
+    //   impatient 不耐煩（重心在一隻腳、另一隻腳腳尖一直敲地板）、happy 快樂（一隻腳往後勾起來晃）、shy 害羞（內八、膝蓋靠攏、腳尖轉來轉去）。
+    //   兩條腿照 2 骨 IK 重擺：上半身整個平移 B、每隻腳給腳踝位移＋腳尖轉向（yaw 往外為正）＋腳尖上下（pitch 往上為正，以鞋跟著地點為軸）。
+    //   m.legAnim（呼吸、說話那兩組）才有循環動作；其他動作（被摸、生氣…）用同一個站姿但不動。
+    const PZ = m.posture && m.posture !== 'normal' && !anim && !m.fg ? m.posture : null;
+    if (PZ && (sh._legs || []).length === 2) {
+      const ph = m.legAnim ? (m.ph || 0) : 0, sn1 = Math.sin(ph), q4 = (((4 * ph) / (2 * Math.PI)) % 1 + 1) % 1;
+      const tap = m.legAnim ? 18 * Math.sin(Math.PI * Math.min(1, q4 / .62)) * (q4 < .62 ? 1 : 0) : 0;   // 一圈敲 4 下：腳尖抬起、啪一聲放下
+      // W＝站的那隻腳（畫面右邊、x＞0）、R＝放鬆的那隻（x＜0，原本腳踝高 .9、往前 .6）
+      const PS = {   // B 平移、roll 骨盆側傾（度，負＝站的那邊屁股往上）；腳踝位移是相對原本站姿
+        sexy:      { B: [1.9 + .35 * sn1, 0, -.4], roll: -6 - 1.2 * sn1, W: { a: [-.4, .2, 0], yaw: 14 }, R: { a: [4.6, 2.4, .2], yaw: -20, pole: [-.5, 1, 0] } },
+        casual:    { B: [.6 * sn1, 0, -1.3], roll: 2 * sn1, W: { a: [4.4, -.4, 0], yaw: 26 }, R: { a: [-4.4, -.8, -.9], yaw: 26, pole: [.4, 1, 0] } },
+        impatient: { B: [1.5, 0, -.3], roll: -4.5, W: { a: [-.4, 0, 0], yaw: 12 }, R: { a: [-1.2, 2.2, -.9], yaw: 34, pitch: tap * 1.7 } },   // 腳尖往外轉一點，正面才看得到腳尖抬起來
+        happy:     { B: [-.6, 0, .2 + .3 * Math.abs(sn1)], roll: 2.5 * sn1, W: { a: [-.6, 0, 0], yaw: 8 }, R: { a: [1.4, -3.2, 6.6 + 1.1 * sn1], yaw: 0, pole: [.2, 1, 0] } },
+        shy:       { B: [0, 0, -1.0], roll: 0, W: { a: [1.7, .3, 0], yaw: -28, pole: [-1, 1, 0] }, R: { a: [-1.7, .6, -.9], yaw: -28 + 10 * sn1, pole: [-1, 1, 0], pitch: -5 } },
+      }[PZ];
+      if (PS) {
+        const B = PS.B, sub = (a, c) => [a[0] - c[0], a[1] - c[1], a[2] - c[2]], len = (v) => Math.hypot(v[0], v[1], v[2]), add = (a, c) => [a[0] + c[0], a[1] + c[1], a[2] + c[2]];
+        const shift = (X, v) => ({ R: X.R, t: [X.t[0] + v[0], X.t[1] + v[1], X.t[2] + v[2]] });
+        const axisRot = (ax, deg) => { const [x, y, z] = nrm(ax), a = deg * Math.PI / 180, c = Math.cos(a), s2 = Math.sin(a), t = 1 - c; return [c + t * x * x, t * x * y - s2 * z, t * x * z + s2 * y, t * x * y + s2 * z, c + t * y * y, t * y * z - s2 * x, t * x * z - s2 * y, t * y * z + s2 * x, c + t * z * z]; };
+        const L = sh._legs.map(([h, k, a, sd, o]) => { const mv = (q) => o ? [q[0] + o[0], q[1] + o[1], q[2] + o[2]] : q; return { h: mv(h), k: mv(k), a: mv(a) }; });
+        const cx0 = (L[0].h[0] + L[1].h[0]) / 2, hipC = [cx0, (L[0].h[1] + L[1].h[1]) / 2, (L[0].h[2] + L[1].h[2]) / 2];
+        const BX = shift(H.about(H.rotY(PS.roll || 0), hipC), B), BXp = (q) => { const v = H.mulV(BX.R, q); return [v[0] + BX.t[0], v[1] + BX.t[1], v[2] + BX.t[2]]; };   // 上半身：繞骨盆中心側傾再平移
+        const legs = L.map((g) => {
+          const sd = Math.sign(g.h[0] - cx0) || 1, S = sd > 0 ? PS.W : PS.R;
+          const h2 = BXp(g.h), a2 = add(g.a, S.a || [0, 0, 0]), l1 = len(sub(g.k, g.h)), l2 = len(sub(g.a, g.k));
+          // 膝蓋：2 骨 IK，往 pole 方向彎（預設往前、微微往外）
+          const D = sub(a2, h2), dl = Math.max(Math.abs(l1 - l2) + .1, Math.min(l1 + l2 - .02, len(D))), dir = nrm(D);
+          const aa = (l1 * l1 - l2 * l2 + dl * dl) / (2 * dl), hh = Math.sqrt(Math.max(0, l1 * l1 - aa * aa)), pole = nrm(S.pole ? [S.pole[0] * sd, S.pole[1], S.pole[2]] : [sd * .15, 1, 0]);
+          const pd = pole[0] * dir[0] + pole[1] * dir[1] + pole[2] * dir[2], nn = nrm([pole[0] - dir[0] * pd, pole[1] - dir[1] * pd, pole[2] - dir[2] * pd]);
+          const k2 = [h2[0] + dir[0] * aa + nn[0] * hh, h2[1] + dir[1] * aa + nn[1] * hh, h2[2] + dir[2] * aa + nn[2] * hh];
+          const a3 = [h2[0] + dir[0] * dl, h2[1] + dir[1] * dl, h2[2] + dir[2] * dl];   // 搆不到時腳踝停在伸直的地方
+          const thigh = shift(H.about(rotTo(sub(g.k, g.h), sub(k2, h2), 1), g.h), sub(h2, g.h));
+          const shin = shift(H.about(rotTo(sub(g.a, g.k), sub(a3, k2), 1), g.k), sub(k2, g.k));
+          // 腳：先以鞋跟著地點為軸上下（敲地板），再以腳踝為軸轉腳尖方向，最後搬到新的腳踝
+          const heelPt = [g.a[0], g.a[1] - 1.8, .1], lat = [1, 0, 0];
+          let Rp = axisRot(lat, S.pitch || 0); if ((S.pitch || 0) && H.mulV(Rp, [0, 1, 0])[2] < 0) Rp = axisRot(lat, -(S.pitch || 0));   // 往上＝腳尖抬起
+          const pitchX = H.about(Rp, heelPt), yawX = H.about(axisRot([0, 0, 1], -sd * (S.yaw || 0)), g.a);
+          const foot = shift(H.compose(yawX, pitchX), sub(a3, g.a));
+          return { sd, g, thigh, shin, foot };
+        });
+        for (const p of sh.prims) {
+          const q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
+          const onLeg = p.part === 'legs' || (p.cloth && (p.garm === 'bot' || p.bik === 'bot' || p.under) && q[2] < Math.min(legs[0].g.h[2], legs[1].g.h[2]) - 1.5);
+          if (!onLeg) { p.xf = p.xf ? H.compose(BX, p.xf) : BX; continue; }
+          const lg = legs[(Math.sign(q[0] - cx0) || 1) === legs[0].sd ? 0 : 1];
+          const X = q[2] < lg.g.a[2] + .8 ? lg.foot : q[2] > lg.g.k[2] ? lg.thigh : lg.shin;
+          p.xf = p.xf ? H.compose(X, p.xf) : X;
+        }
+        for (const st of sh.areolaStamps || []) st.q = BXp(st.q);
+      }
+    }
     // 乳房軟變形（同 droom 揉乳房的 kw：零件的每一點照「從根部往下多遠」推，根部 0、下緣全推；在 primDist 裡反推回去算距離）
     const softRoot = {};
     if (SOFT) for (const sd of [-1, 1]) {
@@ -1198,7 +1251,8 @@
     const shape = () => ({ P: base.P, sh: Object.assign({}, base.sh, { prims: base.sh.prims.map(p => Object.assign({}, p)), areolaStamps: (base.sh.areolaStamps || []).map(q => Object.assign({}, q)) }) });
     const m = motion(pose, f, n, body === 'mermaid', doll._mode || null, doll._tier || null);
     m.cup = doll.cup || null;   // deform 用：C 以下笑的時候不晃
-    m.stance = doll._stance || null;   // 抱胸／放背後：手掌看不到（不貼）
+    m.stance = doll._stance || null;
+    m.posture = body === 'idle' ? (doll._posture || null) : null; m.legAnim = pose === 'breathe' || pose === 'talk';   // 2026-11-26 站姿＋腳的動作   // 抱胸／放背後：手掌看不到（不貼）
     m.sitK = doll._sit || 'm';   // 2026-11-24 癱坐的腿：m＝M 字坐、kneel＝跪坐（鴨子坐）
     if (m.stance === 'cross' || m.stance === 'back') m.gest = 0;   // 抱胸／手放背後：說話不比手勢
     // 分三次畫：只有身體 → 身體＋內衣（胸罩、丁字褲）→ 身體＋外衣（T 恤），再一層層疊灰色上去
@@ -1510,7 +1564,8 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     const doll = F.lookToDoll(s.look || null, { outfit: s.outfit, undressStage: st, belly: s.belly });
     if (s.noHair) doll._noHair = 1;
     if (Array.isArray(s.skin)) doll._skin = s.skin;   // 2026-11-25 測試：肉色＋一階陰影（skinPass）
-    doll._stance = stanceOf(s.look);   // 2026-11-24 使用者：平常站著手抱胸／放背後／自然放下，每個魅子固定一種   // 2026-11-23 edit_pic 臉模型：同一個姿勢另外算一張光頭（肉臉），AI 畫臉、再蓋回頭髮
+    doll._stance = stanceOf(s.look);
+    if (s.posture && s.posture !== 'normal') doll._posture = s.posture;   // 2026-11-26 站姿（RoomLookProvider 照心情、個性、關係給）   // 2026-11-24 使用者：平常站著手抱胸／放背後／自然放下，每個魅子固定一種   // 2026-11-23 edit_pic 臉模型：同一個姿勢另外算一張光頭（肉臉），AI 畫臉、再蓋回頭髮
     doll.heels = true;   // 2026-11-25 使用者：魅魔都穿高跟鞋（黑色尖頭包鞋＋細跟，約 6 公分；只有站著的身體 idle 有，坐著 mermaid 那套不穿）
     Object.assign(doll, shapeOf(s.look?.breast_shape));
     if (/外擴/.test(String(s.look?.breast_splay || ''))) doll.splay = 'wide';   // 外擴是另一個維度（2026-11-21 使用者：例如木瓜型＋外擴、母乳型＋外擴）
@@ -1600,7 +1655,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
     if (!s) return;
     if (!F) { loadDroom().then(prewarm).catch(() => {}); return; }
     const st = Math.max(0, Math.min(3, Number(s.undressStage) || 0));
-    const k = JSON.stringify([s.look, s.outfit, st, s.tier, s.wife, s.belly, s.reacts, s.skin]);
+    const k = JSON.stringify([s.look, s.outfit, st, s.tier, s.wife, s.belly, s.reacts, s.skin, s.posture]);
     if (k === warmKey) return;
     warmKey = k;
     const list = [];
