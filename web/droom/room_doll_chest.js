@@ -22,7 +22,8 @@
     const FAINT_RGB = [110, 75, 75];
     // 2026-11-05 使用者：眼睛要凹進去（身體平塗看不出凹）→ 眼窩挖進去的表面照深度上比較暗的身體色（前端照亮度上膚色：越深越暗）
     const SOCK_RGB = [[45, 39, 58], [40, 34, 52], [35, 29, 46]];   // 2026-11-03：若隱若現的淡線（背部中線），前端上成很淡的膚色線
-    const CREASE_RGB = [90, 60, 60];   // 2026-10-31：鼠蹊部摺線（比一般線條深），前端上成深膚色
+    const CREASE_RGB = [90, 60, 60];
+    const NAVEL_RGB = [70, 44, 52];   // 2026-11-26 肚臍（crease 4；聊天黑影肉色模式畫成深一階的肉色）   // 2026-10-31：鼠蹊部摺線（比一般線條深），前端上成深膚色
     const GIRTH = 1.1;
     const TRUNK_SM = 2.6, UB_SLOPE = .5;   // 2026-11-03 軀幹疊層沿高度的平滑量（越大腰背越順）
     const SHJ_DZ = 3.4;   // 2026-11-03 肩關節在肩線下多少（原 2.6；使用者：斜肩往下、脖子明顯 → 肩膀外側壓低）
@@ -1174,7 +1175,8 @@
     function tee(sh, P, doll, tor, o = {}) {
       // 2026-11-21 衣櫃的衣服（使用者：畫她衣櫃裡的衣服）：o.crop 短版（下襬在乳房下）、o.over 寬鬆 oversize（鬆、長到屁股、袖子到手肘）、
       //   o.cami 細肩帶（上緣在胸口、沒袖子、兩條細肩帶）、o.long 長袖、o.hemZ 指定下襬（洋裝上半身＝腰）
-      const S = tor.S, top = o.shirt ? S + 1.2 : o.cami ? tor.zB + tor.cupr * .85 : S + .3, hem = o.hemZ != null ? o.hemZ : o.shirt ? tor.C - 3 : o.crop ? tor.zB - tor.cupr * 1.25 : o.over ? tor.C - 3.5 : tor.C + 5.5, K = o.shirt ? 32 : 44, nz = Math.max(8, Math.round((top - hem) / (o.shirt ? 1.15 : .8))), RC = o.shirt ? 1.0 : .62, RR = o.shirt ? .8 : .52;   // 2026-11-21 使用者：肩膀很腫 → T 恤的布管做細一點（.75／.55 → .62／.52；再細層和層之間會有縫、一條條）   // T 恤照 droom 原本（跟 sheets 的樣本一樣）；襯衫織粗一點
+      // 2026-11-26 使用者：白 T 改露肚臍——tee2 下襬在腰（肚臍上面一點），肚臍和整個下腹露出來
+      const S = tor.S, top = o.shirt ? S + 1.2 : o.cami ? tor.zB + tor.cupr * .85 : S + .3, hem = o.hemZ != null ? o.hemZ : o.tee2 ? (tor.zW != null ? tor.zW : (tor.C + tor.S) / 2) - .4 : o.shirt ? tor.C - 3 : o.crop ? tor.zB - tor.cupr * 1.25 : o.over ? tor.C - 3.5 : tor.C + 5.5, K = o.shirt ? 32 : 44, nz = Math.max(8, Math.round((top - hem) / (o.shirt ? 1.15 : .8))), RC = o.shirt ? 1.0 : .62, RR = o.shirt ? .8 : .52;   // 2026-11-21 使用者：肩膀很腫 → T 恤的布管做細一點（.75／.55 → .62／.52；再細層和層之間會有縫、一條條）   // T 恤照 droom 原本（跟 sheets 的樣本一樣）；襯衫織粗一點
       const FAB = o.fab || 1;   // 布的標記色：1 一般、7 半透明白（薄紗、濕身）、8 黑色情趣布（聊天黑影 veil 照標記色上色）
       const vBot = o.open ? hem - 2 : S - 10;   // 襯衫：V 字領的底（最上面兩顆沒扣，看得到胸罩和乳溝）；o.open 整件前面敞開（睡袍、不扣鈕的襯衫）
       // 2026-11-21 使用者：T 恤應該是 V 領，不會包到脖子 → 領口開在脖子根部（脖子那一圈挖掉）、前面 V 字開到 S−5.5
@@ -1750,7 +1752,7 @@
         sh.crease = 1; for (const s of [-1, 1]) marks(sh, [[xoff + s * 1.2, S - 2.7], [xoff + s * 2.6, S - 2.5], [xoff + s * 4.4, S - 1.9]], .2, .26); sh.crease = 0;
       }
       sh.part = 'waist';
-      if (b.belly || b.muscle >= .5) marks(sh, [[xoff, zW - 3.2], [xoff, zW - 3.7]], .35, .6);
+      { const c0 = sh.crease; sh.crease = 4; marks(sh, [[xoff, zW - 3.1], [xoff, zW - 3.8]], .35, b.belly || b.muscle >= .5 ? .6 : .5); sh.crease = c0; }   // 2026-11-26 肚臍每個體型都畫（露肚臍的白 T 看得到）
       sh.surfSkipBust = false; sh.part = pp;
     }
     /** 2026-10-31：鼠蹊線（照使用者參考圖）——從骨盆前面的髖骨（腰側往下）往內往下收到胯下兩側，兩條合成比基尼褲邊那種 V。
@@ -3206,7 +3208,7 @@
               hit[idx] = 1; tt[idx] = t;
               let mm = dist[1] < dist[0] + .15 ? 2 : 1;
               if (dist[2] < .05 && dist[1] > .05) mm = 3;
-              mat[idx] = mm; bust[idx] = mm === 1 ? bb : mm === 3 && ck ? (ck === 2 ? 98 : ck === 3 ? 97 : 99) : 0; limb[idx] = mm === 1 ? lf : 0;
+              mat[idx] = mm; bust[idx] = mm === 1 ? bb : mm === 3 && ck ? (ck === 2 ? 98 : ck === 3 ? 97 : ck === 4 ? 96 : 99) : 0; limb[idx] = mm === 1 ? lf : 0;
               sockL[idx] = mm === 1 && sk > .12 ? (sk > .6 ? 3 : sk > .35 ? 2 : 1) : 0;
               break;
             }
@@ -3260,7 +3262,7 @@
         if (isHair) {
           const upHair = y > 0 && m[i - width] && mat[i - width] === 2;
           set(i, !upHair && y < sheenRow ? HAIR_HI_RGB : HAIR_RGB, HAIR_A);
-        } else if (isMark) set(i, bust[i] === 98 ? FAINT_RGB : bust[i] === 97 ? BUST_RGB : bust[i] === 99 ? CREASE_RGB : MARK_RGB, BODY_A);   // 97：乳房線條（胸罩托出來的乳溝、上乳弧線；2026-11-21），跟乳房輪廓線同色
+        } else if (isMark) set(i, bust[i] === 98 ? FAINT_RGB : bust[i] === 97 ? BUST_RGB : bust[i] === 99 ? CREASE_RGB : bust[i] === 96 ? NAVEL_RGB : MARK_RGB, BODY_A);   // 97：乳房線條（胸罩托出來的乳溝、上乳弧線；2026-11-21），跟乳房輪廓線同色
         else {
           const di = hit[i] ? tt[i] : -1e9;
           let near = false;

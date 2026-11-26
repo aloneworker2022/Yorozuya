@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=35', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=36', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8, col_cb: 8, col_cg: 8, col_yb: 8, col_yg: 8, col_f: 8, col_x: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   // 2026-11-25 使用者（調戲不帶感）：反應改跟「態度」走（tease_attitude.js）——拒絕＝stranger（推開、遮住、掙扎）、無奈拒絕＝friend（輕推遮住）、
@@ -1060,6 +1060,7 @@
       else if (r === 150 && g === 100 && b === 128) o = [72, 58, 84];
       else if (r === 205 && g === 150 && b === 175) o = [88, 72, 100];
       else if ((r === 90 && g === 60 && b === 60) || (r === 110 && g === 75 && b === 75)) o = [51, 45, 64];
+      else if (r === 70 && g === 44 && b === 52) o = [51, 49, 64];   // 2026-11-26 肚臍：黑影裡看不出差別，肉色模式（skinPass）認得出來
       if (o) { px[i] = o[0]; px[i + 1] = o[1]; px[i + 2] = o[2]; }
     }
   }
@@ -1088,13 +1089,14 @@
   function skinPass(px, depth, W, Hh, hairMask, skin, scale) {
     const SK = skin, SH = skinShadow(SK);
     const AR = [Math.round(SK[0] * .86), Math.round(SK[1] * .6), Math.round(SK[2] * .62)], NP = [Math.round(SK[0] * .78), Math.round(SK[1] * .5), Math.round(SK[2] * .54)];
-    const AR2 = skinShadow(AR, .86, -6, 1.1);
+    const AR2 = skinShadow(AR, .86, -6, 1.1), NAV = skinShadow(SK, .72, -16, 1.4);   // 肚臍：比陰影再深一點
     const near = (i, c, t) => Math.abs(px[i] - c[0]) <= t && Math.abs(px[i + 1] - c[1]) <= t && Math.abs(px[i + 2] - c[2]) <= t;
     const n = W * Hh, kind = new Uint8Array(n);   // 0 不管、1 皮膚、2 線、3 乳暈、4 乳頭
     for (let k = 0; k < n; k++) {
       const i = k * 4; if (!px[i + 3]) continue;
       // 身體色一律換（頭髮遮罩只用來分頭髮跟輪廓線：兩個顏色幾乎一樣）
       if (near(i, [51, 45, 64], 3) || near(i, [34, 30, 42], 3) || near(i, [134, 112, 152], 3)) kind[k] = 1;
+      else if (near(i, [51, 49, 64], 1)) kind[k] = 5;   // 肚臍
       else if (near(i, [72, 58, 84], 3) || near(i, [48, 38, 55], 3)) kind[k] = 3;
       else if (near(i, [88, 72, 100], 3) || near(i, [58, 48, 66], 3)) kind[k] = 4;
       else if (!(hairMask && hairMask[k]) && (near(i, [30, 24, 40], 3) || near(i, [33, 27, 45], 3) || near(i, [20, 16, 26], 3) || near(i, [45, 39, 58], 3) || near(i, [40, 34, 52], 3) || near(i, [35, 29, 46], 3))) kind[k] = 2;
@@ -1150,7 +1152,7 @@
     for (let k = 0; k < n; k++) {
       const t = kind[k]; if (!t) continue;
       const i = k * 4, lit = tone[k] === 1;
-      const col = t === 3 ? (lit ? AR : AR2) : t === 4 ? NP : lit ? SK : SH;   // t 2（原本的輪廓線）也照亮暗面上色，不畫線
+      const col = t === 5 ? NAV : t === 3 ? (lit ? AR : AR2) : t === 4 ? NP : lit ? SK : SH;   // t 2（原本的輪廓線）也照亮暗面上色，不畫線
       px[i] = col[0]; px[i + 1] = col[1]; px[i + 2] = col[2]; px[i + 3] = 255;
     }
     return tone;
