@@ -31,5 +31,5 @@ export function roomFullText(occ) {
   if (!occ) return "";
   return occ.arriving
     ? `${occ.name}正在降臨——等她到了、離開以後才能召喚別人`
-    : `房裡已經有${occ.name}了——等她離開才能召喚別人`;
+    : `房裡已經有${occ.name}了——先在名冊她的卡片按「請她回日本」，才能召喚別人`;
 }

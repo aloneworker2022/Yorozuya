@@ -2,7 +2,7 @@
 // M0:委託狀態機 + 金幣 + 違約結算 + 伺服器存檔
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
-import { savedOccupant, blocksSummon, roomFullText } from "./content/room_occupancy.js?v=1"; // 一間房一次一位
+import { savedOccupant, blocksSummon, roomFullText } from "./content/room_occupancy.js?v=2"; // 一間房一次一位
 import { canStartSex, sexBlockReason } from "./content/sex_thrust.js?v=8"; // 精液 0 以下不能做愛
 
 import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildDiaryCommentPrompt, buildNoticePrompt, buildCardPlayPrompt, buildCardVisualPosePrompt, parseCardVisualPose, formatCardReactDisplay, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
@@ -8715,6 +8715,21 @@ function rosterSummonBlocked(s) {
   if (roomSummoningId && roomSummoningId === s.id) return true;
   const occ = roomOccupant();
   return !!occ && occ.id === s.id;
+}
+
+/** 2026-11-26 使用者：魅魔很多時換人＝先請房間這位回日本，再召喚別人。照關係：女友以上受傷、妻子以上感情 −3（房間模組做）。 */
+function sendRoommateHome(s) {
+  const api = window.RoomCompanion;
+  if (typeof api?.sendHome !== "function") { toast("房間模組還沒就緒——請重新整理", "bad"); return; }
+  if (watchWith || chatWith) { toast("先結束目前的對話", "bad"); return; }
+  const st = displayStage(s), hurt = ["girlfriend", "passionate", "lover"].includes(st) ? "\n她會有點受傷（心情委屈）。" : /wife/.test(st) ? "\n她會很受傷（心情委屈，感情 −3）。" : "";
+  if (!confirm(`請${s.name}搬回日本的住處？\n房間會空出來，可以召喚別人；之後也能再召喚她回來。${hurt}`)) return;
+  const r = api.sendHome();
+  if (!r?.ok) { toast(r?.why || "現在不能請她回去", "bad"); return; }
+  log(`請${s.name}回日本`);
+  toast(`${s.name}回日本了。房間空出來，可以召喚別人`);
+  dirty = true;
+  setTimeout(() => renderAll(), 300);
 }
 
 /** 付了錢卻沒能進房（房裡有人／模組拒收）：原數退回。 */
@@ -18922,6 +18937,7 @@ function renderSuccubi() {
           ${s.summoner && !s.ntr ? `<span class="stage-chip" style="color:var(--red)">⚠ ${esc(summonerById(s.summoner.id)?.name || "被纏上")}${s.summoner.ringUnlocked ? "・已解環" : ""}</span>` : ""}</div>
         ${affThermoHtml(s)}
       </div>
+      ${!s.ntr && roomOccupant()?.id === s.id && !roomOccupant()?.arriving ? `<button type="button" class="roster-summon roster-sendhome" title="請她搬回日本的住處（房間空出來，才能召喚別人）。女友以上她會有點受傷，妻子以上感情 −3。">請她回日本</button>` : ""}
       ${s.ntr || rosterSummonBlocked(s) ? "" : workingNow(s) ? `<button type="button" class="roster-summon roster-peek" title="偷看她接客：10～25 金，加到負債上">去看她</button>` : summonBtn}
       <div class="status-dot ${st}"></div>`;
     if (!s.ntr) el.title = "點一下打開。長按獻祭。";
@@ -18939,6 +18955,7 @@ function renderSuccubi() {
       ev.stopPropagation();
       if (armed || opening) return;
       if (ev.currentTarget.classList.contains("roster-peek")) { escortPeek(s); return; }
+      if (ev.currentTarget.classList.contains("roster-sendhome")) { sendRoommateHome(s); return; }
       beginRoomCompanionSummon(s.id);
     });
     const openSacrifice = () => {

@@ -104,6 +104,13 @@ def main():
     la.absorb(store, data, NOON + 20, rnd)
     assert not store["girls"]["a"]["roommate"] and store["girls"]["a"]["phase"] == "japan" and store["girls"]["a"].get("homeId")
     assert store["girls"]["b"]["roommate"] and store["girls"]["b"]["phase"] == "room"
+    # 2026-11-26 請她回日本：同一位、鏡像的 roommate 旗拿掉、人不在房間 → 不再是室友，回日本住
+    store3 = la.new_store()
+    la.absorb(store3, save(), NOON, rnd)
+    r3 = store3["girls"]["a"]
+    assert r3["roommate"] and r3["phase"] == "room"
+    la.absorb(store3, save(present=False, roommate=False), NOON + 1000, rnd)
+    assert not r3["roommate"] and r3["phase"] == "japan", (r3.get("roommate"), r3.get("phase"))
     print("ok - roommate")
 
 

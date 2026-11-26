@@ -103,7 +103,7 @@ import {
   kidneyCheck,
 } from "./player_state.js?v=12";
 import { ensureOpenness, getOpenness } from "./openness.js?v=2";
-import { occupantOf, savedOccupant, blocksSummon, roomFullText as roomFullLine } from "./room_occupancy.js?v=1";
+import { occupantOf, savedOccupant, blocksSummon, roomFullText as roomFullLine } from "./room_occupancy.js?v=2";
 import {
   ensureInvasion,
   applyInvasionRoll,
@@ -3141,6 +3141,7 @@ function dropVisitPics() {
 
 /** 人已經出現、清單也跑完，才收掉。沒跑完就留著，下次打開接著問。 */
 function finishSummonArrival(who, mode) {
+  if (who && who.sentHome) { who.sentHome = 0; if (ROOMMATE_ON) who.roommate = true; }   // 2026-11-26 被請回日本的又召喚回來：重新當室友
   if (!who || who !== girl) return;
   if (mode === "back" && who.world && sheIsOut()) {
     decayArousalCool(who);
@@ -11800,7 +11801,7 @@ function persistRoom(opts = {}) {
   if (!girl) return;
   try {
     // 2026-11-25 使用者（§13.0 第 7 項）：房間裡這位＝室友（家是房間；RP5 看鏡像的 roommate 旗決定她出門、回來）
-    if (ROOMMATE_ON) girl.roommate = true;
+    if (ROOMMATE_ON && !girl.sentHome) girl.roommate = true;   // 被請回日本（sentHome）的那位不是室友了
     player = ensurePlayer(player);
     const payload = {
       girl,
@@ -13112,6 +13113,30 @@ function markLeftNaked(who) {
   return flag;
 }
 
+/**
+ * 2026-11-26 使用者：魅魔很多時怎麼換人——先請房間這位回日本，再去名冊召喚別人。
+ * 她收拾離開（走出房間、回日本的住處過她的生活；RP5 看鏡像沒有 roommate 旗就把她當一般住日本的魅魔），房間空出來。
+ * 照關係（使用者選）：朋友以下沒差；女友以上心情記一筆「委屈受傷」（下次見面會鬧一下）；妻子以上感情再扣 3。
+ */
+function sendRoommateHome() {
+  if (!girl) return { ok: false, why: "房裡沒有人" };
+  if (sheIsOut()) return { ok: false, why: `${girl.name}現在不在房間` };
+  if (pending || summoning || summonBackBusy) return { ok: false, why: "她還在降臨中" };
+  const who = girl, si = STAGE_INDEX[who.roomStage || who.stage] ?? 0;
+  if (si >= STAGE_INDEX.girlfriend) {
+    try { noteMood(who, { type: "hurt", level: si >= STAGE_INDEX.wife ? 55 : 40, cause: "被你請回日本、換別人住進房間", now: Date.now() }); } catch { /* */ }
+  }
+  if (si >= STAGE_INDEX.wife) bumpAffection(-3, "被請回日本");
+  who.sentHome = Date.now();
+  who.roommate = false;
+  if (sheetOpen()) hideSheet();
+  letHerLeave({ instantHome: !who.world?.home });
+  if ($("summon-status")) $("summon-status").textContent = `${who.name}收拾好東西，回日本的住處了。房間空出來，可以去名冊召喚別人。`;
+  pushDebug(`請 ${who.name} 回日本（${STAGE_NAME[who.stage] || ""}${si >= STAGE_INDEX.girlfriend ? "，她有點受傷" : ""}）`);
+  persistRoom();
+  return { ok: true, name: who.name };
+}
+
 async function letHerLeave(opts = {}) {
   if (!girl || pending || sheIsOut()) return;
   const nakedFlag = markLeftNaked(girl);
@@ -13343,7 +13368,7 @@ function bindBodyPanel() {
   const saved = loadRoomSave();
   if (!saved?.girl) return;
   girl = saved.girl;
-  if (ROOMMATE_ON) girl.roommate = true;
+  if (ROOMMATE_ON && !girl.sentHome) girl.roommate = true;
   migrateAffectionScale(girl);
   player = ensurePlayer(saved.player);
   stripRetiredNude(girl);
@@ -13833,6 +13858,8 @@ window.RoomCompanion = {
   adopt: adoptRosterGirl,
   /** 一間房一次一位：{ id, name, arriving } 或 null（空房／她在外面）。 */
   occupant: roomOccupant,
+  /** 2026-11-26 請房間這位回日本（名冊換人用）。 */
+  sendHome: sendRoommateHome,
   /** 上一次 adopt 被拒的原因 { reason, occupant?, text }。 */
   lastRefusal: () => lastAdoptRefusal,
   summonFromRoster: summonRosterGirlIntoRoom,
