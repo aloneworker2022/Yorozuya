@@ -1178,7 +1178,7 @@
       const FAB = o.fab || 1;   // 布的標記色：1 一般、7 半透明白（薄紗、濕身）、8 黑色情趣布（聊天黑影 veil 照標記色上色）
       const vBot = o.open ? hem - 2 : S - 10;   // 襯衫：V 字領的底（最上面兩顆沒扣，看得到胸罩和乳溝）；o.open 整件前面敞開（睡袍、不扣鈕的襯衫）
       // 2026-11-21 使用者：T 恤應該是 V 領，不會包到脖子 → 領口開在脖子根部（脖子那一圈挖掉）、前面 V 字開到 S−5.5
-      const vBotT = S - 5.5, NECK_W = 3.4;
+      const vBotT = S - 5.5, NECK_W = 3.4, CREW_W = 3.7, CREW_D = 1.9;
       const Zs = [], G = [];   // G[j][k]＝第 j 層、第 k 角的布面點
       for (let j = 0; j <= nz; j++) {
         const z = top - (top - hem) * j / nz, yc = tor.yl(z) + .8, raw = [];
@@ -1212,7 +1212,10 @@
         if (!o.shirt && !o.cami) for (let k = 0; k < K; k++) {   // T 恤 V 領：脖子根部一圈挖掉＋前面 V 字
           const q = row[k]; if (!q) continue;
           const fr = Math.cos(2 * Math.PI * k / K);
-          if ((z > S - 1.2 && Math.abs(q[0]) < NECK_W) || (fr > .15 && z > vBotT && Math.abs(q[0]) < (z - vBotT) * .78 + .6)) row[k] = null;
+          if (o.tee2) {   // 2026-11-26 使用者：白 T 改圓領——脖子根部一圈＋前面淺淺的 U（半寬 CREW_W、往下 CREW_D）
+            const zt = S - 1.2, u2 = (zt - z) / CREW_D;
+            if ((z > zt && Math.abs(q[0]) < CREW_W) || (fr > .15 && u2 >= 0 && u2 < 1 && Math.abs(q[0]) < CREW_W * Math.sqrt(1 - u2 * u2))) row[k] = null;
+          } else if ((z > S - 1.2 && Math.abs(q[0]) < NECK_W) || (fr > .15 && z > vBotT && Math.abs(q[0]) < (z - vBotT) * .78 + .6)) row[k] = null;
         }
         if (o.shirt) for (let k = 0; k < K; k++) if (row[k] && z < hem + 2.5 * Math.abs(Math.sin(2 * Math.PI * k / K))) row[k] = null;   // 襯衫下襬：前後長、兩側短（圓弧下襬）
         Zs.push(z); G.push(row);
@@ -1279,7 +1282,17 @@
           if (pts.length > 1) sh.chain(BODY, pts, pts.map(() => .32));
         }
       }
-      if (first && !o.shirt && !o.cami) {   // V 領滾邊：兩邊 V 字的布邊（每一層開口旁第一個點）＋後領
+      if (first && o.tee2) {   // 圓領羅紋：沿 U 形領口（前）＋後領一圈，貼在布面上
+        const zt = S - 1.2, ring = [];
+        for (let i = 0; i <= 16; i++) {
+          const u = -1 + 2 * i / 16, x = u * (CREW_W + .2), z = zt - CREW_D * Math.sqrt(Math.max(0, 1 - u * u)) - .15;
+          const hit = rayHit(sh, [x, 25, z], [0, -1, 0], (p) => !p.nip && !p.cloth && p.part !== 'armL' && p.part !== 'armR');
+          if (hit) ring.push([x, hit[1] + RC + .25, z]);
+        }
+        if (ring.length > 1) sh.chain(BODY, ring, ring.map(() => .55));
+        const back = first.filter((q, k) => q && Math.cos(2 * Math.PI * k / K) < -.1 && Math.abs(q[0]) < CREW_W + 1.6);
+        if (back.length > 1) sh.chain(BODY, back, back.map(() => .5));
+      } else if (first && !o.shirt && !o.cami) {   // V 領滾邊：兩邊 V 字的布邊（每一層開口旁第一個點）＋後領
         for (const sd of [-1, 1]) {
           const edge = [];
           for (const row of G) {
