@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=34', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=35', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8, col_cb: 8, col_cg: 8, col_yb: 8, col_yg: 8, col_f: 8, col_x: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   // 2026-11-25 使用者（調戲不帶感）：反應改跟「態度」走（tease_attitude.js）——拒絕＝stranger（推開、遮住、掙扎）、無奈拒絕＝friend（輕推遮住）、
@@ -100,7 +100,7 @@
   const T = (top, bottom, dress) => ({ top, bottom: bottom || null, dress: !!dress });
   const X = (o) => ({ bottom: null, dress: false, ...o, dress: !!o.dress, noBra: o.noBra instanceof RegExp ? 'test' : !!o.noBra, noPants: o.noPants instanceof RegExp ? 'test' : !!o.noPants, _re: o });
   const WEAR_OF = [
-    [/白色 ?T ?恤配胸罩/, T('tee')],
+    [/白色 ?T ?恤配胸罩/, { ...T('tee'), white: 1 }],   // 2026-11-26 一開始那套（BASE_OUTFIT）：白色圓領 T（tee2＋白色）
     [/簡約日系/, T('tee', 'long')], [/甜美洋裝/, T('tee', 'short', 1)], [/街頭 ?oversize/i, T('over', 'shorts')], [/知性 ?OL|成熟知性套裝/i, T('shirt', 'pencil')],
     [/清新文青|古著復古/, T('shirt', 'long')], [/性感俐落|小露性感/, T('cami', 'short')], [/森林系/, T('tee', 'long', 1)], [/甜辣風|Y2K/i, T('crop', 'short')],
     [/JK|制服/i, T('shirt', 'pleat')], [/運動辣妹/, T('crop', 'shorts')], [/優雅名媛/, T('cami', 'long', 1)], [/暗黑哥德/, T('long', 'long', 1)],
@@ -116,6 +116,7 @@
     [/薄紗|只遮重點/, X({ top: 'cami', bottom: 'long', dress: 1, fab: 7, botFab: 7 })],
     [/三角比基尼|比基尼/, X({ top: 'bikini', bottom: 'bikini', noBra: 1, noPants: 1 })],   // 2026-11-22 使用者：情趣內衣——小三角比基尼擋住乳頭＋綁帶三角褲（黑色）
     // 自己取的名字：關鍵字
+    [/白色 ?T ?恤|白 ?T ?恤|白T/, { ...T('tee'), white: 1 }],
     [/洋裝|連身裙/, T('tee', 'short', 1)], [/長裙/, T('tee', 'long')], [/百褶/, T('shirt', 'pleat')], [/窄裙|鉛筆裙|套裝/, T('shirt', 'pencil')], [/短裙|裙/, T('tee', 'short')],
     [/短褲|熱褲/, T('tee', 'shorts')], [/褲/, T('tee', 'pants')], [/襯衫/, T('shirt')], [/細肩帶|吊帶|背心/, T('cami')], [/帽 ?T|衛衣|外套|oversize/i, T('over')], [/長袖/, T('long')],
   ];
@@ -126,7 +127,7 @@
     for (const [re, w] of WEAR_OF) if (re.test(t)) {
       if (!w) return null;
       const o = { top: w.top, bottom: w.bottom, dress: w.dress };
-      for (const k of ['fab', 'botFab', 'extras']) if (w[k] != null) o[k] = w[k];
+      for (const k of ['fab', 'botFab', 'extras', 'white']) if (w[k] != null) o[k] = w[k];
       for (const k of ['noBra', 'noPants']) if (w[k]) o[k] = w[k] === 'test' ? w._re[k].test(t) : true;   // 正規式：文字裡有才算（例：睡袍「真空」）
       return o;
     }
@@ -1302,7 +1303,7 @@
           if (l && rr && u2 && dn) fill.push([j, l - 1]);   // 用左邊那塊布的顏色補（黑馬甲上的洞補黑的）
         }
         for (const [j, from] of fill) { op[j] = op[from]; op[j + 1] = op[from + 1]; op[j + 2] = op[from + 2]; op[j + 3] = 255; } }
-      veil(px, o.pixels, true, doll.cloth === 'tee' ? TEE_WHITE : null);
+      veil(px, o.pixels, true, doll.cloth === 'tee' || (doll.wear && doll.wear.white) ? TEE_WHITE : null);
       // 外衣不透明，胸型靠 T 恤自己的形狀打光（光從上面來）：布面往下、往後斜（乳房下面垂下來那一片）暗一點，往上斜（上胸）亮一點。
       //   深度＝(y＋z)/32 → 往下一列：每往下 1 格人偶單位，布往前多少 s＝32·Δ深度·scale＋1（直立的面＝0）。先平均一下去掉雜訊。
       const Wd = o.width, Hd = o.height, n = Wd * Hd, sv = new Float32Array(n), wt = new Float32Array(n), op = o.pixels;

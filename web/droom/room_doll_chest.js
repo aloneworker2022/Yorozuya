@@ -1583,7 +1583,7 @@
         else if (t === 'openShirt') garm('top', () => tee(sh, P, doll, tor, { shirt: true, open: true, fab: w.fab }));
         else if (t === 'qipao') garm('top', () => { tee(sh, P, doll, tor, { hemZ: tor.zW - .6, fab: w.fab }); collarG(sh, P, doll, tor, true); });
         else if (t === 'bikini') garm('top', () => bikiniTopG(sh, P, doll, tor));
-        else if (t) garm('top', () => tee(sh, P, doll, tor, { shirt: t === 'shirt', crop: t === 'crop', over: t === 'over', cami: t === 'cami', long: t === 'long', fab: w.fab, hemZ: w.dress ? tor.zW - .6 : w.bottom && t !== 'over' && t !== 'crop' ? tor.zW + .3 : undefined }));   // 有下身：上衣紮進腰裡（oversize、短版不紮）
+        else if (t) garm('top', () => tee(sh, P, doll, tor, { tee2: t === 'tee' && !!w.white && !w.fab, shirt: t === 'shirt', crop: t === 'crop', over: t === 'over', cami: t === 'cami', long: t === 'long', fab: w.fab, hemZ: w.dress ? tor.zW - .6 : w.bottom && t !== 'over' && t !== 'crop' ? tor.zW + .3 : undefined }));   // 有下身：上衣紮進腰裡（oversize、短版不紮）
         if (w.bottom === 'bikini') garm('bot', () => bikiniBotG(sh, P, doll, tor));
         else if (w.bottom) garm('bot', () => (w.bottom === 'pants' || w.bottom === 'shorts' ? pantsG : skirtG)(sh, P, doll, tor, w.bottom));
         for (const x of w.extras || []) {
