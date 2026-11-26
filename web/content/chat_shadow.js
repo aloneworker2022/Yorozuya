@@ -1107,7 +1107,9 @@
   const FACE_BLANK = { x0: 49, y0: 50, w: 158, h: 206, top: 50, chin: 197, cx: 128,
     rle: "71.16s71.|65.28s65.|60.38s60.|57.44s57.|54.50s54.|52.54s52.|50.58s50.|47.64s47.|46.66s46.|44.70s44.|42.74s42.|41.76s41.|39.80s39.|38.82s38.|36.86s36.|35.88s35.|34.90s34.|33.92s33.|32.94s32.|31.96s31.|30.98s30.|29.100s29.|28.102s28.|27.104s27.|26.106s26.|25.108s25.|24.110s24.|23.112s23.|23.112s23.|22.114s22.|21.116s21.|21.116s21.|20.118s20.|19.120s19.|19.120s19.|18.122s18.|18.122s18.|17.124s17.|16.126s16.|16.126s16.|16.126s16.|15.128s15.|15.128s15.|14.130s14.|14.130s14.|13.132s13.|13.132s13.|13.132s13.|12.134s12.|12.134s12.|12.134s12.|11.136s11.|11.136s11.|11.136s11.|11.136s11.|11.136s11.|10.138s10.|10.138s10.|10.138s10.|10.138s10.|10.138s10.|10.138s10.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|9.140s9.|4.4s1.140s1.4s4.|2.154s2.|2.7s1d138s1d7s2.|1.9s1d136s1d9s1.|1.9s1d136s1d9s1.|1.4s1h4s1d136s1d5s1h3s1.|5s1h4s1d136s1d5s1h4s|1.4s1h4s1d136s1d5s1h3s1.|1.4s1h4s1d136s1d5s1h3s1.|1.5s1h4s1d134s1d5s1h4s1.|1.5s1h4s1d134s1d5s1h4s1.|1.5s1h4s1d134s1d5s1h4s1.|1.6s1h3s1d134s1d4s1h5s1.|1.6s1h3s1d134s1d4s1h5s1.|2.5s1h4s1d132s1d5s1h4s2.|2.6s1h3s1d132s1d4s1h5s2.|3.5s1h3s1d132s1d4s1h4s3.|3.6s1h3s1d130s1d4s1h5s3.|4.5s1h3s1d130s1d4s1h4s4.|5.5s1h2s1d130s1d3s1h4s5.|5.6s1h1s1d130s1d2s1h5s5.|6.5s1h2s1d128s1d3s1h4s6.|7.7s1d128s1d7s7.|8.7s1d126s1d7s8.|9.6s1d126s1d6s9.|10.5s1d126s1d5s10.|12.4s1d124s1d4s12.|14.2s1d124s1d2s14.|15.2s1d122s1d2s15.|16.126s16.|17.124s17.|18.122s18.|19.120s19.|20.118s20.|21.116s21.|22.114s22.|23.112s23.|23.112s23.|24.110s24.|25.108s25.|26.106s26.|27.104s27.|28.102s28.|29.100s29.|30.98s30.|31.96s31.|32.94s32.|33.92s33.|34.90s34.|35.88s35.|35.88s35.|36.86s36.|37.84s37.|39.80s39.|40.78s40.|41.76s41.|43.72s43.|44.70s44.|46.66s46.|48.62s48.|49.60s49.|51.56s51.|53.52s53.|55.48s55.|57.44s57.|60.1s1d34s1d1s60.|60.2s3d28s3d2s60.|60.5s3d22s3d5s60.|60.8s3d16s3d8s60.|60.11s5d6s5d11s60.|60.16s6d16s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|60.38s60.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|59.40s59.|58.42s58.|58.42s58.|58.42s58.|58.42s58.|58.42s58.|58.42s58.|58.42s58.|57.44s57.|57.44s57.|57.44s57.|56.46s56.|56.46s56.|55.48s55.|55.48s55.|54.50s54.|54.50s54." };
   /** 把空白臉貼到頭上：照頭頂、下巴、中線縮放對位；頭髮在前面的地方不貼（瀏海留著）；只貼到下巴下面一點（脖子用身體的）。 */
-  function paintFace(px, W, Hh, headBox, hairMask, skin, tone) {
+  /** 2026-11-26 使用者：先把臉模「替換」上去（不只是貼在人偶的頭上）——人偶頭上臉模外面的肉（比較寬的臉頰、平的下顎）先擦掉，
+   *  擦掉的地方露出後面的頭髮（頭髮那層有就用）或透明，臉的輪廓（下巴、下顎線、耳朵）就是臉模的。headPx＝只有頭那層、hairPx＝只有頭髮那層。 */
+  function paintFace(px, W, Hh, headBox, hairMask, skin, tone, headPx, hairPx) {
     const F0 = FACE_BLANK;
     if (!F0.grid) {
       const g = new Uint8Array(F0.w * F0.h), map = { '.': 0, s: 1, h: 2, d: 3 };
@@ -1120,6 +1122,12 @@
     const col = [null, SK, MID, SH];   // 臉模的深色也用陰影色（不要深色的線）
     const yEnd = Math.min(Hh - 1, Math.round(headBox.top + (F0.chin + 4 - F0.top) * k));
     const xA = Math.max(0, Math.floor(headBox.cx + (F0.x0 - F0.cx) * k)), xB = Math.min(W - 1, Math.ceil(headBox.cx + (F0.x0 + F0.w - F0.cx) * k));
+    const moldAt = (x, y) => { const mx = Math.floor(F0.cx + (x + .5 - headBox.cx) / k) - F0.x0, my = Math.floor(F0.top + (y + .5 - headBox.top) / k) - F0.y0; return mx < 0 || my < 0 || mx >= F0.w || my >= F0.h ? 0 : F0.grid[my * F0.w + mx]; };
+    if (headPx) for (let y = Math.max(0, Math.floor(headBox.top)); y <= Math.min(Hh - 1, headBox.chin + 1); y++) for (let x = 0; x < W; x++) {   // 擦掉臉模外面的頭
+      const i = y * W + x, j = i * 4; if (!headPx[j + 3] || hairMask[i] || moldAt(x, y)) continue;
+      if (hairPx && hairPx[j + 3]) { px[j] = hairPx[j]; px[j + 1] = hairPx[j + 1]; px[j + 2] = hairPx[j + 2]; px[j + 3] = 255; }
+      else px[j + 3] = 0;
+    }
     for (let y = Math.max(0, Math.floor(headBox.top)); y <= yEnd; y++) for (let x = xA; x <= xB; x++) {
       const mx = Math.floor(F0.cx + (x + .5 - headBox.cx) / k) - F0.x0, my = Math.floor(F0.top + (y + .5 - headBox.top) / k) - F0.y0;
       if (mx < 0 || my < 0 || mx >= F0.w || my >= F0.h) continue;
@@ -1206,7 +1214,7 @@
       let top = -1, bot = -1, sx = 0, sn = 0;
       for (let k = 0; k < n; k++) if (hpx[k * 4 + 3]) { const y = Math.floor(k / Wd); if (top < 0) top = y; bot = y; }
       if (top >= 0) { const mid = Math.round(top + (bot - top) * .45); for (let x = 0; x < Wd; x++) if (hpx[(mid * Wd + x) * 4 + 3]) { sx += x; sn++; } }
-      if (top >= 0 && sn) paintFace(r.pixels, r.width, r.height, { top, chin: bot, cx: sx / sn + .5 }, hm, doll._skin, tone);
+      if (top >= 0 && sn) paintFace(r.pixels, r.width, r.height, { top, chin: bot, cx: sx / sn + .5 }, hm, doll._skin, tone, hpx, hp);
     }
     // 衣服那幾層不畫皮膚上的標記（乳房輪廓弧線等 mat 2／摺線、乳暈印子、乳頭：浮在皮膚表面或直接印上去，會穿出衣服、在衣服上留一圈；T 恤做形狀時也不跟著乳頭凸起）
     if (hasU) veil(r.pixels, run(p => (!p.cloth || p.under) && p.mat !== 2 && !p.crease && !p.nip, true).pixels);
