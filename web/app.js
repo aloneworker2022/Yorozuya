@@ -67,7 +67,7 @@ import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, sc
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
 import { BASE_OUTFIT, ownsOutfit, hasOwnedList } from "./content/outfit_pick.js?v=3";
-import * as Bujo from "./content/home_bujo.js?v=4";
+import * as Bujo from "./content/home_bujo.js?v=5";
 import { THEMES as COLOR_THEMES, themeOf, themeVars, applyColorTheme, DEFAULT_THEME } from "./content/themes.js?v=1"; // 配色 20 套（2026-11-27） // 主畫面：子彈筆記＋箱庭（2026-11-27）
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 

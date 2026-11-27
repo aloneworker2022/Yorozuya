@@ -150,6 +150,10 @@ function renderToday() {
   if (tagFilter) fb.querySelector("b").textContent = tagFilter;
   const fq = focusQuest();
   const rows = todayRows();
+  // 正在專注的那筆自動排到最上面（2026-11-27 使用者），其他照時間
+  const ci = fq ? rows.findIndex((r) => r.k === "task" && r.state === "open" && r.id === fq.id) : -1;
+  if (ci > 0) rows.unshift(rows.splice(ci, 1)[0]);
+  const prevTop = log.firstElementChild?.dataset.id || "";
   log.innerHTML = "";
   let shown = 0;
   for (const r of rows) {
@@ -164,6 +168,7 @@ function renderToday() {
       + (isCur ? `<button class="curchip" type="button">專注中 ▾</button>` : "")
       + (r.k === "task" && r.state === "open" && !isCur ? `<button class="pick" type="button" aria-label="改成專注這一筆" title="改成專注這一筆">◎</button>` : "")
       + (r.it?.unsorted ? `<button class="kchip" type="button" data-k="note">記事</button><button class="kchip" type="button" data-k="task">待辦</button>` : "");
+    li.dataset.id = r.id;
     linkify(li.querySelector(".txt"), r.t);
     li.querySelector(".sig").onclick = () => cycle(r);
     const cc = li.querySelector(".curchip");
@@ -184,6 +189,8 @@ function renderToday() {
     log.appendChild(li);
   }
   $("bj-empty").hidden = shown > 0 || !!tagFilter;
+  // 換了專注的那筆：今日頁捲回最上面，看得到它
+  if (fq && prevTop && prevTop !== fq.id && curPage === "today") { const pg = log.closest(".bj-page"); if (pg) pg.scrollTop = 0; }
   renderNow();
 }
 
