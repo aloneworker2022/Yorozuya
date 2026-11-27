@@ -1201,16 +1201,58 @@
     const moldAt = (x, y) => { const mx = Math.floor(F0.cx + (mir ? -1 : 1) * (x + .5 - headBox.cx) / k) - F0.x0, my = Math.floor(F0.top + (y + .5 - headBox.top) / k) - F0.y0; return mx < 0 || my < 0 || mx >= F0.w || my >= F0.h ? 0 : F0.grid[my * F0.w + mx]; };
     if (headPx) for (let y = Math.max(0, Math.floor(headBox.top)); y <= Math.min(Hh - 1, headBox.chin + 1); y++) for (let x = 0; x < W; x++) {   // 擦掉臉模外面的頭
       const i = y * W + x, j = i * 4; if (!headPx[j + 3] || hairMask[i] || moldAt(x, y)) continue;
-      if (hairPx && hairPx[j + 3]) { px[j] = hairPx[j]; px[j + 1] = hairPx[j + 1]; px[j + 2] = hairPx[j + 2]; px[j + 3] = 255; }
+      if (hairPx && hairPx[j + 3]) { px[j] = hairPx[j]; px[j + 1] = hairPx[j + 1]; px[j + 2] = hairPx[j + 2]; px[j + 3] = 255; hairMask[i] = 1; }
       else px[j + 3] = 0;
     }
     for (let y = Math.max(0, Math.floor(headBox.top)); y <= yEnd; y++) for (let x = xA; x <= xB; x++) {
       const c = moldAt(x, y); if (!c) continue;
       const i = y * W + x; if (hairMask[i]) continue;
       if (tone && y > headBox.chin && tone[i] === 2) continue;   // 下巴下面：脖子上的投影留著
-      const j = i * 4, q = col[c]; px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2]; px[j + 3] = 255;
+      // A quiet shadow plane on the far cheek gives the blank face volume.
+      // Preserve the established featureless face and all five turning silhouettes.
+      const side = (x + .5 - headBox.cx) / (72 * k);
+      const faceY = (y - headBox.top) / (headBox.chin - headBox.top);
+      const cheekShadow = c === 1 && faceY > .24 && faceY < .94 && side > .47 + .16 * (1 - faceY);
+      const j = i * 4, q = cheekShadow ? MID : col[c]; px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2]; px[j + 3] = 255;
     }
   }
+  /** Connected, four-tone hair clusters, lit from the same upper left as the skin.
+   * Use the already-rendered hair depth: no additional model render or random texture.
+   * Keep the dark silhouette, with a muted violet sheen on the light-facing locks. */
+  function hairPass(px, depth, mask, W, Hh, scale) {
+    const palette = [[30, 25, 40], [44, 36, 55], [65, 52, 76], [91, 73, 99]];
+    const tones = new Uint8Array(W * Hh), K = scale || 2;
+    const has = (x, y) => x >= 0 && y >= 0 && x < W && y < Hh && mask[y * W + x];
+    const z = (x, y) => depth[y * W + x] * 32 + y / K;
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x; if (!mask[i]) continue;
+      let gx = 0, gy = 0, nx = 0, ny = 0;
+      for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2]]) {
+        if (!has(x + dx, y + dy)) continue;
+        const dz = (z(x + dx, y + dy) - z(x, y)) * K;
+        if (!Number.isFinite(dz) || Math.abs(dz) > 8) continue;
+        if (dx) { gx += dz / dx; nx++; } else { gy += dz / dy; ny++; }
+      }
+      gx /= nx || 1; gy /= ny || 1;
+      const light = (.45 * gx + .6 * gy + .66) / Math.hypot(gx, gy, 1);
+      tones[i] = light > .91 ? 3 : light > .73 ? 2 : light > .36 ? 1 : 0;
+    }
+    // Remove isolated shade pixels without blurring the silhouette or thin hair tips.
+    const clean = tones.slice();
+    for (let y = 1; y < Hh - 1; y++) for (let x = 1; x < W - 1; x++) {
+      const i = y * W + x; if (!mask[i]) continue;
+      const counts = [0, 0, 0, 0];
+      for (const j of [i - 1, i + 1, i - W, i + W]) if (mask[j]) counts[tones[j]]++;
+      for (let t = 0; t < 4; t++) if (counts[t] >= 3) clean[i] = t;
+    }
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x; if (!mask[i] || !px[i * 4 + 3]) continue;
+      const edge = !has(x + 1, y) || !has(x, y + 1);
+      const q = palette[edge ? 0 : clean[i]], j = i * 4;
+      px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2];
+    }
+  }
+
   /** 衣服的部位標記色：1＝布（T 恤布、胸罩布、蕾絲、褲頭）、2＝滾邊／扣子；0＝不是衣服。 */
   function clothAt(px, i) {
     if (!px[i + 3]) return 0;
@@ -1248,7 +1290,7 @@
       if (out[i + 3]) {
         // 衣服底下不透出乳暈、乳頭（只透出身體輪廓）
         if ((out[i] === 72 && out[i + 1] === 58 && out[i + 2] === 84) || (out[i] === 88 && out[i + 1] === 72 && out[i + 2] === 100)) { out[i] = 51; out[i + 1] = 45; out[i + 2] = 64; }
-        for (let j = 0; j < 3; j++) out[i + j] = out[i + j] * (1 - k) + g[j] * k; out[i + 3] = outer ? 236 : 220;   // 透明度一律一樣（乳暈原本是不透明的，不統一的話蓋上衣服還看得到一圈）
+        for (let j = 0; j < 3; j++) out[i + j] = out[i + j] * (1 - k) + g[j] * k; out[i + 3] = outer ? 255 : 220;   // Opaque outer fabric stays the same white over skin and empty space.
       } else if (outer) { out[i] = g[0]; out[i + 1] = g[1]; out[i + 2] = g[2]; out[i + 3] = 255; }   // 外衣（T 恤）垂空、後面沒有身體的地方：一樣是不透明的布
       else { const q = OUT[c]; out[i] = q[0]; out[i + 1] = q[1]; out[i + 2] = q[2]; out[i + 3] = q[3]; }   // 身體外面的布（袖口、褲頭兩側、胯下細繩）：深一點的半透明灰，淺色背景上才不會像白線
     }
@@ -1294,6 +1336,7 @@
       for (let k = 0; k < n; k++) if (hpx[k * 4 + 3]) { const y = Math.floor(k / Wd); if (top < 0) top = y; bot = y; }
       if (top >= 0) { const mid = Math.round(top + (bot - top) * .45); for (let x = 0; x < Wd; x++) if (hpx[(mid * Wd + x) * 4 + 3]) { sx += x; sn++; } }
       if (top >= 0 && sn) paintFace(r.pixels, r.width, r.height, { top, chin: bot, cx: sx / sn + .5 }, hm, doll._skin, tone, hpx, hp, m.turn || 0);
+      hairPass(r.pixels, hd, hm, r.width, r.height, scale);
     }
     // 衣服那幾層不畫皮膚上的標記（乳房輪廓弧線等 mat 2／摺線、乳暈印子、乳頭：浮在皮膚表面或直接印上去，會穿出衣服、在衣服上留一圈；T 恤做形狀時也不跟著乳頭凸起）
     if (hasU) veil(r.pixels, run(p => (!p.cloth || p.under) && p.mat !== 2 && !p.crease && !p.nip, true).pixels);
@@ -1329,8 +1372,11 @@
       blur(sv, t1, true); blur(t1, s2, false); blur(wt, w1, true); blur(w1, w2, false);
       for (let i = 0; i < n; i++) {
         const j = i * 4; if (!clothAt(op, j) || !px[j + 3] || !w2[i]) continue;
-        const sl = s2[i] / w2[i], k = sl < 0 ? 1 - .22 * Math.min(1, -sl / .7) : 1 + .05 * Math.min(1, sl / 1.5);
-        px[j] = Math.min(255, px[j] * k); px[j + 1] = Math.min(255, px[j + 1] * k); px[j + 2] = Math.min(255, px[j + 2] * k);
+        const sl = s2[i] / w2[i];
+        // Three broad fabric tones instead of a smooth grey gradient. Cool shadows,
+        // warm highlights, with the existing folds and seams kept in the material mask.
+        const q = sl < -.32 ? [.84, .84, .89] : sl > .65 ? [1.035, 1.025, 1.01] : [1, 1, 1];
+        px[j] = Math.min(255, px[j] * q[0]); px[j + 1] = Math.min(255, px[j + 1] * q[1]); px[j + 2] = Math.min(255, px[j + 2] * q[2]);
       }
     }
     if (capH.h) pasteHands(r, capH.h, scale, cv, armDark, hasO, Array.isArray(doll._skin) ? doll._skin : null);
@@ -1389,7 +1435,7 @@
       new Function('globalThis', 'module', src)(box, undefined);   // 兩個人偶檔都叫 RoomDoll → 另外裝，不蓋掉房間用的
       F = box.RoomDoll;
       try {
-        const code = `const F=(${F.factorySource})();const reactOf=${reactOf};const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const skinShadow=${skinShadow};const skinPass=${skinPass};const FACE_BLANK=${JSON.stringify(FACE_BLANK, (kk, v) => (kk === 'grid' ? undefined : v))};const paintFace=${paintFace};const clothAt=${clothAt};const TEE_WHITE=${JSON.stringify(TEE_WHITE)};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
+        const code = `const F=(${F.factorySource})();const reactOf=${reactOf};const motion=${motion};const fgArmPts=${fgArmPts};const fgArm=${fgArm};const braPiece=${braPiece};const pantyPiece=${pantyPiece};const deform=${deform};const shade=${shade};const skinShadow=${skinShadow};const skinPass=${skinPass};const FACE_BLANK=${JSON.stringify(FACE_BLANK, (kk, v) => (kk === 'grid' ? undefined : v))};const paintFace=${paintFace};const hairPass=${hairPass};const clothAt=${clothAt};const TEE_WHITE=${JSON.stringify(TEE_WHITE)};const veil=${veil};const HAND_SPR=${JSON.stringify(HAND_SPR)};const pasteHands=${pasteHands};const drawFrame=${drawFrame};const CV=${JSON.stringify(CV)};const cache={};
 onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j.n,${SCALE},j.cv);postMessage({id:j.id,w:r.width,h:r.height,px:r.pixels},[r.pixels.buffer]);}catch(err){postMessage({id:j.id,err:String(err)});}};`;
         const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
         for (let i = 0; i < POOL; i++) {
@@ -1416,7 +1462,7 @@ onmessage=(e)=>{const j=e.data;try{const r=drawFrame(F,cache,j.doll,j.pose,j.f,j
 
   // ---------------------------------------------------------------- 算好的格子存在手機裡（IndexedDB，PNG）
   //   鑰匙＝程式版本（動作／變形／畫法的原始碼雜湊＋人偶檔）＋身形＋第幾格；程式一改就自動作廢（開頁時清掉舊版本的）。
-  const CODE_HASH = (() => { const t = DROOM_URL + SCALE + String(motion) + String(fgArmPts) + String(fgArm) + String(braPiece) + String(pantyPiece) + String(deform) + String(drawFrame) + String(pasteHands) + JSON.stringify(HAND_SPR) + String(shade) + String(veil) + String(clothAt) + String(skinShadow) + String(skinPass) + String(paintFace); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36); })();
+  const CODE_HASH = (() => { const t = DROOM_URL + SCALE + String(motion) + String(fgArmPts) + String(fgArm) + String(braPiece) + String(pantyPiece) + String(deform) + String(drawFrame) + String(pasteHands) + JSON.stringify(HAND_SPR) + String(shade) + String(veil) + String(clothAt) + String(skinShadow) + String(skinPass) + String(paintFace) + String(hairPass); let h = 5381; for (let i = 0; i < t.length; i++) h = ((h * 33) ^ t.charCodeAt(i)) >>> 0; return h.toString(36); })();
   let dbP = null;
   function db() {
     if (!dbP) dbP = new Promise((res) => {
