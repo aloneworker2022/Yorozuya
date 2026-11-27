@@ -67,7 +67,7 @@ import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, sc
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
 import { BASE_OUTFIT, ownsOutfit, hasOwnedList } from "./content/outfit_pick.js?v=3";
-import * as Bujo from "./content/home_bujo.js?v=1"; // 主畫面：子彈筆記＋箱庭（2026-11-27）
+import * as Bujo from "./content/home_bujo.js?v=2"; // 主畫面：子彈筆記＋箱庭（2026-11-27）
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
@@ -12621,8 +12621,25 @@ function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<"
 // 舊存檔裡的 theme／cardColors／bgImages 留著不刪，只是不再套用。
 function applyTheme() {
   document.body.dataset.theme = "aqua";
+  applyFontScale();
   applyLayoutVars();
 }
+
+// 文字大小（2026-11-27 使用者）：標準 1／大 1.25／特大 1.5。CSS 變數 --fs（home_bujo.css）讓字、筆記本方格、
+// 狀態列、分頁、輸入框一起放大。本機也記一份，下次打開在存檔讀到之前就先套上（不會先小後大閃一下）。
+const FONT_SCALES = [1, 1.25, 1.5];
+function fontScaleSetting() {
+  const v = Number(state?.settings?.fontScale) || 1;
+  return FONT_SCALES.includes(v) ? v : 1;
+}
+function applyFontScale(v = fontScaleSetting()) {
+  const root = document.documentElement;
+  const before = root.style.getPropertyValue("--fs");
+  root.style.setProperty("--fs", String(v));
+  try { localStorage.setItem("yoro_font_scale", String(v)); } catch { /* */ }
+  if (before && before !== String(v)) window.dispatchEvent(new Event("resize"));   // 主頁房間重新排
+}
+try { const v = Number(localStorage.getItem("yoro_font_scale")); if (FONT_SCALES.includes(v)) document.documentElement.style.setProperty("--fs", String(v)); } catch { /* */ }
 
 // ===== 版面:卡片顏色 + 反差字色 + 分頁列透明度(cthulhu-note 式)=====
 
@@ -19397,6 +19414,7 @@ function renderSettings() {
     if (tsv) tsv.textContent = ts.toFixed(1);
   }
   { const pm = $("#set-pomo-mins"); if (pm) pm.value = String(pomoMinsSetting()); }
+  { const fz = $("#set-font-scale"); if (fz) fz.value = String(fontScaleSetting()); }
 
   $("#log-list").innerHTML = state.log.length
     ? state.log.map(l => `<div>${esc(l)}</div>`).join("")
@@ -19546,6 +19564,12 @@ on("set-player", "change", e => { state.settings.player = e.target.value.trim();
 on("set-sleep-start", "change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });
 on("set-sleep-end", "change", e => { state.settings.sleepEnd = e.target.value; scheduleSave(); renderAll(); });
 
+on("set-font-scale", "change", e => {
+  const v = parseFloat(e.target.value);
+  state.settings.fontScale = FONT_SCALES.includes(v) ? v : 1;
+  applyFontScale();
+  scheduleSave();
+});
 on("set-pomo-mins", "change", e => {
   const v = parseInt(e.target.value, 10);
   state.settings.pomoMins = POMO_MIN_CHOICES.includes(v) ? v : 0;

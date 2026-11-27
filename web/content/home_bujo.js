@@ -491,9 +491,13 @@ function setMode(m) {
   $("mode-focus")?.setAttribute("aria-pressed", String(mode === "focus"));
   layout(mode === "companion" ? 1 : 0);
 }
+/** 設定的文字大小（:root --fs），房間一條的高度、陪伴那一行跟著放大。 */
+function fs() { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--fs")) || 1; }
 function roomHeights() {
   const H = $("home-stage").clientHeight;
-  return { H, min: tablet() ? Math.round(H * 0.4) : 110, max: Math.max(120, H - 34 - 42) };
+  const k = fs();
+  const handle = $("home-handle")?.offsetHeight || Math.round(34 * k);
+  return { H, min: tablet() ? Math.round(H * 0.4) : 110, max: Math.max(120, H - handle - Math.round(42 * k)) };
 }
 function layout(f) {
   const room = $("main-room-stage");
@@ -535,7 +539,7 @@ function wireHandle() {
   handle.addEventListener("pointermove", (e) => {
     if (!drag) return;
     const { min, max } = roomHeights();
-    const h = Math.max(tablet() ? Math.round(min * 0.75) : 110, Math.min(max, drag.h + e.clientY - drag.y));
+    const h = Math.max(tablet() ? Math.round(min * 0.75) : min, Math.min(max, drag.h + e.clientY - drag.y));
     room.style.height = h + "px";
     fitRoom();
   });

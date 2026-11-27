@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="萬事屋">
 <link rel="stylesheet" href="style.css?v=82">
 <link rel="stylesheet" href="content/test_room.css?v=127">
-<link rel="stylesheet" href="home_bujo.css?v=1">
+<link rel="stylesheet" href="home_bujo.css?v=2">
 </head>
 <body class="room-home home-v2">
 
@@ -245,6 +245,13 @@
     <section class="page" id="page-settings">
       <div class="panel">
         <h2>設定</h2>
+        <div class="setting-row"><label>文字大小</label>
+          <select id="set-font-scale">
+            <option value="1">標準</option>
+            <option value="1.25">大</option>
+            <option value="1.5">特大</option>
+          </select>
+        </div>
         <div class="setting-row"><label>玩家稱呼</label><input id="set-player" type="text" maxlength="12" placeholder="主人"></div>
         <div class="setting-row"><label>睡眠時段</label>
           <span><input id="set-sleep-start" type="time"> ~ <input id="set-sleep-end" type="time"></span>
@@ -686,6 +693,6 @@
 <script src="content/room_desk.js?v=18"></script>
 <script src="content/test_room.js?v=38"></script>
 <script type="module" src="content/test_room_summon.js?v=440"></script>
-<script type="module" src="app.js?v=192"></script>
+<script type="module" src="app.js?v=193"></script>
 </body>
 </html>
