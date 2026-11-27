@@ -2,9 +2,9 @@
 <resources>
     <string name="app_name">發現</string>
     <string name="widget_name">發現</string>
-    <string name="widget_desc">把待辦直接丟進萬事屋發現池</string>
-    <string name="hint">待辦…</string>
+    <string name="widget_desc">記一筆，丟進萬事屋的筆記本（到主頁再選記事或待辦）</string>
+    <string name="hint">記一筆…</string>
     <string name="send">送出</string>
     <string name="voice">語音輸入</string>
-    <string name="voice_prompt">說出待辦…</string>
+    <string name="voice_prompt">說出要記的事…</string>
 </resources>

@@ -316,8 +316,7 @@ function rowMenu(r) {
 }
 
 // ---------------------------------------------------------------- 快速紀錄
-function parseDay(text) {
-  const t = today();
+export function parseDay(text, t = today()) {
   if (/明天/.test(text)) return t + 1;
   if (/後天/.test(text)) return t + 2;
   const m = text.match(/(\d{1,2})\s*[\/／月]\s*(\d{1,2})/);
@@ -331,25 +330,25 @@ function parseDay(text) {
 }
 /** 快速紀錄：輸入框打的一律先記成 ○ 事件（2026-11-27 使用者），在本子裡再選是記事還是待辦。
  *  金幣：記一筆 0～1（每天前 10 筆）；第一次改成待辦再 0～1（待辦合起來 0～2）。 */
-function capture() {
+async function capture() {
   const inp = $("quest-input");
   const v = String(inp?.value || "").trim();
-  if (!v) return;
+  if (!v || inp.dataset.sending === "1") return;
   if (api.talkCommand(v)) { inp.value = ""; return; }   // 打她的名字＝叫她過來
-  inp.value = "";
-  const day = parseDay(v);
-  const inCap = api.bonusOpen();   // 每天前 10 筆才有錢；之後改成待辦的那 0～1 也照這個
-  bj().items.push({ id: "bj" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), k: "ev", t: v, day, at: Date.now(), unsorted: true, inCap });
-  const g = api.bonus(1);
-  coin(g);
-  if (day !== today()) api.toast(`記到 ${md(day)}（在「未來」那頁）${g ? `　+${g} ⟡` : ""}`, g ? "good" : "");   // 今天的直接出現在清單（金幣從房間飄上來），不另外跳提示蓋住它
-  say("記下來了。是要做的事嗎？", "記下來了。");
-  save();
-  renderAllPages();
-  if (curPage !== "today") flipTo(day > today() ? "future" : "today");
-  const last = $("bj-log")?.lastElementChild;
-  if (last && mode === "focus" && day === today()) last.scrollIntoView({ block: "nearest" });
-  inp.focus();
+  inp.dataset.sending = "1";
+  try {
+    const day = parseDay(v);
+    const r = await api.record(v, day);
+    if (!r) return;
+    inp.value = "";
+    coin(r.gold);
+    if (day !== today()) api.toast(`記到 ${md(day)}（在「未來」那頁）${r.gold ? `　+${r.gold} ⟡` : ""}`, r.gold ? "good" : "");   // 今天的直接出現在清單（金幣從房間飄上來），不另外跳提示蓋住它
+    say("記下來了。是要做的事嗎？", "記下來了。");
+    renderAllPages();
+    if (curPage !== "today") flipTo(day > today() ? "future" : "today");
+    const last = $("bj-log")?.lastElementChild;
+    if (last && mode === "focus" && day === today()) last.scrollIntoView({ block: "nearest" });
+  } finally { delete inp.dataset.sending; inp.focus(); }
 }
 
 /** 一筆改成 待辦（task，進 state.quests）／記事（note）／事件（ev）。 */

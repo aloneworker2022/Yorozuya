@@ -162,9 +162,10 @@ public class AddActivity extends Activity {
                         sending = false;
                         input.setEnabled(true);
                         if (done.error == null) {
+                            // 2026-11-27：記進去的先當事件，到萬事屋主頁的筆記本再選記事或待辦
                             String msg = done.gold > 0
-                                    ? "已送進發現 +" + done.gold + " 金"
-                                    : "已送進發現";
+                                    ? "記進筆記本了 +" + done.gold + " 金"
+                                    : "記進筆記本了";
                             Toast.makeText(AddActivity.this, msg, Toast.LENGTH_SHORT).show();
                             finish();
                         } else {

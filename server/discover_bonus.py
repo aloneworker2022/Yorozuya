@@ -1,4 +1,5 @@
-"""發現獎勵：每天前 10 次 +0～2 金。日界跟網頁 dayNum 同一套（睡眠結束時刻）。"""
+"""發現獎勵：每天前 10 筆 +0～1 金（2026-11-27 起：記一筆先算事件，0～1；在本子裡第一次改成待辦再 0～1，網頁那邊給）。
+日界跟網頁 dayNum 同一套（睡眠結束時刻）。"""
 import random
 from datetime import datetime, timedelta
 
@@ -35,4 +36,4 @@ def next_bonus(discover, pending_counted, now_ms, sleep_end="06:00", rng=None):
         pending = 0
     if used + pending >= CAP:
         return 0, 0, day
-    return int(rng.randint(0, 2)), 1, day
+    return int(rng.randint(0, 1)), 1, day

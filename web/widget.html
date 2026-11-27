@@ -91,7 +91,7 @@
   <!-- 2026-11-04：左邊語音（紅點），右邊輸入框，兩個都是正方形；沒有送出鈕，打完按鍵盤的送出（Enter）；說完話直接送 -->
   <form class="row" id="f" autocomplete="off">
     <button id="mic" type="button" aria-label="語音輸入" title="語音輸入"><span class="dot"></span></button>
-    <textarea id="q" maxlength="80" placeholder="待辦…" enterkeyhint="send" rows="1" autofocus></textarea>
+    <textarea id="q" maxlength="80" placeholder="記一筆…" enterkeyhint="send" rows="1" autofocus></textarea>
   </form>
   <p id="st"></p>
   <p class="hint">瀏覽器選單 → 加到主畫面，就能當小工具用。</p>
@@ -126,7 +126,7 @@ f.addEventListener("submit", async (e) => {
     q.value = "";
     fit();
     const gold = Number(j.gold) || 0;
-    say(gold > 0 ? `已送進發現 +${gold} 金` : "已送進發現", "ok");
+    say(gold > 0 ? `記進筆記本了 +${gold} 金（到主頁選記事或待辦）` : "記進筆記本了（到主頁選記事或待辦）", "ok");
     try { navigator.vibrate?.(12); } catch {}
   } catch {
     say("連不上伺服器", "bad");
@@ -192,7 +192,7 @@ mic.addEventListener("click", () => {
     if (heard.trim()) f.requestSubmit();   // 說完直接送（送不出去字留在框裡）
     else if (st.textContent.startsWith("在聽")) say("沒聽清楚，再按一次", "bad");
   };
-  mic.classList.add("on"); say("在聽…說出待辦（再按一下停）");
+  mic.classList.add("on"); say("在聽…說出要記的事（再按一下停）");
   try { rec.start(); } catch { rec = null; mic.classList.remove("on"); say("語音輸入開不起來", "bad"); }
 });
 </script>

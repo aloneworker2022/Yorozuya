@@ -67,7 +67,7 @@ import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, sc
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
 import { BASE_OUTFIT, ownsOutfit, hasOwnedList } from "./content/outfit_pick.js?v=3";
-import * as Bujo from "./content/home_bujo.js?v=3"; // 主畫面：子彈筆記＋箱庭（2026-11-27）
+import * as Bujo from "./content/home_bujo.js?v=4"; // 主畫面：子彈筆記＋箱庭（2026-11-27）
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
@@ -273,6 +273,28 @@ const BujoApi = {
     if (!cmd.cmd) return false;
     beginShopTalk(cmd.id || cmd.name);
     return true;
+  },
+  /** 記一筆：送到伺服器（跟桌面發現同一個每天前 10 筆名額、0～1 金），收進筆記本當 ○ 事件。
+   *  連不上就在手機記、手機擲。回 { id, gold } 或 null（伺服器擋下）。 */
+  async record(text, day) {
+    try {
+      const r = await fetch("/api/quests/discover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { toast(typeof j.detail === "string" ? j.detail : "送不出去", "bad"); return null; }
+      const got = importInboxEvent({ id: j.id, text: j.text || text, created: j.created, gold: j.gold, counted: j.counted, day: j.day }, { day });
+      dirty = true; scheduleSave();
+      try { renderHud(); } catch { /* */ }
+      return got || { id: null, gold: 0 };
+    } catch {
+      const inCap = BujoApi.bonusOpen();
+      const g = BujoApi.bonus(1);
+      const id = "bj" + uid();
+      state.bujo ??= {};
+      (state.bujo.items ??= []).push({ id, k: "ev", t: text, day, at: Date.now(), unsorted: true, inCap });
+      dirty = true; scheduleSave();
+      try { renderHud(); } catch { /* */ }
+      return { id, gold: g };
+    }
   },
   /** 今天還在前 10 筆（記一筆有錢）嗎。 */
   bonusOpen() {
@@ -2002,6 +2024,30 @@ function addQuest(text, opts = {}) {
   return g;
 }
 
+/** 伺服器上記的那一筆（quest_inbox）收進筆記本當 ○ 事件。收過的記在 state.bujo.inboxSeen，不會重複收。
+ *  金幣用伺服器擲好的（每天前 10 筆 0～1；2026-11-27 以前擲的可能是 2）。回 { gold } 或 null（收過了）。 */
+function importInboxEvent(it, opts = {}) {
+  state.bujo ??= {};
+  const b = state.bujo;
+  if (!Array.isArray(b.inboxSeen)) b.inboxSeen = [];
+  if (!Array.isArray(b.items)) b.items = [];
+  const id = discoverQuestId(it.id);
+  const known = b.inboxSeen.includes(id) || (state.quests || []).some(q => q.id === id)
+    || (state.discoverClosed || []).includes(id) || b.items.some(x => x.id === id) || (b.done || []).some(x => x.id === id);
+  if (known) return null;
+  b.inboxSeen.push(id);
+  if (b.inboxSeen.length > 1000) b.inboxSeen = b.inboxSeen.slice(-1000);
+  const text = normalizeQuestText(it.text) || String(it.text || "").trim().slice(0, 80);
+  if (!text) return null;
+  const today = dayNum();
+  b.items.push({ id, k: "ev", t: text, day: opts.day ?? Bujo.parseDay(text, today), at: Number(it.created) > 1e9 ? Math.round(Number(it.created) * 1000) : Date.now(), unsorted: true, inCap: !!it.counted });
+  if (state.discover?.day !== today) state.discover = { day: today, count: 0 };
+  if (it.counted && Number(it.day) === today) state.discover.count++;
+  const g = Math.max(0, Math.min(2, Number(it.gold) || 0));
+  if (g > 0) { state.gold += g; log(`記一筆「${text}」 +${g} 金`); }
+  return { id, gold: g };
+}
+
 let inboxBusy = false;
 let lastInboxAt = 0;
 async function drainQuestInbox() {
@@ -2015,25 +2061,16 @@ async function drainQuestInbox() {
     const items = Array.isArray(j.items) ? j.items : [];
     let gained = 0;
     const added = [];
+    // 2026-11-27 使用者：發現（桌面小工具、/widget）送來的一律先當 ○ 事件進筆記本，玩家在本子裡選記事或待辦
     for (const it of items) {
       if (it == null || it.id == null) continue;
-      const before = state.quests.length;
-      const g = addQuest(it.text, {
-        id: discoverQuestId(it.id),
-        quiet: true,
-        fromServer: true,
-        gold: it.gold,
-        counted: it.counted,
-        day: it.day,
-      }) || 0;
-      if (state.quests.length > before) {
-        gained += g;
-        added.push(it.text);
-      }
+      const r = importInboxEvent(it);
+      if (r) { gained += r.gold; added.push(it.text); }
     }
     if (!added.length) return;
-    const base = added.length === 1 ? `已加入發現：「${added[0]}」` : `已加入發現 ${added.length} 件`;
-    toast(gained > 0 ? `${base} +${gained} 金` : base, "good");
+    const base = added.length === 1 ? `發現送來：「${added[0]}」` : `發現送來 ${added.length} 筆`;
+    toast(`${base}${gained > 0 ? ` +${gained} 金` : ""}（在本子裡選記事或待辦）`, "good");
+    scheduleSave();
     renderAll();
   } catch { /* 下輪再試 */ }
   finally { inboxBusy = false; }

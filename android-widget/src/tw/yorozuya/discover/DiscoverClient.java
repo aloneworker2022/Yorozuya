@@ -39,7 +39,7 @@ final class DiscoverClient {
                 try { gold = new JSONObject(resp).optInt("gold", 0); } catch (Exception ignored) { }
                 return new Result(null, gold);
             }
-            if (resp.contains("請輸入待辦")) return new Result("請輸入待辦", 0);
+            if (resp.contains("請輸入內容") || resp.contains("請輸入待辦")) return new Result("請先打字", 0);
             return new Result("伺服器 " + code, 0);
         } finally {
             c.disconnect();

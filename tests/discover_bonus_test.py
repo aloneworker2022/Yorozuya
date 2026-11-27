@@ -15,7 +15,7 @@ def main():
 
     rng = random.Random(1)
     gold, counted, d = discover_bonus.next_bonus(None, 0, now, "06:00", rng)
-    assert counted == 1 and d == day and 0 <= gold <= 2
+    assert counted == 1 and d == day and 0 <= gold <= 1
 
     gold, counted, d = discover_bonus.next_bonus({"day": day, "count": 10}, 0, now, "06:00", rng)
     assert gold == 0 and counted == 0 and d == day
@@ -24,7 +24,11 @@ def main():
     assert gold == 0 and counted == 0
 
     gold, counted, d = discover_bonus.next_bonus({"day": day - 1, "count": 10}, 0, now, "06:00", rng)
-    assert counted == 1 and 0 <= gold <= 2
+    assert counted == 1 and 0 <= gold <= 1
+
+    # 2026-11-27：記一筆 0～1（改成待辦的那 0～1 由網頁給）
+    rolls = {discover_bonus.next_bonus(None, 0, now, "06:00", rng)[0] for _ in range(200)}
+    assert rolls == {0, 1}
 
     print("ok - discover bonus")
 

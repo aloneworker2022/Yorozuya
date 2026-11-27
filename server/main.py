@@ -417,7 +417,7 @@ def _discover_row(r):
 
 @app.get("/api/quests/discover")
 def list_discover_quests():
-    """RP5 上的發現待辦。前端用 id 合併，這支不刪列。"""
+    """RP5 上記的每一筆（發現小工具、主頁快速紀錄）。前端用 id 合併，這支不刪列。"""
     with db() as conn:
         rows = conn.execute(
             "SELECT id, text, created, gold, counted, day FROM quest_inbox ORDER BY id"
@@ -427,10 +427,11 @@ def list_discover_quests():
 
 @app.post("/api/quests/discover")
 def post_discover_quest(body: QuestDiscoverIn):
-    """發現輸入直接寫進 RP5。每天前 10 次隨機 +0～2 金，名額只算這張表。"""
+    """記一筆（主頁快速紀錄、桌面發現小工具、/widget）寫進 RP5。每天前 10 筆隨機 +0～1 金，名額只算這張表。
+    2026-11-27：手機收進來一律先當 ○ 事件，玩家在筆記本裡再選記事或待辦。"""
     text = _clean_quest_text(body.text)
     if not text:
-        raise HTTPException(status_code=400, detail="請輸入待辦")
+        raise HTTPException(status_code=400, detail="請輸入內容")
     now_ms = time.time() * 1000
     with db() as conn:
         _discover, sleep_end = _discover_snapshot(conn)
