@@ -249,33 +249,24 @@
         <div class="setting-row"><label>睡眠時段</label>
           <span><input id="set-sleep-start" type="time"> ~ <input id="set-sleep-end" type="time"></span>
         </div>
-        <div class="setting-row"><label>配色</label><select id="set-theme"></select></div>
+        <div class="dim small" style="margin-top:-.35em">睡著的時段是夢境時間。主頁筆記本的「今天」從起床那一刻算起（延到明天、24 小時處理卡、日誌都照這個日子）。</div>
         <div class="setting-row"><label>對話打字速度</label>
           <span class="range-wrap"><input type="range" id="set-type-speed" min="0.1" max="1" step="0.1"><span id="type-speed-val" class="dim small"></span></span>
         </div>
-        <div class="dim small" style="margin-top:-.35em">感應／聊天／約會台詞一個字一個字印。0.1 最慢，1 最快。點畫面可跳過。</div>
-      </div>
-      <div class="panel sub">
-        <h2>版面(卡片顏色/透明度・字體自動反差)</h2>
-        <div id="card-color-rows"></div>
-        <div class="setting-row"><label>卡牌文字置中</label><input id="set-card-center" type="checkbox"></div>
-        <div class="setting-row"><label>卡牌文字大小</label>
-          <span class="range-wrap"><input type="range" id="set-card-font" min="0.7" max="1.6" step="0.05"><span id="card-font-val" class="dim small"></span></span>
+        <div class="dim small" style="margin-top:-.35em">她跳出來說話的半身對話框，字一個一個印。0.1 最慢，1 最快。點畫面可跳過。</div>
+        <div class="setting-row"><label>番茄鐘長度</label>
+          <select id="set-pomo-mins">
+            <option value="0">20～25 分隨機</option>
+            <option value="15">15 分</option>
+            <option value="20">20 分</option>
+            <option value="25">25 分</option>
+            <option value="30">30 分</option>
+            <option value="45">45 分</option>
+            <option value="50">50 分</option>
+            <option value="60">60 分</option>
+          </select>
         </div>
-        <div class="setting-row"><label>分頁列透明度</label>
-          <span class="range-wrap"><input type="range" id="set-tab-op" min="0.1" max="1" step="0.05"><span id="tab-op-val" class="dim small"></span></span>
-        </div>
-        <div class="btn-row"><button id="btn-card-reset">回復主題預設</button></div>
-      </div>
-      <div class="panel sub">
-        <h2>全域背景圖片</h2>
-        <div class="setting-row"><label>輪播間隔(分鐘)</label><input id="set-bg-interval" type="number" min="1" max="120"></div>
-        <div class="btn-row">
-          <button id="btn-bg-upload">上傳圖片</button>
-          <button id="btn-bg-clear" class="danger-btn">清除全部</button>
-        </div>
-        <input id="bg-file" type="file" accept="image/*" multiple class="hidden">
-        <div id="bg-thumbs"></div>
+        <div class="dim small" style="margin-top:-.35em">主頁「開始專注」的番茄鐘。她要在房間才能開；做完 +5 金、感情 +2。</div>
       </div>
       <div class="panel sub">
         <h2>AI</h2>
@@ -300,8 +291,6 @@
             <option value="grok-img">Grok Build(雲端·單張)</option>
             <option value="comfy">ComfyUI(本機顯卡·三連拍)</option>
           </select></div>
-        <div class="setting-row"><label>約會場景圖</label><input id="set-card-scene-art" type="checkbox" title="約會出卡時依她的回應生場景圖（實驗·費時）"></div>
-        <div class="setting-row"><label></label><span class="dim small">實驗：有生圖能力時，約會章節會依「場面＋她的回應」翻成英文再畫一張。不擋約會；畫面顯示「繪場景中…」。可關。</span></div>
         <div class="setting-row hidden" id="row-comfy-url"><label>ComfyUI</label><input id="set-comfy" type="text" class="wide" placeholder="http://192.168.68.55:8188"></div>
         <div class="setting-row hidden" id="row-comfy-note"><label></label><span class="dim small">生圖那台(顯卡主機)。<b>不能填 localhost</b>——那是伺服器自己,不是顯卡。召喚時出大頭照 / 半身 / 全身三張。<b>不必選模型</b>：每位魅魔召喚時會從你 checkpoints 裡隨機綁定一個專屬模型，之後她的立繪／場景圖都用那一個。</span></div>
         <div class="setting-row hidden" id="row-comfy-ckpt"><label>模型</label>
@@ -334,14 +323,14 @@
       </div>
       <div class="panel sub">
         <h2>日誌 / Memos</h2>
-        <div class="dim small">連續每天寫滿 12 字：第 n 天領 n 金（上限 5）。寫滿會同步到這台電腦的 Memos（標籤 #yorozuya #日誌）。</div>
+        <div class="dim small">在主頁筆記本的「日誌」書籤寫。連續每天寫滿 12 字：第 n 天領 n 金（上限 5）。寫滿會同步到這台電腦的 Memos（標籤 #yorozuya #日誌）。</div>
         <div class="setting-row"><label>連寫</label><span id="set-nb-streak" class="dim">—</span></div>
         <div class="setting-row"><label>Memos</label><span id="set-memos" class="dim">—</span></div>
         <div class="btn-row"><button id="btn-memos-test" type="button">測試 Memos</button><span id="memos-test-result" class="dim small"></span></div>
       </div>
       <div class="panel sub">
         <h2>發現</h2>
-        <div class="dim small">桌面「發現」跟魅魔萬事屋用下面這個網址。每天前 10 次輸入，隨機 +0～2 金，跟這裡打待辦一樣。</div>
+        <div class="dim small">桌面「發現」跟魅魔萬事屋用下面這個網址。送進來的會變成主頁筆記本今天的任務（•）。每天前 10 筆（含主頁快速紀錄）隨機 +0～2 金。</div>
         <div class="setting-row"><label>網址</label><span id="set-discover-url" class="dim" style="word-break:break-all;text-align:right">—</span></div>
         <div class="setting-row"><label>小工具</label><a href="/widget">打開發現頁</a></div>
         <div class="setting-row"><label>VR 房間</label><a href="/droom/play">打開 droom（可放進 VR 眼鏡）</a></div>
@@ -352,7 +341,6 @@
         <h2>版本</h2>
         <div class="setting-row"><label>遊戲版本</label><span id="set-appver" class="dim">—</span></div>
         <div class="setting-row"><label>手機 App</label><a href="/download">下載乾淨完整版</a></div>
-        <div class="setting-row"><label>約會卡組</label><span id="set-cardpack" class="dim">—</span></div>
         <div class="btn-row">
           <button id="btn-force-update">⟳ 強制更新(清快取重載,存檔不受影響)</button>
         </div>
@@ -698,6 +686,6 @@
 <script src="content/room_desk.js?v=18"></script>
 <script src="content/test_room.js?v=38"></script>
 <script type="module" src="content/test_room_summon.js?v=440"></script>
-<script type="module" src="app.js?v=191"></script>
+<script type="module" src="app.js?v=192"></script>
 </body>
 </html>

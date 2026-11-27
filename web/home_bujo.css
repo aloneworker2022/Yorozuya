@@ -326,3 +326,5 @@ body.home-v2:not([data-tab="0"]) #toasts { bottom: calc(var(--tabs-h) + 12px); }
 body.home-v2 #page-quests.on-line #qs-exec, body.home-v2 #page-quests.on-line #qs-proc,
 body.home-v2 #home-card-strip .line-tab, body.home-v2 #page-quests.on-line #diary-badge { display: none !important; }
 body.home-v2 #page-quests.on-line #qs-diary .lv-area { padding-left: 12px !important; padding-right: 12px !important; }
+/* 舊看板娘的睡覺 Z z z 不要飄在分頁上 */
+body.home-v2 #kanban-zzz { display: none !important; }

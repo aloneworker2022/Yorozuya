@@ -1969,7 +1969,7 @@ function addQuest(text, opts = {}) {
     if (opts.counted && Number(opts.day) === today) state.discover.count++;
     if (g > 0) {
       state.gold += g;
-      log(`發現「${text}」 +${g} 金`);
+      log(`記下「${text}」 +${g} 金`);
       if (!quiet) toast(`記下了!+${g} 金`, "good");
     } else if (!quiet) toast("記下了", "");
   } else if (state.discover.count < DISCOVER_BONUS_CAP) {
@@ -1980,7 +1980,7 @@ function addQuest(text, opts = {}) {
     state.discover.count++;
     if (g > 0) {
       state.gold += g;
-      log(`發現「${text}」 +${g} 金`);
+      log(`記下「${text}」 +${g} 金`);
       if (!quiet) toast(`記下了!+${g} 金`, "good");
     } else if (!quiet) toast("記下了", "");
   } else if (!opts.fromServer && !quiet) toast("記下了", "");
@@ -12617,8 +12617,10 @@ setInterval(() => {
 const $ = s => document.querySelector(s);
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
+// 2026-11-27 使用者：配色、版面（卡片顏色／透明度）、全域背景圖從設定拿掉——新主畫面固定夜色。
+// 舊存檔裡的 theme／cardColors／bgImages 留著不刪，只是不再套用。
 function applyTheme() {
-  document.body.dataset.theme = state.settings.theme || "aqua";
+  document.body.dataset.theme = "aqua";
   applyLayoutVars();
 }
 
@@ -12652,7 +12654,7 @@ function contrastText(hex, a) {
 
 function applyLayoutVars() {
   const root = document.documentElement.style;
-  const cc = state.settings.cardColors || {};
+  const cc = {};   // 不再套用自訂卡片顏色（見 applyTheme）
   for (const [k] of CARD_KINDS) {
     const c = cc[k];
     if (!c) {
@@ -12671,9 +12673,9 @@ function applyLayoutVars() {
     root.setProperty(`--card-${k}-halo`, halo);
   }
   const tabs = document.getElementById("tabs");
-  if (tabs) tabs.style.opacity = state.settings.tabOpacity ?? 1;
-  document.body.classList.toggle("card-center", !!state.settings.cardCenter);
-  root.setProperty("--card-font-scale", state.settings.cardFontScale ?? 1);
+  if (tabs) tabs.style.opacity = "";
+  document.body.classList.remove("card-center");
+  root.setProperty("--card-font-scale", 1);
 }
 
 // ===== 全域背景圖 =====
@@ -12682,7 +12684,8 @@ let bgTimer = null;
 
 function applyBg() {
   const layer = document.getElementById("bg-layer");
-  const imgs = state.settings.bgImages || [];
+  const imgs = [];   // 全域背景圖已從設定拿掉（2026-11-27），不再顯示
+
   if (!imgs.length) {
     layer.classList.remove("on");
     setTimeout(() => { layer.style.backgroundImage = ""; }, 800);
@@ -12705,8 +12708,6 @@ function rotateBg() {
 
 function startBgRotation() {
   clearInterval(bgTimer);
-  if ((state.settings.bgImages || []).length > 1)
-    bgTimer = setInterval(rotateBg, (state.settings.bgInterval || 5) * 60 * 1000);
 }
 
 function resizeImageToBlob(file) {
@@ -14671,6 +14672,13 @@ function resumePomo() {
   if (p.phase === "run" || p.phase === "ask" || p.phase === "result") pomoShow();
 }
 
+// 設定「番茄鐘長度」（2026-11-27 使用者）：0＝20～25 分隨機（原本），其他＝固定分鐘。
+const POMO_MIN_CHOICES = [0, 15, 20, 25, 30, 45, 50, 60];
+function pomoMinsSetting() {
+  const v = Number(state?.settings?.pomoMins) || 0;
+  return POMO_MIN_CHOICES.includes(v) ? v : 0;
+}
+
 function tryStartPomo(q) {
   if (!q || q.lv !== 2) return;
   if (state.pomodoro?.phase) {
@@ -14689,7 +14697,8 @@ function tryStartPomo(q) {
     toast("她不在房間，現在不能用番茄鐘", "bad");
     return;
   }
-  const mins = 20 + Math.floor(Math.random() * 6);
+  const set = pomoMinsSetting();
+  const mins = set > 0 ? set : 20 + Math.floor(Math.random() * 6);
   const stage = String(girl.stage || "");
   const startedAt = Date.now();
   state.pomodoro = {
@@ -19374,51 +19383,12 @@ function renderSettings() {
   // 全局模型下拉已廢:每位妹子 s.comfyCkpt 自帶,生圖時用她自己的
   const ckptRow = $("#row-comfy-ckpt");
   if (ckptRow) ckptRow.classList.add("hidden");
-  const csa = $("#set-card-scene-art");
-  if (csa) csa.checked = state.settings.features?.cardSceneArt !== false;
   $("#set-model").value = state.settings.model || "";
   paintModelPick();
   $("#set-rating").value = state.settings.rating || "nsfw";
   applyLlmProviderUi();
   $("#set-ver").textContent = version ? "v" + version : "(尚未寫入)";
 
-  $("#set-theme").innerHTML = THEMES.map(([k, label]) =>
-    `<option value="${k}" ${(state.settings.theme || "aqua") === k ? "selected" : ""}>${label}</option>`).join("");
-
-  // 版面:卡片顏色列
-  const THEME_CARD_DEFAULT = { aqua: "#120c22", pink: "#220c1c", green: "#0a1a10", amber: "#261808", ice: "#0c162c", day: "#ffffff", sakura: "#fff8fb", crimson: "#080304", violet: "#07040e", goldtemple: "#fffae4", mint: "#e4fff5", bloodmoon: "#090302", abyssocean: "#031b21", cyber: "#070111", toxic: "#040701", rosedusk: "#fff1f6", steel: "#eff4fa", plumwine: "#130418", jade: "#e6faf1", lavasunset: "#ffede4", lavender: "#f7f1ff", copper: "#130904", voidabyss: "#040411", cherry: "#ffedf1", forest: "#ecfadb", ember: "#070301", glacier: "#edf8ff", peacock: "#020c0b", bordeaux: "#1e040c", sulfur: "#f6ffcd", indigo: "#070523", coral: "#ffe8e2", obsidian: "#09090a", aurora: "#03100b", pumpkin: "#ffefd8", sapphire: "#030614", venom: "#06020d", dawn: "#fff5ed", parchment: "#f9f5e9", mist: "#f4f6f8" };
-  const rows = $("#card-color-rows");
-  const cc = state.settings.cardColors || {};
-  const defHex = THEME_CARD_DEFAULT[state.settings.theme || "aqua"];
-  rows.innerHTML = CARD_KINDS.map(([k, label]) => {
-    const c = cc[k] || { color: defHex, opacity: 0.68 };
-    return `<div class="card-color-row" data-kind="${k}">
-      <span class="ccname">${label}</span>
-      <input type="color" value="${c.color}">
-      <input type="range" min="0" max="1" step="0.01" value="${c.opacity}">
-      <span class="ccval">${Math.round(c.opacity * 100)}%</span>
-    </div>`;
-  }).join("");
-  rows.querySelectorAll(".card-color-row").forEach(row => {
-    const k = row.dataset.kind;
-    const cp = row.querySelector("input[type=color]");
-    const ca = row.querySelector("input[type=range]");
-    const onchg = () => {
-      state.settings.cardColors ??= {};
-      state.settings.cardColors[k] = { color: cp.value, opacity: parseFloat(ca.value) };
-      row.querySelector(".ccval").textContent = Math.round(ca.value * 100) + "%";
-      applyLayoutVars(); scheduleSave();
-    };
-    cp.oninput = onchg;
-    ca.oninput = onchg;
-  });
-
-  const cctr = $("#set-card-center"); if (cctr) cctr.checked = !!state.settings.cardCenter;
-  const cfs = state.settings.cardFontScale ?? 1;
-  const cf = $("#set-card-font"); if (cf) cf.value = cfs;
-  const cfv = $("#card-font-val"); if (cfv) cfv.textContent = Math.round(cfs * 100) + "%";
-  $("#set-tab-op").value = state.settings.tabOpacity ?? 1;
-  $("#tab-op-val").textContent = Math.round((state.settings.tabOpacity ?? 1) * 100) + "%";
   {
     const ts = typeSpeedSetting();
     const tsel = $("#set-type-speed");
@@ -19426,13 +19396,7 @@ function renderSettings() {
     const tsv = $("#type-speed-val");
     if (tsv) tsv.textContent = ts.toFixed(1);
   }
-  $("#set-bg-interval").value = state.settings.bgInterval || 5;
-  $("#bg-thumbs").innerHTML = (state.settings.bgImages || []).map((n, i) =>
-    `<div class="bg-thumb${i === state.settings.bgIndex ? " active-bg" : ""}">
-      <img src="/assets/backgrounds/${n}" loading="lazy">
-      <button class="bg-thumb-del" data-i="${i}">✕</button>
-    </div>`).join("") || `<span class="dim small">還沒有背景圖。</span>`;
-  $("#bg-thumbs").querySelectorAll(".bg-thumb-del").forEach(b => b.onclick = () => removeBgAt(+b.dataset.i));
+  { const pm = $("#set-pomo-mins"); if (pm) pm.value = String(pomoMinsSetting()); }
 
   $("#log-list").innerHTML = state.log.length
     ? state.log.map(l => `<div>${esc(l)}</div>`).join("")
@@ -19581,19 +19545,11 @@ on("btn-change-server", "click", () => {
 on("set-player", "change", e => { state.settings.player = e.target.value.trim(); scheduleSave(); });
 on("set-sleep-start", "change", e => { state.settings.sleepStart = e.target.value; scheduleSave(); renderAll(); });
 on("set-sleep-end", "change", e => { state.settings.sleepEnd = e.target.value; scheduleSave(); renderAll(); });
-on("set-theme", "change", e => { state.settings.theme = e.target.value; scheduleSave(); renderAll(); });
 
-on("btn-card-reset", "click", () => { state.settings.cardColors = null; applyLayoutVars(); scheduleSave(); renderSettings(); });
-on("set-card-center", "change", e => { state.settings.cardCenter = e.target.checked; applyLayoutVars(); scheduleSave(); });
-on("set-card-font", "input", e => {
-  state.settings.cardFontScale = parseFloat(e.target.value);
-  const v = $("#card-font-val"); if (v) v.textContent = Math.round(e.target.value * 100) + "%";
-  applyLayoutVars(); scheduleSave();
-});
-on("set-tab-op", "input", e => {
-  state.settings.tabOpacity = parseFloat(e.target.value);
-  const v = $("#tab-op-val"); if (v) v.textContent = Math.round(e.target.value * 100) + "%";
-  applyLayoutVars(); scheduleSave();
+on("set-pomo-mins", "change", e => {
+  const v = parseInt(e.target.value, 10);
+  state.settings.pomoMins = POMO_MIN_CHOICES.includes(v) ? v : 0;
+  scheduleSave();
 });
 on("set-type-speed", "input", e => {
   const v = Math.min(1, Math.max(0.1, parseFloat(e.target.value) || 0.5));
@@ -19601,23 +19557,6 @@ on("set-type-speed", "input", e => {
   const lab = $("#type-speed-val");
   if (lab) lab.textContent = v.toFixed(1);
   scheduleSave();
-});
-on("set-bg-interval", "change", e => {
-  state.settings.bgInterval = Math.max(1, parseInt(e.target.value) || 5);
-  e.target.value = state.settings.bgInterval;
-  startBgRotation(); scheduleSave();
-});
-on("btn-bg-upload", "click", () => $("#bg-file")?.click());
-on("bg-file", "change", e => uploadBgFiles(e.target));
-on("btn-bg-clear", "click", async () => {
-  if (!confirm("刪除全部背景圖?")) return;
-  for (const n of state.settings.bgImages || []) {
-    try { await fetch(`/api/backgrounds/${n}`, { method: "DELETE" }); } catch { }
-  }
-  state.settings.bgImages = [];
-  state.settings.bgIndex = 0;
-  clearInterval(bgTimer);
-  scheduleSave(); applyBg(); renderSettings();
 });
 
 // 聊天室
@@ -19732,11 +19671,6 @@ on("set-imgprov", "change", e => {
       }
     });
   }
-});
-on("set-card-scene-art", "change", e => {
-  state.settings.features ??= {};
-  state.settings.features.cardSceneArt = !!e.target.checked;
-  scheduleSave();
 });
 on("btn-comfy-test", "click", async () => {
   const r = $("#comfy-test-result");
