@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=37', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=38', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8, col_cb: 8, col_cg: 8, col_yb: 8, col_yg: 8, col_f: 8, col_x: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   // 2026-11-25 使用者（調戲不帶感）：反應改跟「態度」走（tease_attitude.js）——拒絕＝stranger（推開、遮住、掙扎）、無奈拒絕＝friend（輕推遮住）、
@@ -279,7 +279,7 @@
    *  身體零件照部位動；衣服零件跟著離它最近的身體零件一起動；袖子跟上臂／前臂。
    *  m.anim＝脫衣動畫 {kind: shirt|bra|panties, u: 0～1}：兩手擺到位、那件衣服移走（u＞.78 不見）、手再放回來。 */
   function deform(sh, P, H, m) {
-    const { br, tilt, nod, gest, ph } = m, anim = m.anim || null, lift = br * 1.6, hl = lift * .85;
+    const { br, tilt, nod, gest, ph } = m, anim = m.anim || null, lift = br * (m.legAnim && !m.mode ? .95 : 1.6), hl = lift * .85;
     // 肩線／胯下高度從實際的肩關節推（坐著時整個人往下移了，不能用站著的 P.S／P.C）
     const shA = sh.prims.find(p => p.part === 'armL' && p.a && !p.cloth);
     const S = shA ? shA.a[2] + shA.off[2] + 3.4 : P.S, C = S - P.T, zW = S - .6 * P.T;
@@ -916,12 +916,13 @@
     //   impatient 不耐煩（重心在一隻腳、另一隻腳腳尖一直敲地板）、happy 快樂（一隻腳往後勾起來晃）、shy 害羞（內八、膝蓋靠攏、腳尖轉來轉去）。
     //   兩條腿照 2 骨 IK 重擺：上半身整個平移 B、每隻腳給腳踝位移＋腳尖轉向（yaw 往外為正）＋腳尖上下（pitch 往上為正，以鞋跟著地點為軸）。
     //   m.legAnim（呼吸、說話那兩組）才有循環動作；其他動作（被摸、生氣…）用同一個站姿但不動。
-    const PZ = m.posture && m.posture !== 'normal' && !anim && !m.fg ? m.posture : null;
+    const PZ = !anim && !m.fg ? (m.posture && m.posture !== 'normal' ? m.posture : m.relaxedStand && m.legAnim && !m.mode ? 'relaxed' : null) : null;
     if (PZ && (sh._legs || []).length === 2) {
       const ph = m.legAnim ? (m.ph || 0) : 0, sn1 = Math.sin(ph), q4 = (((4 * ph) / (2 * Math.PI)) % 1 + 1) % 1;
       const tap = m.legAnim ? 18 * Math.sin(Math.PI * Math.min(1, q4 / .62)) * (q4 < .62 ? 1 : 0) : 0;   // 一圈敲 4 下：腳尖抬起、啪一聲放下
       // W＝站的那隻腳（畫面右邊、x＞0）、R＝放鬆的那隻（x＜0，原本腳踝高 .9、往前 .6）
       const PS = {   // B 平移、roll 骨盆側傾（度，負＝站的那邊屁股往上）；腳踝位移是相對原本站姿
+        relaxed:   { B: [1.35 + .45 * sn1, 0, -.65], roll: -4.5 - .8 * sn1, W: { a: [.2, 0, 0], yaw: 5 }, R: { a: [-1.3, 1.8, -.65], yaw: 12, pole: [-.25, 1, 0] } },
         sexy:      { B: [1.9 + .35 * sn1, 0, -.4], roll: -6 - 1.2 * sn1, W: { a: [-.4, .2, 0], yaw: 14 }, R: { a: [4.6, 2.4, .2], yaw: -20, pole: [-.5, 1, 0] } },
         casual:    { B: [.6 * sn1, 0, -1.3], roll: 2 * sn1, W: { a: [4.4, -.4, 0], yaw: 26 }, R: { a: [-4.4, -.8, -.9], yaw: 26, pole: [.4, 1, 0] } },
         impatient: { B: [1.5, 0, -.3], roll: -4.5, W: { a: [-.4, 0, 0], yaw: 12 }, R: { a: [-1.2, 2.2, -.9], yaw: 34, pitch: tap * 1.7 } },   // 腳尖往外轉一點，正面才看得到腳尖抬起來
@@ -935,6 +936,11 @@
         const L = sh._legs.map(([h, k, a, sd, o]) => { const mv = (q) => o ? [q[0] + o[0], q[1] + o[1], q[2] + o[2]] : q; return { h: mv(h), k: mv(k), a: mv(a) }; });
         const cx0 = (L[0].h[0] + L[1].h[0]) / 2, hipC = [cx0, (L[0].h[1] + L[1].h[1]) / 2, (L[0].h[2] + L[1].h[2]) / 2];
         const BX = shift(H.about(H.rotY(PS.roll || 0), hipC), B), BXp = (q) => { const v = H.mulV(BX.R, q); return [v[0] + BX.t[0], v[1] + BX.t[1], v[2] + BX.t[2]]; };   // 上半身：繞骨盆中心側傾再平移
+        const upperX = (q, part) => {
+          if (PZ !== 'relaxed') return BX;
+          const w = /^arm|head|hair/.test(part || '') ? 1 : sm((q[2] - hipC[2] - 2) / Math.max(1, zW - hipC[2] + 4));
+          return H.compose(H.about(H.rotY(-PS.roll * 1.45 * w), BXp([0, 0, zW])), BX);
+        };
         const legs = L.map((g) => {
           const sd = Math.sign(g.h[0] - cx0) || 1, S = sd > 0 ? PS.W : PS.R;
           const h2 = BXp(g.h), a2 = add(g.a, S.a || [0, 0, 0]), l1 = len(sub(g.k, g.h)), l2 = len(sub(g.a, g.k));
@@ -956,12 +962,12 @@
         for (const p of sh.prims) {
           const q = [p.bc[0] + p.off[0], p.bc[1] + p.off[1], p.bc[2] + p.off[2]];
           const onLeg = p.part === 'legs' || (p.cloth && (p.garm === 'bot' || p.bik === 'bot' || p.under) && q[2] < Math.min(legs[0].g.h[2], legs[1].g.h[2]) - 1.5);
-          if (!onLeg) { p.xf = p.xf ? H.compose(BX, p.xf) : BX; continue; }
+          if (!onLeg) { const X = upperX(q, p.part); p.xf = p.xf ? H.compose(X, p.xf) : X; continue; }
           const lg = legs[(Math.sign(q[0] - cx0) || 1) === legs[0].sd ? 0 : 1];
           const X = q[2] < lg.g.a[2] + .8 ? lg.foot : q[2] > lg.g.k[2] ? lg.thigh : lg.shin;
           p.xf = p.xf ? H.compose(X, p.xf) : X;
         }
-        for (const st of sh.areolaStamps || []) st.q = BXp(st.q);
+        for (const st of sh.areolaStamps || []) st.q = app(upperX(st.q, 'chest'), st.q);
       }
     }
     // 乳房軟變形（同 droom 揉乳房的 kw：零件的每一點照「從根部往下多遠」推，根部 0、下緣全推；在 primDist 裡反推回去算距離）
@@ -1183,7 +1189,7 @@
   /** 把空白臉貼到頭上：照頭頂、下巴、中線縮放對位；頭髮在前面的地方不貼（瀏海留著）；只貼到下巴下面一點（脖子用身體的）。 */
   /** 2026-11-26 使用者：先把臉模「替換」上去（不只是貼在人偶的頭上）——人偶頭上臉模外面的肉（比較寬的臉頰、平的下顎）先擦掉，
    *  擦掉的地方露出後面的頭髮（頭髮那層有就用）或透明，臉的輪廓（下巴、下顎線、耳朵）就是臉模的。headPx＝只有頭那層、hairPx＝只有頭髮那層。 */
-  function paintFace(px, W, Hh, headBox, hairMask, skin, tone, headPx, hairPx, turn = 0, noHair = false, expression = {}) {
+  function paintFace(px, W, Hh, headBox, hairMask, skin, tone, headPx, hairPx, turn = 0) {
     const at = Math.abs(turn), F0 = FACE_BLANK[at < 10 ? 'front' : at < 25 ? 't20' : at < 37 ? 't30' : at < 62 ? 't45' : 'side'], mir = turn < 0 && at >= 10;   // 輪廓都朝左；頭往右轉就翻
     if (!F0.grid) {
       const g = new Uint8Array(F0.w * F0.h), map = { '.': 0, s: 1, h: 2, d: 3 };
@@ -1213,61 +1219,6 @@
       const faceY = (y - headBox.top) / (headBox.chin - headBox.top);
       const cheekShadow = c === 1 && faceY > .24 && faceY < .94 && side > .47 + .16 * (1 - faceY);
       const j = i * 4, q = cheekShadow ? MID : col[c]; px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2]; px[j + 3] = 255;
-    }
-    // Hand-designed pixel features in face-local coordinates. The same head box
-    // follows the existing nod/turn animation; hair always occludes the features.
-    const fh = headBox.chin - headBox.top, fw = 144 * k;
-    const dir = turn < 0 ? 1 : -1, a = Math.min(80, at) * Math.PI / 180;
-    const center = headBox.cx + dir * Math.sin(a) * fw * .20;
-    const squeeze = Math.max(.38, Math.cos(a));
-    const ink = [49, 35, 54], iris = [104, 68, 111], light = [192, 147, 176];
-    const blush = SK.map((v, i) => Math.round(v * .76 + [210, 116, 126][i] * .24));
-    const lip = SK.map((v, i) => Math.round(v * .40 + [158, 72, 91][i] * .60));
-    const dot = (x, y, color) => {
-      x = Math.round(x); y = Math.round(y);
-      if (x < 0 || y < 0 || x >= W || y >= Hh || !moldAt(x, y) || hairMask[y * W + x]) return;
-      const j = (y * W + x) * 4; px[j] = color[0]; px[j + 1] = color[1]; px[j + 2] = color[2]; px[j + 3] = 255;
-    };
-    const rect = (x, y, w, h, color) => {
-      for (let yy = 0; yy < Math.max(1, Math.round(h)); yy++) for (let xx = 0; xx < Math.max(1, Math.round(w)); xx++) dot(x + xx, y + yy, color);
-    };
-    for (const s of [-1, 1]) {
-      if (at > 58 && s !== dir) continue;
-      const far = at > 20 && s !== dir, ew = Math.max(3, Math.round(fw * .24 * (far ? squeeze : 1)));
-      const ex = Math.round(center + s * fw * .235 * squeeze - ew / 2), ey = Math.round(headBox.top + fh * .61);
-      // Arched brow, almond eye, dark upper lash, iris and one deliberate glint.
-      rect(ex, ey - fh * .09, ew, 1, [107, 74, 78]);
-      rect(ex, ey + fh * .14, ew, Math.max(1, fh * .035), blush);
-      if (expression.blink) {
-        rect(ex, ey + 1, ew, 1, ink);
-        dot(ex + (s < 0 ? -1 : ew), ey, ink);
-        continue;
-      }
-      rect(ex, ey, ew, Math.max(2, fh * .075), [255, 240, 219]);
-      rect(ex, ey - 1, ew, 1, ink);
-      dot(ex + (s < 0 ? -1 : ew), ey - 2, ink);
-      const ix = ex + Math.floor(ew * .5);
-      rect(ix, ey, Math.max(2, ew * .42), Math.max(2, fh * .075), iris);
-      dot(ix, ey, ink); dot(ix + 1, ey, [255, 246, 230]);
-      dot(ix + 1, ey + Math.max(1, Math.round(fh * .065)), light);
-    }
-    const noseX = center + dir * Math.sin(a) * fw * .15;
-    dot(noseX, headBox.top + fh * .76, MID);
-    dot(noseX + 1, headBox.top + fh * .78, SH);
-    const mouthY = headBox.top + fh * .86, mw = Math.max(2, Math.round(fw * .17 * squeeze));
-    rect(noseX - mw / 2, mouthY, mw, 1, lip);
-    rect(noseX - mw / 2 + 1, mouthY + 1, Math.max(1, mw - 2), 1, blush);
-    if (expression.speaking) rect(noseX - mw / 2 + 1, mouthY, Math.max(1, mw - 2), 2, [117, 58, 72]);
-    // Side-swept tapered fringe breaks the old straight helmet-like hairline.
-    if (!noHair && at < 62) for (let y = Math.floor(headBox.top + fh * .25); y < headBox.top + fh * .57; y++) {
-      const v = (y - headBox.top) / fh;
-      for (let x = Math.floor(center - fw * .52); x <= center + fw * .52; x++) {
-        const u = (x - center) / fw;
-        const edge = u < -.08 ? .43 + (u + .5) * .32 : .38 + (u + .08) * .26;
-        if (v > edge || v < .26) continue;
-        const shine = v > edge - .09 && v < edge - .045;
-        dot(x, y, shine ? [91, 73, 99] : v > edge - .025 ? [30, 25, 40] : [44, 36, 55]);
-      }
     }
   }
   /** Connected, four-tone hair clusters, lit from the same upper left as the skin.
@@ -1358,6 +1309,7 @@
     const shape = () => ({ P: base.P, sh: Object.assign({}, base.sh, { prims: base.sh.prims.map(p => Object.assign({}, p)), areolaStamps: (base.sh.areolaStamps || []).map(q => Object.assign({}, q)) }) });
     const m = motion(pose, f, n, body === 'mermaid', doll._mode || null, doll._tier || null);
     m.cup = doll.cup || null;   // deform 用：C 以下笑的時候不晃
+    m.relaxedStand = body === 'idle';
     m.stance = doll._stance || null;
     m.posture = body === 'idle' ? (doll._posture || null) : null; m.legAnim = pose === 'breathe' || pose === 'talk';   // 2026-11-26 站姿＋腳的動作   // 抱胸／放背後：手掌看不到（不貼）
     m.sitK = doll._sit || 'm';   // 2026-11-24 癱坐的腿：m＝M 字坐、kneel＝跪坐（鴨子坐）
@@ -1389,7 +1341,7 @@
       let top = -1, bot = -1, sx = 0, sn = 0;
       for (let k = 0; k < n; k++) if (hpx[k * 4 + 3]) { const y = Math.floor(k / Wd); if (top < 0) top = y; bot = y; }
       if (top >= 0) { const mid = Math.round(top + (bot - top) * .45); for (let x = 0; x < Wd; x++) if (hpx[(mid * Wd + x) * 4 + 3]) { sx += x; sn++; } }
-      if (top >= 0 && sn) paintFace(r.pixels, r.width, r.height, { top, chin: bot, cx: sx / sn + .5 }, hm, doll._skin, tone, hpx, hp, m.turn || 0, !!doll._noHair, { blink: (pose === 'breathe' || pose === 'talk') && f === 14, speaking: pose === 'talk' && f % 4 < 2 });
+      if (top >= 0 && sn) paintFace(r.pixels, r.width, r.height, { top, chin: bot, cx: sx / sn + .5 }, hm, doll._skin, tone, hpx, hp, m.turn || 0);
       hairPass(r.pixels, hd, hm, r.width, r.height, scale);
     }
     // 衣服那幾層不畫皮膚上的標記（乳房輪廓弧線等 mat 2／摺線、乳暈印子、乳頭：浮在皮膚表面或直接印上去，會穿出衣服、在衣服上留一圈；T 恤做形狀時也不跟著乳頭凸起）

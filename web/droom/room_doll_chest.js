@@ -374,25 +374,24 @@
       const b = P.b, wT = F(b, 'thigh'), wC = F(b, 'calf'), fr = b.frame;
       const [hx, hy, hz] = hip, [kx, ky, kz] = knee, [ax, ay, az] = ankle;
       const knee_r = b.bone ? 2.55 : 2.75 * Math.min(wT, 1.08) * fr ** .3;
-      const mid = [hx + (kx - hx) * .4, hy + (ky - hy) * .4, hz + (kz - hz) * .4];
-      sh.cone(BODY, hip, mid, 4.7 * wT, 4.15 * wT);
-      sh.cone(BODY, mid, knee, 4.15 * wT, knee_r);
-      {   // 2026-10-31：大腿根部往外鼓（參考圖 Good：從腿根鼓出來、往膝蓋收＝雙三角輪廓）
-        const at = u => [hx + (kx - hx) * u, hy + (ky - hy) * u, hz + (kz - hz) * u];
-        const a = at(.08), m2 = at(.42);
-        sh.cone(BODY, [a[0] + side * 1.25 * wT, a[1], a[2]], [m2[0] + side * .55 * wT, m2[1], m2[2]], 4.45 * wT, 3.7 * wT);
-      }
+      // Rounded muscle bellies taper into the joints, rather than two straight
+      // cones plus a separate triangular bulge at the outer thigh.
+      const contour = (a, c, stops, lateral, back) => {
+        const points = stops.map(([t, r]) => [
+          [a[0] + (c[0] - a[0]) * t + side * lateral * Math.sin(Math.PI * t),
+           a[1] + (c[1] - a[1]) * t - back * Math.sin(Math.PI * t),
+           a[2] + (c[2] - a[2]) * t], r]);
+        for (let i = 1; i < points.length; i++) sh.cone(BODY, points[i - 1][0], points[i][0], points[i - 1][1], points[i][1]);
+      };
+      contour(hip, knee, [[0,4.7*wT],[.16,4.85*wT],[.35,4.55*wT],[.55,3.85*wT],[.76,3.12*wT],[1,knee_r]], .48*wT, .18);
       if (b.muscle) sh.ell(BODY, [hx + (kx - hx) * .62 + side * .9, hy + (ky - hy) * .62 + 1.0, hz + (kz - hz) * .62], [2.9 * wT, 3.0 * wT, 5.5]);
-      const peak = b.muscle < .8 ? .26 : .22;
-      const cpos = [kx + (ax - kx) * peak + side * .25, ky + (ay - ky) * peak - .7 - .5 * b.muscle, kz + (az - kz) * peak];
       const calf_r = 3.05 * wC * (1 + .08 * b.muscle);
       {   // 2026-10-31：膝蓋兩側鼓包高低不同（參考圖 Good 3）——內側（往中線）低、外側高
         const dl = Math.hypot(ax - kx, ay - ky, az - kz) || 1, d = [(ax - kx) / dl, (ay - ky) / dl, (az - kz) / dl];
         sh.ell(BODY, [kx - side * 1.35 * fr ** .3 + d[0] * 1.1, ky + d[1] * 1.1 + .2, kz + d[2] * 1.1], [1.55, 1.6, 1.7]);
         sh.ell(BODY, [kx + side * 1.4 * fr ** .3 - d[0] * .5, ky - d[1] * .5, kz - d[2] * .5], [1.35, 1.5, 1.6]);
       }
-      sh.cone(BODY, knee, cpos, knee_r * .95, calf_r);
-      sh.cone(BODY, cpos, ankle, calf_r, 1.55 * Math.min(wC, 1.1) * fr ** .5);
+      contour(knee, ankle, [[0,knee_r*.95],[.18,calf_r*.97],[.32,calf_r],[.5,calf_r*.84],[.73,calf_r*.61],[1,1.55*Math.min(wC,1.1)*fr**.5]], .30, .75);
       const [tx, ty, tz] = toe, fl = 6.4 * fr ** .7;   // pt34u 腳掌加大
       if (HEEL > 0) return heelFoot(sh, P, side, ankle, toe);
       if (!FOOT_HD) { sh.cone(BODY, [ax - tx * .8, ay - .6 - ty * .8, az - 1.6], [ax + tx * fl, ay + ty * fl, Math.max(1.1, az - 2.4 + tz * fl)], 2.1 * fr ** .5, 1.5); return; }
@@ -476,10 +475,16 @@
     function leg(sh, ...a) { (sh._legs = sh._legs || []).push([a[2], a[3], a[4], a[1], sh.off]); sh.limb = 1; const pp = sh.part; sh.part = 'legs'; try { return legRaw(sh, ...a); } finally { sh.limb = 0; sh.part = pp; } }
     function armRaw(sh, P, shoulder, elbow, wrist, hand = true) {
       const b = P.b, wA = F(b, 'arm'), fr = b.frame;
-      const elbow_r = b.bone ? 1.95 : 2.1 * wA;
+      const elbow_r = b.bone ? 1.8 : 1.85 * wA;
       sh.cone(BODY, shoulder, elbow, 2.8 * wA, elbow_r);
       if (b.muscle) sh.ell(BODY, shoulder.map((s, i) => s + (elbow[i] - s) * .4), [2.6 * wA, 2.6 * wA, 4.0]);
       sh.cone(BODY, elbow, wrist, elbow_r, 1.5 * Math.min(wA, 1.15));
+      // Keep the full elbow→wrist cone as the animation rig's anchor. A small
+      // proximal forearm belly supplies the organic curve without thick wrists.
+      const fore = elbow.map((v, i) => v + (wrist[i] - v) * .28);
+      const end = elbow.map((v, i) => v + (wrist[i] - v) * .68);
+      sh.cone(BODY, elbow, fore, elbow_r, 2.25 * wA);
+      sh.cone(BODY, fore, end, 2.25 * wA, 1.65 * wA);
       if (hand) {
         let d = [wrist[0] - elbow[0], wrist[1] - elbow[1], wrist[2] - elbow[2]];
         const n = hypot3(d[0], d[1], d[2]) || 1; d = d.map(v => v / n);
