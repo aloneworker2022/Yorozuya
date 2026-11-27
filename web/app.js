@@ -67,7 +67,8 @@ import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, sc
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
 import { BASE_OUTFIT, ownsOutfit, hasOwnedList } from "./content/outfit_pick.js?v=3";
-import * as Bujo from "./content/home_bujo.js?v=4"; // 主畫面：子彈筆記＋箱庭（2026-11-27）
+import * as Bujo from "./content/home_bujo.js?v=4";
+import { THEMES as COLOR_THEMES, themeOf, themeVars, applyColorTheme, DEFAULT_THEME } from "./content/themes.js?v=1"; // 配色 20 套（2026-11-27） // 主畫面：子彈筆記＋箱庭（2026-11-27）
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
@@ -12644,12 +12645,40 @@ setInterval(() => {
 const $ = s => document.querySelector(s);
 function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
 
-// 2026-11-27 使用者：配色、版面（卡片顏色／透明度）、全域背景圖從設定拿掉——新主畫面固定夜色。
+// 2026-11-27 使用者：舊的霓虹主題、版面（卡片顏色／透明度）、全域背景圖從設定拿掉；
+// 之後又要「參考終端機／vim 配色做 20 種」→ 新的 state.settings.colorTheme（content/themes.js）。
 // 舊存檔裡的 theme／cardColors／bgImages 留著不刪，只是不再套用。
 function applyTheme() {
   document.body.dataset.theme = "aqua";
+  applyColorTheme(state?.settings?.colorTheme || DEFAULT_THEME);
   applyFontScale();
   applyLayoutVars();
+}
+try { applyColorTheme(localStorage.getItem("yoro_color_theme") || DEFAULT_THEME); } catch { /* */ }
+
+/** 設定頁的配色格子：每格用那套的顏色畫一小段筆記本（待辦／事件／記事／完成）。 */
+function renderColorThemes() {
+  const box = $("#set-color-themes");
+  if (!box) return;
+  const cur = themeOf(state.settings.colorTheme || DEFAULT_THEME);
+  const nm = $("#set-color-name"); if (nm) nm.textContent = cur.name;
+  box.innerHTML = COLOR_THEMES.map((t) => {
+    const v = themeVars(t);
+    const ink = t.ink || t.fg;
+    return `<button type="button" class="theme-sw" data-id="${t.id}" aria-pressed="${t.id === cur.id}" style="background:${t.paper};color:${ink}">
+      <span class="nm" style="background:${t.bar};color:${t.fg}"><span>${esc(t.name)}</span><span style="color:${t.accent}">■</span></span>
+      <span class="ln"><span style="color:${t.orange}">•</span> 待辦</span>
+      <span class="ln" style="color:${t.blue}">○ 事件</span>
+      <span class="ln" style="color:${t.green}">— 記事</span>
+      <span class="ln" style="color:${v["--k-done"]};text-decoration:line-through">✕ 完成</span>
+    </button>`;
+  }).join("");
+  box.querySelectorAll(".theme-sw").forEach((b) => (b.onclick = () => {
+    state.settings.colorTheme = b.dataset.id;
+    applyTheme();
+    scheduleSave();
+    renderColorThemes();
+  }));
 }
 
 // 文字大小（2026-11-27 使用者）：標準 1／大 1.25／特大 1.5。CSS 變數 --fs（home_bujo.css）讓字、筆記本方格、
@@ -19442,6 +19471,7 @@ function renderSettings() {
   }
   { const pm = $("#set-pomo-mins"); if (pm) pm.value = String(pomoMinsSetting()); }
   { const fz = $("#set-font-scale"); if (fz) fz.value = String(fontScaleSetting()); }
+  renderColorThemes();
 
   $("#log-list").innerHTML = state.log.length
     ? state.log.map(l => `<div>${esc(l)}</div>`).join("")

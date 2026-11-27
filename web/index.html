@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-title" content="萬事屋">
 <link rel="stylesheet" href="style.css?v=82">
 <link rel="stylesheet" href="content/test_room.css?v=127">
-<link rel="stylesheet" href="home_bujo.css?v=3">
+<link rel="stylesheet" href="home_bujo.css?v=4">
 </head>
 <body class="room-home home-v2">
 
@@ -168,7 +168,7 @@
               <div class="bj-filter" id="bj-filter" hidden>只看 <b></b> 相關的 <button type="button" id="bj-filter-off" aria-label="取消篩選">✕ 全部</button></div>
               <ul class="bj-log" id="bj-log"></ul>
               <p class="bj-empty" id="bj-empty" hidden>今天還沒有紀錄。從最下面打一筆。</p>
-              <div class="bj-legend">最下面打的會先記成 ○ 事件，點後面的「記事」或「待辦」分類（點符號或長按可以再改）。待辦：點 • → ✕ 完成 → &gt; 延到明天；粉紅底是正在專注的，別筆點 ◎ 換成它。</div>
+              <div class="bj-legend"><span class="k-task">• 待辦</span>　<span class="k-ev">○ 事件</span>　<span class="k-note">— 記事</span>　<span class="k-done">✕ 完成</span>　<span class="k-moved">&gt; 延到明天</span><br>最下面打的先記成 ○ 事件，點後面的「記事」或「待辦」分類（點符號或長按可以再改）。待辦點 • 就完成；粉紅底是正在專注的，別筆點 ◎ 換成它。</div>
             </div>
             <div class="bj-page" data-page="month" hidden>
               <div class="bj-head"><h2 id="bj-month-title"></h2></div>
@@ -244,6 +244,9 @@
     <section class="page" id="page-settings">
       <div class="panel">
         <h2>設定</h2>
+        <div class="setting-row"><label>配色</label><span id="set-color-name" class="dim small"></span></div>
+        <div class="dim small" style="margin-top:-.35em">參考終端機／vim 的配色，整個畫面一起換。本子裡待辦、事件、記事、完成、延到明天各有自己的顏色。</div>
+        <div id="set-color-themes" class="theme-grid" role="group" aria-label="配色"></div>
         <div class="setting-row"><label>文字大小</label>
           <select id="set-font-scale">
             <option value="1">標準</option>
@@ -692,6 +695,6 @@
 <script src="content/room_desk.js?v=18"></script>
 <script src="content/test_room.js?v=38"></script>
 <script type="module" src="content/test_room_summon.js?v=440"></script>
-<script type="module" src="app.js?v=195"></script>
+<script type="module" src="app.js?v=196"></script>
 </body>
 </html>
