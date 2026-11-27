@@ -925,6 +925,15 @@
     tip:(text,ms)=>roomTip(text,ms),
     order:kind=>{const r=actor.order(kind);if(r.ok)resumeActor();else roomTip(r.message);refreshActorControls();return r;}};
   window.RoomView={
+    // 主畫面（home_bujo.js，2026-11-27）：＋／－ 按鈕、點兩下重置；房間縮成一條時要知道她在畫布哪裡。
+    zoomBy(f){const c={x:canvas.width/2,y:canvas.height/2};zoomAt(f,c);},
+    reset(){camera.scale=1;camera.x=0;camera.y=0;renderView();},
+    actorPoint(){
+      if(!actor.present||actorConcealed)return null;
+      const {u,v}=actor.position(),f=actor.frame(),[x,y]=project(u,v);
+      const cy=y-f.anchor.y+f.height*.45;
+      return {x:x*camera.scale+camera.x,y:cy*camera.scale+camera.y,w:canvas.width,h:canvas.height};
+    },
     furniture(){
       const counts=new Map();
       for(const item of items){

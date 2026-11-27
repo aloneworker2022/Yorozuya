@@ -14,8 +14,9 @@
 <meta name="apple-mobile-web-app-title" content="萬事屋">
 <link rel="stylesheet" href="style.css?v=82">
 <link rel="stylesheet" href="content/test_room.css?v=127">
+<link rel="stylesheet" href="home_bujo.css?v=1">
 </head>
-<body class="room-home">
+<body class="room-home home-v2">
 
 <!-- z0:全域背景圖層 -->
 <div id="bg-layer"></div>
@@ -54,6 +55,9 @@
   <span id="hud-debt" class="hidden">負債中</span>
   <button id="hud-need" class="hidden">● <span>0</span></button>
   <span id="hud-sleep" class="hidden">🌙 夢境時間</span>
+  <!-- 2026-11-27 主畫面改版：她的狀態（名字、關係、感情條、在家／心情）＋LINE（新訊息亮點） -->
+  <button type="button" id="hud-her" class="hud-her" hidden aria-label="她的狀態"><b id="hud-her-name"></b><span id="hud-her-stage"></span><span class="hud-aff" id="hud-her-aff"><i></i></span><span class="hud-st" id="hud-her-st"></span></button>
+  <button type="button" id="hud-line" class="hud-line" aria-label="LINE">LINE<span class="dot" hidden></span></button>
 </header>
 
 <!-- z2:功能面板(四分頁滑動) -->
@@ -98,7 +102,7 @@
         <!-- 場景三:玩家日誌(橫線小本子,上下翻日期) -->
         <div class="q-scene" id="qs-diary">
           <div class="lv-hdr">
-            <button class="back-btn" id="diary-back"><span class="back-icon">‹</span> 委託板</button>
+            <button class="back-btn" id="diary-back"><span class="back-icon">‹</span> 主頁</button>
             <span class="lv-badge diary-badge" id="diary-badge">日誌</span>
           </div>
           <div class="lv-area">
@@ -112,6 +116,7 @@
       </div>
       </div><!-- /home-card-strip -->
 
+      <div id="home-stage" class="home-stage focus">
       <!-- 中下：像素房間（主畫面房子） -->
       <div id="main-room-stage" class="home-room-stage" aria-label="我的房間">
         <section id="girl-world" class="girl-world" hidden aria-live="polite">
@@ -141,11 +146,57 @@
           <p id="friend-heading">朋友</p>
           <ul id="friend-list"></ul>
         </section>
+        <span class="room-tag">箱庭</span>
+        <div class="room-zoom"><button type="button" id="room-zin" aria-label="放大房間">＋</button><button type="button" id="room-zout" aria-label="縮小房間">－</button></div>
         <div class="scene"><canvas id="room" width="416" height="328" role="img" aria-label="像素房間。長按人物跟她說話。"></canvas></div>
       </div>
 
+      <div id="home-handle" class="home-handle" role="separator" aria-label="上下拖曳切換：陪伴／專注">
+        <span class="grip"></span>
+        <div class="home-mode"><button type="button" id="mode-companion" aria-pressed="false">陪伴</button><button type="button" id="mode-focus" aria-pressed="true">專注</button></div>
+        <span class="grip"></span>
+      </div>
+
+      <div id="home-now" class="home-now"><span class="sig">•</span><b id="home-now-text"></b><span class="meta" id="home-now-meta"></span><button type="button" class="nowsw" id="home-now-switch">換</button><button type="button" class="focusbtn" id="home-now-focus">開始專注</button></div>
+
+      <!-- 子彈筆記：方格紙筆記本，今日／本月／未來／日誌四個書籤，換頁＝整頁往上翻 -->
+      <section id="home-journal" class="home-journal" aria-label="子彈筆記">
+        <div class="bj-book">
+          <div class="bj-pages" id="bj-pages">
+            <div class="bj-page" data-page="today">
+              <div class="bj-head"><h2 id="bj-today-title"></h2></div>
+              <div class="bj-filter" id="bj-filter" hidden>只看 <b></b> 相關的 <button type="button" id="bj-filter-off" aria-label="取消篩選">✕ 全部</button></div>
+              <ul class="bj-log" id="bj-log"></ul>
+              <p class="bj-empty" id="bj-empty" hidden>今天還沒有紀錄。從最下面的快速紀錄打一筆。</p>
+              <div class="bj-legend">點符號：• 任務 → ✕ 完成 → &gt; 延到明天。正在專注的那筆是粉紅底，別筆點 ◎ 換成它。</div>
+            </div>
+            <div class="bj-page" data-page="month" hidden>
+              <div class="bj-head"><h2 id="bj-month-title"></h2></div>
+              <ul class="bj-log bj-month" id="bj-month"></ul>
+            </div>
+            <div class="bj-page" data-page="future" hidden>
+              <div class="bj-head"><h2>未來<small>之後的事</small></h2></div>
+              <div id="bj-future"></div>
+            </div>
+            <div class="bj-page bj-diary" data-page="diary" hidden>
+              <div class="bj-head"><h2 id="bj-diary-title"></h2><div class="bj-dnav"><button type="button" id="bj-dprev" aria-label="前一天">‹</button><button type="button" id="bj-dnext" aria-label="後一天">›</button></div></div>
+              <div id="bj-dtoday">
+                <p class="bj-dlead">今天過得怎樣？想到什麼就寫，寫滿 12 個字領連寫金。</p>
+                <textarea id="bj-dtext" rows="8" maxlength="600" placeholder="今天……" aria-label="今天的日誌"></textarea>
+                <div class="bj-dfoot"><span id="bj-dcount"></span><span id="bj-dstreak"></span></div>
+                <p class="bj-dfrom" id="bj-dfrom"></p>
+              </div>
+              <div id="bj-dpast" hidden></div>
+            </div>
+          </div>
+          <div class="bj-nav" id="bj-nav"><button type="button" data-p="today" aria-current="true">今日</button><button type="button" data-p="month">本月</button><button type="button" data-p="future">未來</button><button type="button" data-p="diary">日誌</button></div>
+        </div>
+      </section>
+      </div><!-- /home-stage -->
+
       <div id="quest-input-row">
-        <input id="quest-input" type="text" maxlength="80" placeholder="待辦…或打她的名字叫過來">
+        <button type="button" id="quest-sig" class="quest-sig" aria-label="符號：任務（點一下換）" title="點一下換：• 任務／○ 事件／— 筆記">•</button>
+        <input id="quest-input" type="text" maxlength="80" placeholder="快速記一筆…或打她的名字叫過來" enterkeyhint="send">
         <button id="quest-add" type="button" aria-label="送出" title="送出">
           <svg class="paper-plane" viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="M22 2 15 22l-4-9-9-4z"/>
@@ -313,11 +364,24 @@
 
 <!-- z3:底部分頁列 -->
 <nav id="tabs">
-  <button data-tab="0" class="active"><span>委託</span></button>
-  <button data-tab="1"><span>商店</span></button>
+  <button data-tab="0" class="active"><span>主頁</span></button>
   <button data-tab="2"><span>魅魔</span></button>
+  <button data-tab="1"><span>商店</span></button>
   <button data-tab="3"><span>設定</span></button>
 </nav>
+
+<!-- 子彈筆記：選單（專注／換一件）與「放了 24 小時」處理卡 -->
+<div id="bj-scrim" class="bj-scrim" hidden></div>
+<div id="bj-sheet" class="bj-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="bj-sheet-t"><h3 id="bj-sheet-t"></h3><p class="sub" id="bj-sheet-sub"></p><div class="opts" id="bj-sheet-opts"></div></div>
+<div id="bj-stale" class="bj-stale" hidden role="dialog" aria-modal="true" aria-labelledby="bj-stale-t">
+  <div class="card">
+    <p class="eyebrow">放了 24 小時</p>
+    <h3 id="bj-stale-t"></h3>
+    <p class="why" id="bj-stale-why"></p>
+    <div class="acts"><button type="button" id="bj-s-now" class="pri">馬上做（開始專注）</button><button type="button" id="bj-s-keep">延續到明天</button><button type="button" id="bj-s-done">已經做完了</button><button type="button" id="bj-s-drop" class="ghost">不做了</button></div>
+    <p class="her" id="bj-stale-her" hidden></p>
+  </div>
+</div>
 
 <!-- 召喚演出 -->
 <div id="summon-overlay" class="hidden"></div>
@@ -632,8 +696,8 @@
 <script src="content/room_character.js?v=20"></script>
 <script src="content/room_frames.js?v=3"></script>
 <script src="content/room_desk.js?v=18"></script>
-<script src="content/test_room.js?v=37"></script>
+<script src="content/test_room.js?v=38"></script>
 <script type="module" src="content/test_room_summon.js?v=440"></script>
-<script type="module" src="app.js?v=190"></script>
+<script type="module" src="app.js?v=191"></script>
 </body>
 </html>

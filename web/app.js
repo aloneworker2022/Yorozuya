@@ -67,6 +67,7 @@ import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, sc
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
 import { BASE_OUTFIT, ownsOutfit, hasOwnedList } from "./content/outfit_pick.js?v=3";
+import * as Bujo from "./content/home_bujo.js?v=1"; // 主畫面：子彈筆記＋箱庭（2026-11-27）
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
@@ -260,6 +261,117 @@ window.YorozuyaQuests = {
     return true;
   },
 };
+
+// 主畫面子彈筆記（content/home_bujo.js，2026-11-27）要用的：存檔、金幣、任務、番茄鐘、她的狀態、日誌。
+const BujoApi = {
+  state: () => (state && !bootFailed ? state : null),
+  dayNum: () => dayNum(),
+  save() { dirty = true; scheduleSave(); try { renderHud(); } catch { /* */ } },
+  toast: (m, c = "") => toast(m, c),
+  talkCommand(text) {
+    const cmd = parseTalkCommand(text);
+    if (!cmd.cmd) return false;
+    beginShopTalk(cmd.id || cmd.name);
+    return true;
+  },
+  /** 新增任務：伺服器擲 0～2 金（每天前 10 筆）；連不上就在手機擲。回 { q, gold }。 */
+  async addTask(text) {
+    let id = null, gold = 0;
+    try {
+      const r = await fetch("/api/quests/discover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { toast(typeof j.detail === "string" ? j.detail : "送不出去", "bad"); return null; }
+      id = discoverQuestId(j.id);
+      const g0 = state.gold;
+      addQuest(j.text || text, { id, fromServer: true, gold: j.gold, counted: j.counted, day: j.day });
+      gold = state.gold - g0;
+    } catch {
+      id = uid();
+      const g0 = state.gold;
+      addQuest(text, { id });
+      gold = state.gold - g0;
+    }
+    const q = state.quests.find(x => x.id === id);
+    if (q) { q.lv = 1; q.day = dayNum(); q.at = Date.now(); q.touched = Date.now(); }
+    dirty = true; scheduleSave(); renderAll();
+    return { q, gold: Math.max(0, gold) };
+  },
+  complete(id) { return state.quests.some(q => q.id === id) ? complete(id) : null; },
+  drop(id) { drop(id, { free: true }); },
+  /** 事件／筆記：0～max 金，跟任務共用每天前 10 筆。 */
+  bonus(max = 1) {
+    const today = dayNum();
+    if (state.discover?.day !== today) state.discover = { day: today, count: 0 };
+    if (state.discover.count >= DISCOVER_BONUS_CAP) return 0;
+    state.discover.count++;
+    const g = randInt(0, max);
+    if (g > 0) { state.gold += g; log(`記一筆 +${g} 金`); }
+    return g;
+  },
+  /** 開始專注＝番茄鐘（她要在房間）。 */
+  startPomo(id) {
+    const q = state.quests.find(x => x.id === id);
+    if (!q) return;
+    if (state.pomodoro?.phase) { pomoShow(); return; }
+    if (!roomCompanionNow()) { toast("她不在房間，現在不能開番茄鐘（還是可以自己做，做完點 •）", "bad"); return; }
+    q.lv = 2;
+    delete q.deadline;
+    tryStartPomo(q);
+  },
+  onPomo: (id) => !!(state?.pomodoro?.phase && state.pomodoro.qid === id),
+  her() {
+    const g = window.RoomCompanion?.current?.();
+    if (!g) return null;
+    const stage = g.roomStage || g.stage || "stranger";
+    const i = Math.max(0, AFF_LADDER.findIndex(x => x[0] === stage));
+    const aff = Math.round(Number(g.affection) || 0);
+    const cur = AFF_LADDER[i][2], next = AFF_LADDER[i + 1]?.[2] ?? null;
+    const present = !!window.RoomActor?.isPresent?.();
+    const mood = g.world ? outsideMoodNow(g.world).name : "平靜";
+    const status = present ? `在家・心情${mood}` : (roommateOutLabel(g.world) || "不在房間");
+    return { name: g.name || "她", stage, stageZh: AFF_LADDER_ZH[stage] || STAGE_ZH[stage] || "", aff, next, affPct: next ? (aff - cur) / (next - cur) : 1, present, mood, status };
+  },
+  openRoster: () => switchTab(2),
+  openLine: () => toggleLine(),
+  lineUnread() {
+    if (!state) return false;
+    state.bujo ??= {};
+    if (state.bujo.lineSeen == null) state.bujo.lineSeen = Date.now();
+    if (qScene === "line" || lineOpen) return false;
+    const seen = state.bujo.lineSeen;
+    return (state.lineGroup?.messages || []).some(m => m && m.kind !== "player" && (m.t || 0) > seen);
+  },
+  notebook: {
+    get min() { return NOTEBOOK_MIN_CHARS; },
+    today: () => notebookText(ensureTodayNote()),
+    write(v) {
+      const e = ensureTodayNote();
+      e.text = String(v || "").slice(0, NOTEBOOK_FIELD_MAX);
+      delete e.doubt; delete e.thought;
+      e.t = Date.now();
+      const g = maybeGrantNotebookStreak();
+      scheduleMemosSync(e);
+      dirty = true; scheduleSave();
+      return g;
+    },
+    flush() { try { flushMemosSync(); } catch { /* */ } },
+    pastDays() {
+      const today = dayNum();
+      return (state.notebook || []).filter(e => e && e.day < today && notebookText(e).trim())
+        .sort((a, b) => b.day - a.day)
+        .map(e => ({ day: e.day, text: notebookText(e), streak: notebookStreakCount(e.day) }));
+    },
+    streak() {
+      const today = dayNum();
+      const count = notebookStreakCount(today);
+      const days = writtenNotebookDays();
+      let prev = 0;
+      for (let d = today - 1; days.has(d); d--) prev++;
+      return { rewarded: state.notebookStreak?.rewardedDay === today, count, gold: notebookStreakGold(count), prev, next: notebookStreakGold(prev + 1) };
+    },
+  },
+};
+function renderBujo() { Bujo.render(); }
 
 /** 腎虧：精液量掉到 −7 以下，自動花 60～140 金看醫生（精液量已由房間拉回 −1）。金幣不夠就變負債，不擋。 */
 /** 玩家精液（房間那份，含時間回復）。房間模組沒載就看本機房間存檔；都沒有當滿的。 */
@@ -1858,8 +1970,8 @@ function addQuest(text, opts = {}) {
     if (g > 0) {
       state.gold += g;
       log(`發現「${text}」 +${g} 金`);
-      if (!quiet) toast(`發現委託!+${g} 金`, "good");
-    } else if (!quiet) toast("已加入發現池", "");
+      if (!quiet) toast(`記下了!+${g} 金`, "good");
+    } else if (!quiet) toast("記下了", "");
   } else if (state.discover.count < DISCOVER_BONUS_CAP) {
     give = true;
     g = randInt(0, 2);
@@ -1869,9 +1981,9 @@ function addQuest(text, opts = {}) {
     if (g > 0) {
       state.gold += g;
       log(`發現「${text}」 +${g} 金`);
-      if (!quiet) toast(`發現委託!+${g} 金`, "good");
-    } else if (!quiet) toast("已加入發現池", "");
-  } else if (!opts.fromServer && !quiet) toast("已加入發現池", "");
+      if (!quiet) toast(`記下了!+${g} 金`, "good");
+    } else if (!quiet) toast("記下了", "");
+  } else if (!opts.fromServer && !quiet) toast("記下了", "");
   if (!quiet) {
     const asker = maybeJournalAsk(q);
     if (asker) {
@@ -2159,14 +2271,18 @@ function start(id) {
 
 function complete(id) {
   const q = state.quests.find(q => q.id === id);
-  if (!q) return;
-  const g = rollReward();
+  if (!q) return null;
+  // 子彈筆記（2026-11-27）：做完又改回去的那筆（paid）不再給錢；她在家、心情好 +1
+  let g = q.paid ? 0 : rollReward();
+  const happy = !q.paid && herHappyHome();
+  if (happy) g += 1;
   state.gold += g;
   const qText = q.text;
   closeDiscover(id);
   state.quests = state.quests.filter(x => x.id !== id);
-  log(`${q.lv === 1 ? "直接完成" : "完成"}「${qText}」 +${g} 金`);
-  toast(g >= 19 ? `大豐收!委託完成 +${g} 金!!` : `委託完成!+${g} 金`, "good");
+  bujoLogDone(q);
+  log(`完成「${qText}」 +${g} 金`);
+  toast(g ? `完成!+${g} 金${happy ? "（她在旁邊心情好 +1）" : ""}` : "完成（這筆領過了）", "good");
   errandReward(id);   // 有人盯著這件的話,她要的東西做到了
   if (cardSystemOn()) {
     // 牌制：完成用 15% 氣泡，不再固定罐頭 + 淫紋進聊天
@@ -2176,22 +2292,37 @@ function complete(id) {
     crestRoll();
   }
   scheduleSave(); renderAll();
+  return g;
 }
 
-// 超時:扣違約金、退回已承接池(現實待辦不會消失,只是這次沒趕上)
+/** 今天做完的記進子彈筆記（今日清單畫 ✕、本月頁、日誌頁參考）。 */
+function bujoLogDone(q) {
+  state.bujo ??= {};
+  if (!Array.isArray(state.bujo.done)) state.bujo.done = [];
+  state.bujo.done = state.bujo.done.filter(d => d.id !== q.id);
+  state.bujo.done.push({ id: q.id, t: q.text, day: dayNum(), at: q.at || Date.now() });
+  if (state.bujo.focusId === q.id) state.bujo.focusId = null;
+}
+/** 她在房間、心情好（愉快／臉紅心跳）。 */
+function herHappyHome() {
+  const g = roomCompanionNow();
+  if (!g) return false;
+  const m = g.world ? outsideMoodNow(g.world).name : "平靜";
+  return m === "愉快" || m === "臉紅心跳";
+}
+
+// 2026-11-27 使用者：拿掉 24 小時期限的違約金。執行中到期只是退回清單（不扣錢）；
+// 放了 24 小時沒動的任務改由子彈筆記在畫面中央跳卡（home_bujo.js checkStale）。
 function failQuest(q, silent = false) {
-  const pen = randInt(1, 6);
-  state.gold -= pen;
+  void silent;
   q.lv = 1;
   delete q.startedAt; delete q.deadline; delete q._warned;
-  log(`「${q.text}」超時,違約金 -${pen} 金,退回委託板`);
-  if (!silent) { toast(`「${q.text}」超時!違約金 -${pen} 金,已退回委託板`, "bad"); kanbanReact("fail"); }
 }
 
-function drop(id) {
+function drop(id, opts = {}) {
   const q = state.quests.find(x => x.id === id);
   if (!q) return;
-  if (q.lv === 1) {   // 承接了又反悔:信用受損
+  if (q.lv === 1 && !opts.free) {   // 承接了又反悔:信用受損（子彈筆記的「不做了」不扣：opts.free）
     const pen = randInt(1, 3);
     state.gold -= pen;
     log(`推掉已承接的「${q.text}」 -${pen} 金`);
@@ -2233,9 +2364,7 @@ function settleOffline() {
   const now = Date.now();
   const expired = execQuests().filter(q => now >= q.deadline);
   if (!expired.length) return;
-  const before = state.gold;
-  for (const q of expired) failQuest(q, true);
-  toast(`離線結算:${expired.length} 件委託超時,違約金 -${before - state.gold} 金,已退回委託板`, "bad");
+  for (const q of expired) failQuest(q, true);   // 不扣錢（2026-11-27）
   scheduleSave();
 }
 
@@ -12628,7 +12757,7 @@ async function removeBgAt(i) {
 function renderAll() {
   // 每個子渲染獨立 try:單一區塊出錯(如半更新缺元素)不連累其他,
   // 委託輸入等核心功能永遠保持可用。
-  for (const fn of [applyTheme, renderHud, renderQuests, renderShop, renderSuccubi, renderChatView, renderKanban, renderCrests, renderSettings, renderCardSystem]) {
+  for (const fn of [applyTheme, renderHud, renderQuests, renderBujo, renderShop, renderSuccubi, renderChatView, renderKanban, renderCrests, renderSettings, renderCardSystem]) {
     try { fn(); } catch (e) { console.error(fn.name, e); }
   }
 }
@@ -12748,6 +12877,8 @@ function goLine() {
   if (pg) { pg.classList.remove("on-proc", "on-diary"); pg.classList.add("on-line"); }
   syncSideTabs();
   ensureLineGroup();
+  state.bujo ??= {};
+  state.bujo.lineSeen = Date.now();
   renderQuests();
   lineSyncFeed();
 }
@@ -13868,7 +13999,7 @@ function renderLineChat(stage, nav) {
     <div class="line-hdr">
       <div class="line-hdr-main">
         <div class="line-hdr-title">${esc(lg.title || "名冊群")}</div>
-        <div class="line-hdr-sub">${n} 人・點空白或「委託板」可返回</div>
+        <div class="line-hdr-sub">${n} 人・點空白或「主頁」可返回</div>
       </div>
       <button type="button" class="line-clear" id="line-clear" title="清掉較早的，只留最後一則">清除</button>
     </div>
@@ -19357,7 +19488,7 @@ const tabButtons = document.querySelectorAll("#tabs button");
 function switchTab(i) {
   const tr = document.getElementById("track");
   if (tr) tr.style.transform = `translateX(-${i * 25}%)`;
-  tabButtons.forEach((b, j) => b.classList.toggle("active", j === i));
+  tabButtons.forEach((b) => b.classList.toggle("active", +b.dataset.tab === i));
   document.body.dataset.tab = i;
   if (i === 3 && state) refreshLlmModels();
   // 切到魅魔頁＝看向她
@@ -19368,6 +19499,7 @@ function switchTab(i) {
 }
 tabButtons.forEach(b => b.addEventListener("click", () => switchTab(+b.dataset.tab)));
 switchTab(0);
+try { Bujo.init(BujoApi); } catch (e) { console.error("home_bujo", e); }
 
 // ===== 事件綁定 =====
 // 一律 null-safe:半更新(新舊 index/app 混搭)時缺失的元素靜默略過,
@@ -19417,10 +19549,11 @@ async function submitQuestInput(input) {
     input.focus();
   }
 }
-on("quest-add", "click", () => { const i = $("#quest-input"); if (i) submitQuestInput(i); });
+// 主畫面快速紀錄（2026-11-27）：• 任務／○ 事件／— 筆記，都交給子彈筆記（home_bujo.js capture）
+on("quest-add", "click", () => { if (state) Bujo.capture(); });
 on("quest-input", "keydown", e => {
   if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return;
-  submitQuestInput(e.target);
+  if (state) Bujo.capture();
 });
 on("hud-need", "click", () => switchTab(2));
 on("q-back", "click", () => goExec());
