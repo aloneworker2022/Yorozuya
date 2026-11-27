@@ -1183,7 +1183,7 @@
   /** 把空白臉貼到頭上：照頭頂、下巴、中線縮放對位；頭髮在前面的地方不貼（瀏海留著）；只貼到下巴下面一點（脖子用身體的）。 */
   /** 2026-11-26 使用者：先把臉模「替換」上去（不只是貼在人偶的頭上）——人偶頭上臉模外面的肉（比較寬的臉頰、平的下顎）先擦掉，
    *  擦掉的地方露出後面的頭髮（頭髮那層有就用）或透明，臉的輪廓（下巴、下顎線、耳朵）就是臉模的。headPx＝只有頭那層、hairPx＝只有頭髮那層。 */
-  function paintFace(px, W, Hh, headBox, hairMask, skin, tone, headPx, hairPx, turn = 0) {
+  function paintFace(px, W, Hh, headBox, hairMask, skin, tone, headPx, hairPx, turn = 0, noHair = false, expression = {}) {
     const at = Math.abs(turn), F0 = FACE_BLANK[at < 10 ? 'front' : at < 25 ? 't20' : at < 37 ? 't30' : at < 62 ? 't45' : 'side'], mir = turn < 0 && at >= 10;   // 輪廓都朝左；頭往右轉就翻
     if (!F0.grid) {
       const g = new Uint8Array(F0.w * F0.h), map = { '.': 0, s: 1, h: 2, d: 3 };
@@ -1208,12 +1208,66 @@
       const c = moldAt(x, y); if (!c) continue;
       const i = y * W + x; if (hairMask[i]) continue;
       if (tone && y > headBox.chin && tone[i] === 2) continue;   // 下巴下面：脖子上的投影留著
-      // A quiet shadow plane on the far cheek gives the blank face volume.
-      // Preserve the established featureless face and all five turning silhouettes.
+      // Keep the existing turning silhouettes and add a quiet far-cheek shadow.
       const side = (x + .5 - headBox.cx) / (72 * k);
       const faceY = (y - headBox.top) / (headBox.chin - headBox.top);
       const cheekShadow = c === 1 && faceY > .24 && faceY < .94 && side > .47 + .16 * (1 - faceY);
       const j = i * 4, q = cheekShadow ? MID : col[c]; px[j] = q[0]; px[j + 1] = q[1]; px[j + 2] = q[2]; px[j + 3] = 255;
+    }
+    // Hand-designed pixel features in face-local coordinates. The same head box
+    // follows the existing nod/turn animation; hair always occludes the features.
+    const fh = headBox.chin - headBox.top, fw = 144 * k;
+    const dir = turn < 0 ? 1 : -1, a = Math.min(80, at) * Math.PI / 180;
+    const center = headBox.cx + dir * Math.sin(a) * fw * .20;
+    const squeeze = Math.max(.38, Math.cos(a));
+    const ink = [49, 35, 54], iris = [104, 68, 111], light = [192, 147, 176];
+    const blush = SK.map((v, i) => Math.round(v * .76 + [210, 116, 126][i] * .24));
+    const lip = SK.map((v, i) => Math.round(v * .40 + [158, 72, 91][i] * .60));
+    const dot = (x, y, color) => {
+      x = Math.round(x); y = Math.round(y);
+      if (x < 0 || y < 0 || x >= W || y >= Hh || !moldAt(x, y) || hairMask[y * W + x]) return;
+      const j = (y * W + x) * 4; px[j] = color[0]; px[j + 1] = color[1]; px[j + 2] = color[2]; px[j + 3] = 255;
+    };
+    const rect = (x, y, w, h, color) => {
+      for (let yy = 0; yy < Math.max(1, Math.round(h)); yy++) for (let xx = 0; xx < Math.max(1, Math.round(w)); xx++) dot(x + xx, y + yy, color);
+    };
+    for (const s of [-1, 1]) {
+      if (at > 58 && s !== dir) continue;
+      const far = at > 20 && s !== dir, ew = Math.max(3, Math.round(fw * .24 * (far ? squeeze : 1)));
+      const ex = Math.round(center + s * fw * .235 * squeeze - ew / 2), ey = Math.round(headBox.top + fh * .61);
+      // Arched brow, almond eye, dark upper lash, iris and one deliberate glint.
+      rect(ex, ey - fh * .09, ew, 1, [107, 74, 78]);
+      rect(ex, ey + fh * .14, ew, Math.max(1, fh * .035), blush);
+      if (expression.blink) {
+        rect(ex, ey + 1, ew, 1, ink);
+        dot(ex + (s < 0 ? -1 : ew), ey, ink);
+        continue;
+      }
+      rect(ex, ey, ew, Math.max(2, fh * .075), [255, 240, 219]);
+      rect(ex, ey - 1, ew, 1, ink);
+      dot(ex + (s < 0 ? -1 : ew), ey - 2, ink);
+      const ix = ex + Math.floor(ew * .5);
+      rect(ix, ey, Math.max(2, ew * .42), Math.max(2, fh * .075), iris);
+      dot(ix, ey, ink); dot(ix + 1, ey, [255, 246, 230]);
+      dot(ix + 1, ey + Math.max(1, Math.round(fh * .065)), light);
+    }
+    const noseX = center + dir * Math.sin(a) * fw * .15;
+    dot(noseX, headBox.top + fh * .76, MID);
+    dot(noseX + 1, headBox.top + fh * .78, SH);
+    const mouthY = headBox.top + fh * .86, mw = Math.max(2, Math.round(fw * .17 * squeeze));
+    rect(noseX - mw / 2, mouthY, mw, 1, lip);
+    rect(noseX - mw / 2 + 1, mouthY + 1, Math.max(1, mw - 2), 1, blush);
+    if (expression.speaking) rect(noseX - mw / 2 + 1, mouthY, Math.max(1, mw - 2), 2, [117, 58, 72]);
+    // Side-swept tapered fringe breaks the old straight helmet-like hairline.
+    if (!noHair && at < 62) for (let y = Math.floor(headBox.top + fh * .25); y < headBox.top + fh * .57; y++) {
+      const v = (y - headBox.top) / fh;
+      for (let x = Math.floor(center - fw * .52); x <= center + fw * .52; x++) {
+        const u = (x - center) / fw;
+        const edge = u < -.08 ? .43 + (u + .5) * .32 : .38 + (u + .08) * .26;
+        if (v > edge || v < .26) continue;
+        const shine = v > edge - .09 && v < edge - .045;
+        dot(x, y, shine ? [91, 73, 99] : v > edge - .025 ? [30, 25, 40] : [44, 36, 55]);
+      }
     }
   }
   /** Connected, four-tone hair clusters, lit from the same upper left as the skin.
@@ -1335,7 +1389,7 @@
       let top = -1, bot = -1, sx = 0, sn = 0;
       for (let k = 0; k < n; k++) if (hpx[k * 4 + 3]) { const y = Math.floor(k / Wd); if (top < 0) top = y; bot = y; }
       if (top >= 0) { const mid = Math.round(top + (bot - top) * .45); for (let x = 0; x < Wd; x++) if (hpx[(mid * Wd + x) * 4 + 3]) { sx += x; sn++; } }
-      if (top >= 0 && sn) paintFace(r.pixels, r.width, r.height, { top, chin: bot, cx: sx / sn + .5 }, hm, doll._skin, tone, hpx, hp, m.turn || 0);
+      if (top >= 0 && sn) paintFace(r.pixels, r.width, r.height, { top, chin: bot, cx: sx / sn + .5 }, hm, doll._skin, tone, hpx, hp, m.turn || 0, !!doll._noHair, { blink: (pose === 'breathe' || pose === 'talk') && f === 14, speaking: pose === 'talk' && f % 4 < 2 });
       hairPass(r.pixels, hd, hm, r.width, r.height, scale);
     }
     // 衣服那幾層不畫皮膚上的標記（乳房輪廓弧線等 mat 2／摺線、乳暈印子、乳頭：浮在皮膚表面或直接印上去，會穿出衣服、在衣服上留一圈；T 恤做形狀時也不跟著乳頭凸起）
