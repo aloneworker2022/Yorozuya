@@ -240,10 +240,6 @@ body.home-v2 #quest-input {
   background: #140c1f; color: var(--bj-ink); font-size: var(--f16); padding: 0 12px;
 }
 body.home-v2 #quest-input:focus { outline: 2px solid var(--pink, #ff5fb0); outline-offset: 1px; }
-body.home-v2 .quest-sig {
-  flex: none; width: calc(38px * var(--fs)); height: calc(38px * var(--fs)); border-radius: 3px; border: 1px solid var(--bj-line);
-  background: var(--bj-bar); color: var(--cyan, #62e4d8); font-size: var(--f16); cursor: pointer; padding: 0;
-}
 body.home-v2 #quest-add { flex: 0 0 calc(42px * var(--fs)); width: calc(42px * var(--fs)); height: calc(38px * var(--fs)); border-radius: 3px; background: var(--pink, #ff5fb0); color: #140c1f; }
 body.home-v2 #quest-add .paper-plane path[stroke] { display: none; }
 
@@ -334,3 +330,10 @@ body.home-v2 #home-card-strip .line-tab, body.home-v2 #page-quests.on-line #diar
 body.home-v2 #page-quests.on-line #qs-diary .lv-area { padding-left: 12px !important; padding-right: 12px !important; }
 /* 舊看板娘的睡覺 Z z z 不要飄在分頁上 */
 body.home-v2 #kanban-zzz { display: none !important; }
+/* 剛記下的事件：選它是記事還是待辦 */
+body.home-v2 .bj-log .kchip {
+  flex: none; font: inherit; font-size: var(--f12); line-height: 1; padding: 3px 7px; border-radius: 3px; cursor: pointer;
+  border: 1px solid var(--paper-rule); background: #fff8ec; color: var(--paper-ink);
+}
+body.home-v2 .bj-log .kchip[data-k="task"] { background: var(--bj-accent); border-color: var(--bj-accent); color: #fff; }
+body.home-v2 .bj-log .kchip + .kchip { margin-left: -4px; }

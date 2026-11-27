@@ -67,7 +67,7 @@ import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, sc
 import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
 import { peekHunger } from "./content/hunger.js?v=3";
 import { BASE_OUTFIT, ownsOutfit, hasOwnedList } from "./content/outfit_pick.js?v=3";
-import * as Bujo from "./content/home_bujo.js?v=2"; // 主畫面：子彈筆記＋箱庭（2026-11-27）
+import * as Bujo from "./content/home_bujo.js?v=3"; // 主畫面：子彈筆記＋箱庭（2026-11-27）
 loadPools();   // 人物生成池(persona_pools.json;載入失敗時召喚退回舊制簡易骰)
 
 // 遊戲版本(顯示在設定頁最下方;每次改版遞增——手機顯示的就是「正在跑的 app.js」的版本)
@@ -274,27 +274,17 @@ const BujoApi = {
     beginShopTalk(cmd.id || cmd.name);
     return true;
   },
-  /** 新增任務：伺服器擲 0～2 金（每天前 10 筆）；連不上就在手機擲。回 { q, gold }。 */
-  async addTask(text) {
-    let id = null, gold = 0;
-    try {
-      const r = await fetch("/api/quests/discover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) { toast(typeof j.detail === "string" ? j.detail : "送不出去", "bad"); return null; }
-      id = discoverQuestId(j.id);
-      const g0 = state.gold;
-      addQuest(j.text || text, { id, fromServer: true, gold: j.gold, counted: j.counted, day: j.day });
-      gold = state.gold - g0;
-    } catch {
-      id = uid();
-      const g0 = state.gold;
-      addQuest(text, { id });
-      gold = state.gold - g0;
-    }
-    const q = state.quests.find(x => x.id === id);
-    if (q) { q.lv = 1; q.day = dayNum(); q.at = Date.now(); q.touched = Date.now(); }
-    dirty = true; scheduleSave(); renderAll();
-    return { q, gold: Math.max(0, gold) };
+  /** 今天還在前 10 筆（記一筆有錢）嗎。 */
+  bonusOpen() {
+    const today = dayNum();
+    return state.discover?.day !== today || (state.discover.count || 0) < DISCOVER_BONUS_CAP;
+  },
+  /** 直接給錢（記成待辦那 0～1）。 */
+  earn(n, why) {
+    const c = Math.round(Number(n) || 0);
+    if (c <= 0) return;
+    state.gold += c;
+    log(`${why} +${c} 金`);
   },
   complete(id) { return state.quests.some(q => q.id === id) ? complete(id) : null; },
   drop(id) { drop(id, { free: true }); },

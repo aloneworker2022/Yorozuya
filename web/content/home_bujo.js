@@ -5,15 +5,13 @@
 // 專注 +5、她在家心情好 +1；延到明天不扣錢；任務放了 24 小時沒動 → 畫面中央跳卡要你處理。
 
 const SIG = { task: "•", ev: "○", note: "—" };
-const KIND_ZH = { task: "任務", ev: "事件", note: "筆記" };
-const ORDER = ["task", "ev", "note"];
+const KIND_ZH = { task: "待辦", ev: "事件", note: "記事" };
 const PAGES = ["today", "month", "future", "diary"];
 const STALE_MS = 24 * 3600 * 1000;
 const WEEK = "日一二三四五六";
 const WARM = new Set(["close_friend", "girlfriend", "passionate", "lover", "wife", "devoted_wife", "obedient_wife", "pathological_wife"]);
 
 let api = null;
-let capKind = "task";
 let curPage = "today";
 let flipping = false;
 let tagFilter = "";
@@ -164,13 +162,16 @@ function renderToday() {
     const meta = r.state === "moved" ? "明天" : r.state === "open" && r.late > 0 ? `延了 ${r.late} 天` : r.state === "open" && r.q?.lv === 2 && api.onPomo(r.id) ? "專注中" : "";
     li.innerHTML = `<button class="sig" type="button" aria-label="${r.k === "task" ? "切換狀態" : KIND_ZH[r.k]}">${sig}</button><span class="txt"></span>${meta ? `<span class="meta">${esc(meta)}</span>` : ""}`
       + (isCur ? `<button class="curchip" type="button">專注中 ▾</button>` : "")
-      + (r.k === "task" && r.state === "open" && !isCur ? `<button class="pick" type="button" aria-label="改成專注這一筆" title="改成專注這一筆">◎</button>` : "");
+      + (r.k === "task" && r.state === "open" && !isCur ? `<button class="pick" type="button" aria-label="改成專注這一筆" title="改成專注這一筆">◎</button>` : "")
+      + (r.it?.unsorted ? `<button class="kchip" type="button" data-k="note">記事</button><button class="kchip" type="button" data-k="task">待辦</button>` : "");
     linkify(li.querySelector(".txt"), r.t);
     li.querySelector(".sig").onclick = () => cycle(r);
     const cc = li.querySelector(".curchip");
     if (cc) cc.onclick = (e) => { e.stopPropagation(); openFocusMenu(); };
     const pk = li.querySelector(".pick");
     if (pk) pk.onclick = (e) => { e.stopPropagation(); setFocus(r.id); };
+    // 剛記下的事件：在本子裡選它是記事還是待辦（2026-11-27 使用者）
+    li.querySelectorAll(".kchip").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); convert(r, b.dataset.k); }));
     // 長按一筆：選單（改成專注／延到明天／刪掉）
     let lt = 0;
     li.addEventListener("pointerdown", (e) => {
@@ -190,7 +191,7 @@ function renderNow() {
   const fq = focusQuest();
   const txt = $("home-now-text");
   if (!txt) return;
-  txt.textContent = fq ? clean(fq.text) : openTasks().length ? "現在沒有專注的事（點「換」挑一筆）" : "今天的任務都做完了";
+  txt.textContent = fq ? clean(fq.text) : openTasks().length ? "現在沒有專注的事（點「換」挑一筆）" : "今天的待辦都做完了";
   $("home-now-meta").textContent = fq && (fq.day ?? today()) < today() ? `延了 ${today() - fq.day} 天` : "";
   $("home-now-focus").hidden = !fq;
 }
@@ -284,7 +285,7 @@ function openPicker() {
   const fq = focusQuest();
   const opts = openTasks().filter((q) => !fq || q.id !== fq.id).map((q) => ({ label: clean(q.text), hint: (q.day ?? today()) < today() ? `延了 ${today() - q.day} 天` : "", go: () => setFocus(q.id) }));
   opts.push({ label: "先不專注", hint: "休息一下，她就在房間陪你", go: () => { setFocusQuiet(null); api.toast("現在沒有專注的事"); say("休息一下也好，過來陪我？", "不做了？"); } });
-  openSheet("換一件來專注", opts.length > 1 ? "今天還沒做的：" : "今天沒有別的任務了", opts);
+  openSheet("換一件來專注", opts.length > 1 ? "今天還沒做的：" : "今天沒有別的待辦了", opts);
 }
 function rowMenu(r) {
   const s = S(), b = bj();
@@ -292,6 +293,7 @@ function rowMenu(r) {
     openSheet(`「${clean(r.t)}」`, "這一筆要怎麼處理？", [
       { label: "改成現在專注這一筆", pri: true, go: () => setFocus(r.id) },
       { label: "延到明天", hint: "不扣錢", go: () => moveTomorrow(r.q) },
+      { label: "改成記事", hint: "不是要做的事，只是記下來", go: () => convert(r, "note") },
       { label: "不做了", hint: "從清單拿掉（不扣錢）", go: () => { api.drop(r.id); if (b.focusId === r.id) b.focusId = null; save(); renderAllPages(); } },
     ]);
   } else if (r.k === "task" && r.state === "moved") {
@@ -300,7 +302,13 @@ function rowMenu(r) {
       { label: "不做了", hint: "從清單拿掉", go: () => { api.drop(r.id); save(); renderAllPages(); } },
     ]);
   } else if (r.it) {
-    openSheet(`${SIG[r.k]} ${clean(r.t)}`, KIND_ZH[r.k], [
+    const to = ["task", "note", "ev"].filter((k) => k !== r.k).map((k) => ({
+      label: `改成${KIND_ZH[k]}`, pri: k === "task",
+      hint: k === "task" ? "要做的事：可以完成、延到明天、專注" : k === "note" ? "想法、資料，記下來就好" : "某天會發生的事（寫日期就排到那天）",
+      go: () => convert(r, k),
+    }));
+    openSheet(`${SIG[r.k]} ${clean(r.t)}`, `現在是${KIND_ZH[r.k]}`, [
+      ...to,
       { label: "刪掉這一筆", go: () => { b.items = b.items.filter((x) => x !== r.it); save(); renderAllPages(); } },
     ]);
   }
@@ -321,46 +329,53 @@ function parseDay(text) {
   if (day < t - 31) day = Math.floor(Date.UTC(y + 1, mo - 1, d) / 86400000);   // 已經過很久了＝明年的
   return day;
 }
-async function capture() {
+/** 快速紀錄：輸入框打的一律先記成 ○ 事件（2026-11-27 使用者），在本子裡再選是記事還是待辦。
+ *  金幣：記一筆 0～1（每天前 10 筆）；第一次改成待辦再 0～1（待辦合起來 0～2）。 */
+function capture() {
   const inp = $("quest-input");
   const v = String(inp?.value || "").trim();
-  if (!v || inp.dataset.sending === "1") return;
+  if (!v) return;
   if (api.talkCommand(v)) { inp.value = ""; return; }   // 打她的名字＝叫她過來
-  const kind = capKind;
-  if (kind === "task") {
-    inp.dataset.sending = "1";
-    try {
-      const r = await api.addTask(v);
-      if (!r) return;
-      inp.value = "";
-      const day = parseDay(v);
-      if (r.q && day > today()) { r.q.day = day; r.q.movedDay = null; }
-      coin(r.gold);
-      say("寫下來了，要我提醒你嗎？", "寫下來了。");
-    } finally { delete inp.dataset.sending; inp.focus(); }
-  } else {
-    inp.value = "";
-    const day = kind === "ev" ? parseDay(v) : today();
-    bj().items.push({ id: "bj" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), k: kind, t: v, day, at: Date.now() });
-    const g = api.bonus(1);
-    coin(g);
-    api.toast(`記到${day === today() ? "今日" : md(day)}：${SIG[kind]} ${v}${g ? `　+${g} ⟡` : ""}`, g ? "good" : "");
-    say(kind === "ev" ? "那天我會記得的。" : "嗯，我幫你記著。", kind === "ev" ? "喔，記住了。" : "嗯。");
-    save();
-  }
+  inp.value = "";
+  const day = parseDay(v);
+  const inCap = api.bonusOpen();   // 每天前 10 筆才有錢；之後改成待辦的那 0～1 也照這個
+  bj().items.push({ id: "bj" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), k: "ev", t: v, day, at: Date.now(), unsorted: true, inCap });
+  const g = api.bonus(1);
+  coin(g);
+  if (day !== today()) api.toast(`記到 ${md(day)}（在「未來」那頁）${g ? `　+${g} ⟡` : ""}`, g ? "good" : "");   // 今天的直接出現在清單（金幣從房間飄上來），不另外跳提示蓋住它
+  say("記下來了。是要做的事嗎？", "記下來了。");
+  save();
   renderAllPages();
-  if (curPage !== "today") flipTo("today");
+  if (curPage !== "today") flipTo(day > today() ? "future" : "today");
   const last = $("bj-log")?.lastElementChild;
-  if (last && mode === "focus") last.scrollIntoView({ block: "nearest" });
+  if (last && mode === "focus" && day === today()) last.scrollIntoView({ block: "nearest" });
+  inp.focus();
 }
-function setCapKind(k) {
-  capKind = k;
-  const b = $("quest-sig");
-  if (!b) return;
-  b.textContent = SIG[k];
-  b.setAttribute("aria-label", `符號：${KIND_ZH[k]}（點一下換）`);
-  const inp = $("quest-input");
-  if (inp) inp.placeholder = k === "task" ? "快速記一筆…或打她的名字叫過來" : k === "ev" ? "事件：例如 12/24 聖誕節、明天 3 點看牙醫" : "筆記：想到什麼就記（#標籤 可以串起來）";
+
+/** 一筆改成 待辦（task，進 state.quests）／記事（note）／事件（ev）。 */
+function convert(r, k) {
+  const s = S(), b = bj(), t = today();
+  if (r.k === k && !r.it?.unsorted) return;
+  if (r.it) {
+    if (k === "task") {
+      b.items = b.items.filter((x) => x !== r.it);
+      const q = { id: r.it.id.replace(/^bj/, "bq"), text: r.it.t, lv: 1, day: Math.max(r.it.day ?? t, t), at: r.it.at || Date.now(), touched: Date.now() };
+      if (r.it.day > t) q.day = r.it.day;
+      s.quests.push(q);
+      if (!r.it.todoPaid && r.it.inCap) { const g = Math.random() < 0.5 ? 1 : 0; if (g) api.earn(g, `記成待辦「${r.it.t}」`); coin(g); }
+      say("要做的事啊，要我提醒你嗎？", "記成待辦了。");
+    } else {
+      r.it.k = k;
+      delete r.it.unsorted;
+    }
+  } else if (r.q && k !== "task") {
+    // 待辦 → 記事／事件：從清單拿掉（不扣錢），留成一筆，之後再改回待辦不會再給錢
+    api.drop(r.q.id);
+    if (b.focusId === r.q.id) b.focusId = null;
+    b.items.push({ id: /^bq/.test(r.q.id) ? r.q.id.replace(/^bq/, "bj") : "bj" + r.q.id, k, t: r.q.text, day: Math.max(r.q.day ?? t, t), at: r.q.at || Date.now(), todoPaid: true });
+  }
+  save();
+  renderAllPages();
 }
 
 // ---------------------------------------------------------------- 本月／未來
@@ -626,8 +641,6 @@ export function render() {
 export function init(a) {
   api = a;
   if (!$("home-stage")) return;
-  setCapKind("task");
-  $("quest-sig").onclick = () => setCapKind(ORDER[(ORDER.indexOf(capKind) + 1) % 3]);
   document.querySelectorAll("#bj-nav button").forEach((b) => (b.onclick = () => flipTo(b.dataset.p)));
   $("bj-filter-off").onclick = () => setFilter(tagFilter);
   $("bj-scrim").onclick = closeSheet;
