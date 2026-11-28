@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import life_data as D
+import japan_worldbook as JW
 import life_friends as LF
 import escort as ES
 import pregnancy as PG
@@ -1247,11 +1248,18 @@ def roll_event(rec: dict, kind: str, now_ms: int, rnd=None) -> dict:
                 ev["person"] = meet_person(rec, "路人", spot, act.get("know", False), now_ms, roll)
                 _roll_bond(rec, ev, act, now_ms, roll)
     elif kind == "travel":
-        # 旅遊：跟溜達同一套（碰到的人、SCP、色情奇遇、故事卡），地點換成旅遊地
+        # 用目的地的真實地面抽事件；不得把住處的景點和限定事件搬去別的城市。
         dest = (rec.get("agenda") or {}).get("dest") or _pick(list(TRAVEL_SPOTS), roll)
-        ev = roll_event(rec, "stroll", now_ms, roll)
+        location = JW.lookup(destination=dest)
+        visiting = dict(rec)
+        visiting.update(groundId=JW.TRAVEL_IDS.get(dest, ""),
+                        groundName=(location or {}).get("name", dest),
+                        regionId=(location or {}).get("region", ""),
+                        spots=dict((location or {}).get("spots", {})))
+        ev = roll_event(visiting, "stroll", now_ms, roll)
         ev["kind"] = "travel"
         ev["travel"] = dest
+        ev["groundId"] = visiting["groundId"]
         ev["place"] = f"{dest}的{ev.get('place') or '街上'}"
         return ev
     elif kind == "browse":
@@ -1417,6 +1425,11 @@ def event_prompt(action: dict) -> tuple[str, str]:
         f"寫完時她的感覺要接近「{(ev.get('outcome') or {}).get('mood') or '平靜'}」，但不要直接說出這兩個字。",
         "不要標題，不要列選項，不要提到遊戲或抽籤。",
     ]
+    if kind in ("work", "stroll", "travel"):
+        common.append(JW.context(action.get("groundId") or "", ev.get("travel") or "", action.get("until") or 0))
+        if ev.get("travel"):
+            # Replace the residence-based location sentence so the prompt does not contradict itself.
+            common[2] = f"現在人在日本{ev['travel']}旅遊；住處不等於當前所在地。這趟只寫目的地發生的事情。"
     naked = ev.get("naked")
     if naked:
         g = "男性" if (p or {}).get("gender") != "female" else "女性"
@@ -1518,6 +1531,10 @@ def fallback_text(action: dict) -> str:
     if ev.get("scp"):
         where = ev.get("job") or ev.get("place") or "那裡"
         scp = ev["scp"]
+        # 模型離線也留下本次實際進度，不再每一段都落成同一句「有點不對勁」。
+        detail = str(scp.get("stage") or "").split("。")[0].replace("她", "我")
+        if detail:
+            return f"我在{where}遇到一件事。{detail}。"
         step = int(scp.get("step") or 0)
         if step + 1 >= int(scp.get("of") or 5):
             return f"我在{where}想起{scp['title']}的事。它好像結束了，可是總覺得留下了什麼。"
@@ -1936,6 +1953,7 @@ def prepare_resolve(store: dict, gid: str, now_ms: int, rnd=None) -> dict | None
         "roommate": bool(rec.get("roommate")),
         "regionName": rec.get("regionName") or "",
         "groundName": rec.get("groundName") or "",
+        "groundId": rec.get("groundId") or "",
         "job": (rec.get("job") or {}).get("name") or "",
         "hobbies": list(rec.get("hobbies") or []),
         "mood": mood_now(rec, now_ms)[0],

@@ -302,9 +302,9 @@ def encounter_tests():
     assert la.scp_chance(False, "不安", 60) > la.scp_chance(False, "平靜", 0) * 1.9
     assert la.scp_chance(False, "愉快", 60) < 1 / 12
     assert la.scp_chance(True, "不安", 100, eerie=True, night=True) == la.SCP_NEXT_CAP
-    # 31 件、每件五步；綁地點的只在那裡，generic 誰都會碰到
-    assert len(la.D.SCP_EVENTS) == 31 and all(len(e["stages"]) == 5 for e in la.D.SCP_EVENTS)
-    assert len({e["id"] for e in la.D.SCP_EVENTS}) == 31
+    # 47 件、每件五步；綁地點的只在那裡，generic 誰都會碰到
+    assert len(la.D.SCP_EVENTS) == 47 and all(len(e["stages"]) == 5 for e in la.D.SCP_EVENTS)
+    assert len({e["id"] for e in la.D.SCP_EVENTS}) == 47
     assert sum(1 for e in la.D.SCP_EVENTS if e.get("generic")) >= 8
     # 淺草：173 在第一個，開始後一直是它，五步走完換別件
     store, rec = japan_rec("", "平靜", 0, jst(2026, 10, 7, 14))
