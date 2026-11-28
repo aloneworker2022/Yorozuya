@@ -1119,6 +1119,19 @@
     const JUMP = 1.6, K = scale || 2, L = (() => { const v = [-.45, -.6, .66], m = Math.hypot(...v); return v.map((x) => x / m); })();
     const D = new Float32Array(n).fill(-1e9);
     for (let k = 0; k < n; k++) if (Number.isFinite(depth[k]) && px[k * 4 + 3]) D[k] = depth[k] * 32 + Math.floor(k / W) / K;
+    // 2026-11-28 使用者（細節不好：肉色陰影一塊塊、腿上直條紋）：表面朝向改用抹平過的深度算（同一塊表面上 5×5 平均，跨過前後疊的不抹），
+    //   一格一格的小起伏不再讓亮暗亂跳
+    const Ds = new Float32Array(n).fill(-1e9);
+    for (let y = 0; y < Hh; y++) for (let x = 0; x < W; x++) {
+      const k = y * W + x; if (!kind[k] || D[k] < -1e8) continue;
+      let sum = 0, cnt = 0;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= W || yy >= Hh) continue;
+        const j = yy * W + xx; if (!kind[j] || Math.abs(D[j] - D[k]) > JUMP) continue;
+        sum += D[j] - (dy / K); cnt++;   // 減掉高度那一項再平均（D 混了 y/K），平均完加回來
+      }
+      Ds[k] = sum / cnt;
+    }
     const dAt = (x, y) => (x < 0 || y < 0 || x >= W || y >= Hh || !kind[y * W + x] ? null : D[y * W + x]);
     const tone = new Uint8Array(n);   // 1 亮、2 暗（只有皮膚、原本的線）
     // 投影：往光的方向（畫面上左上）一格一格走，光線每走一格往鏡頭升 rise；路上有東西比光線高（更靠近鏡頭）＝被擋住
@@ -1136,12 +1149,14 @@
       const k = y * W + x, t = kind[k]; if (!t) continue;
       const d0 = D[k];
       let edge = false, gx = 0, gy = 0, nx = 0, ny = 0;
+      const s0 = Ds[k] > -1e8 ? Ds[k] : d0;
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const q = dAt(x + dx, y + dy);
         if (q == null) { nx += dx; ny += dy; continue; }   // 外面是空的：那個方向就是表面朝外的方向
         if (q - d0 > JUMP) { edge = true; continue; }       // 前面疊著別的部位：這一格是遠的那邊
         if (Math.abs(q - d0) > JUMP) continue;
-        gx += dx * (q - d0) / 2; gy += dy * (q - d0) / 2;
+        const j = (y + dy) * W + x + dx, qs = Ds[j] > -1e8 ? Ds[j] : q;   // 坡度用抹平過的
+        gx += dx * (qs - s0) / 2; gy += dy * (qs - s0) / 2;
       }
       let lit;
       if (edge) lit = false;
@@ -1161,6 +1176,33 @@
         if (cnt >= 3 && other >= 3) t2[k] = 3 - tone[k];
       }
       tone.set(t2);
+    }
+    // 2026-11-28 再清一次：八方向裡 6 格以上跟自己不同就翻；連在一起太小的碎塊（約 12 格以下）併到周圍那一階
+    for (let pass = 0; pass < 2; pass++) {
+      const t2 = tone.slice();
+      for (let y = 1; y < Hh - 1; y++) for (let x = 1; x < W - 1; x++) {
+        const k = y * W + x; if (!tone[k] || kind[k] > 2) continue;
+        let other = 0, cnt = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { if (!dx && !dy) continue; const j = k + dy * W + dx; if (tone[j] && kind[j] <= 2) { cnt++; if (tone[j] !== tone[k]) other++; } }
+        if (cnt >= 6 && other >= 6) t2[k] = 3 - tone[k];
+      }
+      tone.set(t2);
+    }
+    {
+      const seen = new Uint8Array(n), MIN = Math.round(3 * K * K), stack = [], comp = [];
+      for (let k0 = 0; k0 < n; k0++) {
+        if (seen[k0] || !tone[k0] || kind[k0] > 2) continue;
+        const tv = tone[k0]; comp.length = 0; stack.push(k0); seen[k0] = 1; let border = 0;
+        while (stack.length) {
+          const k = stack.pop(); comp.push(k); const x = k % W;
+          for (const j of [x > 0 ? k - 1 : -1, x < W - 1 ? k + 1 : -1, k - W, k + W]) {
+            if (j < 0 || j >= n || !tone[j] || kind[j] > 2) continue;
+            if (tone[j] !== tv) { border++; continue; }
+            if (!seen[j]) { seen[j] = 1; stack.push(j); }
+          }
+        }
+        if (comp.length < MIN && border > 0) for (const k of comp) tone[k] = 3 - tv;
+      }
     }
     for (let k = 0; k < n; k++) {
       const t = kind[k]; if (!t) continue;
