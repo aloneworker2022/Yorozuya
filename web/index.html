@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="style.css?v=82">
 <link rel="stylesheet" href="content/test_room.css?v=127">
 <link rel="stylesheet" href="home_bujo.css?v=4">
-<link rel="stylesheet" href="content/shop_counter.css?v=1">
+<link rel="stylesheet" href="content/shop_counter.css?v=2">
 </head>
 <body class="room-home home-v2">
 
@@ -224,10 +224,11 @@
         </div>
         <section class="shop-storefront" aria-labelledby="shop-title">
           <header class="shop-sign"><h2 id="shop-title">祭品商店</h2><span>今日入荷</span></header>
-          <div class="shop-keeper-scene">
+          <div class="shop-keeper-scene" role="img" aria-label="今日櫃檯店員">
             <img src="img/shop-keeper.png?v=1" width="1536" height="1024" alt="穿著圍裙的店員站在木櫃檯後，微笑迎接你" decoding="async">
           </div>
-          <p id="merchant-line" class="shop-merchant-line"></p>
+          <div class="shop-keeper-intro"><span id="shop-keeper-name">今日店員</span><span>每日輪值</span></div>
+          <button type="button" id="merchant-line" class="shop-merchant-line" title="點一下，聽她再聊一句" aria-label="聽店員再聊一句"></button>
           <div class="shop-counter-edge" aria-hidden="true"></div>
           <div class="shop-glass"><div id="shop-stock" aria-label="玻璃櫥窗商品"></div></div>
           <footer class="shop-counter-base">每日補貨 · 點選商品下方購買</footer>
@@ -705,6 +706,6 @@
 <script src="content/room_desk.js?v=18"></script>
 <script src="content/test_room.js?v=39"></script>
 <script type="module" src="content/test_room_summon.js?v=440"></script>
-<script type="module" src="app.js?v=198"></script>
+<script type="module" src="app.js?v=199"></script>
 </body>
 </html>

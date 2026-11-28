@@ -1,0 +1,13 @@
+Generated with built-in image_gen, 2026-11-28. Original shop-keeper.png used as style reference.
+Each PNG is one two-frame sprite sheet: open eyes on left, closed eyes on right.
+Only the eye area of the second frame is composited during blinking, so the background stays stationary.
+
+Shared prompt:
+Use the supplied image ONLY as pixel-art style reference. Create ONE two-frame game animation SPRITE SHEET, exactly two equal landscape 3:2 frames placed side by side, total canvas aspect ratio 3:1. Each half must be precisely the SAME scene, SAME camera, SAME character position, SAME anatomy and clothes and lighting and hands and background, aligned pixel for pixel. LEFT half: eyes open. RIGHT half: BOTH EYES CLOSED in a natural blink; CHANGE ONLY EYELIDS, absolutely no other movement. No panel borders, no labels, no text. Each frame: straight-on centered adult female shopkeeper upper body, whole head visible with 5 percent top margin, hands resting on thin wooden countertop at bottom 5 percent of frame. Face centered, eyes around 30 percent of frame height. Fully clothed nonsexual portrait. Refined charming face, correct hands. Beautiful cohesive crisp Japanese pixel-art clusters, warm tactile lighting, no blur, no 3D plastic, no UI. A character occupies center half of the width; shop background visible on both sides. Character and setting: 
+
+Variants:
++rustic: a modest friendly adult woman age 27, dark brown shoulder-length hair, cream blouse and indigo apron, average build. Cozy Japanese country grocery, sage noren, ceramic jars, warm afternoon light
+elegant: an elegant mature adult woman age 32, long wavy burgundy hair, curvy full figure, fully covered high-neck plum dress with gold embroidery and fitted dark waistcoat, tasteful refined clothing. A jewel-toned perfume boutique with amber bottles, velvet curtains, brass lamps
+tea: a gentle wholesome adult woman age 30, full curvy figure, chestnut braided hair, fully covered high-neck ivory blouse and roomy sage green apron, modest natural clothing. A sunlit Japanese tea shop with bamboo baskets, tea tins and green garden window
+gothic: a mysterious friendly adult woman age 28, long silver hair, fully covered high-neck black and navy Victorian dress, lace collar and small blue brooch. Gothic antique shop with dark timber, antique clocks, blue glass jars and warm candles
+wagashi: a lively cheerful adult woman age 26, dark auburn hair in a loose bun, coral and cream patterned kimono worn correctly and modestly, mint apron. Japanese wagashi sweet shop, peach noren, pastel sweet boxes, spring cherry blossom branch
