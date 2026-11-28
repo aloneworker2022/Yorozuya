@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="style.css?v=82">
 <link rel="stylesheet" href="content/test_room.css?v=127">
 <link rel="stylesheet" href="home_bujo.css?v=4">
+<link rel="stylesheet" href="content/shop_counter.css?v=1">
 </head>
 <body class="room-home home-v2">
 
@@ -206,22 +207,31 @@
     </section>
 
     <section class="page" id="page-shop">
-      <div class="panel">
-        <h2>祭品商店</h2>
-        <p id="merchant-line" class="dim small"></p>
-        <div id="shop-stock"></div>
-      </div>
-      <div class="panel sub" id="inv-panel" hidden>
-        <h2>物品欄</h2>
-        <div id="inv-list" class="small"></div>
-      </div>
-      <div class="panel sub">
-        <h2>地牢 <span id="dungeon-count" class="dim"></span></h2>
-        <div id="dungeon-list" class="small"></div>
-      </div>
-      <div class="panel sub">
-        <h2>玩家屬性</h2>
-        <div id="player-attrs" class="small"></div>
+      <div class="shop-layout">
+        <div class="shop-player">
+          <section class="shop-player-card" aria-labelledby="shop-player-title">
+            <h2 id="shop-player-title">玩家屬性</h2>
+            <div id="player-attrs" class="small"></div>
+          </section>
+          <section class="shop-player-card" id="inv-panel" aria-labelledby="shop-inv-title">
+            <h2 id="shop-inv-title">物品欄</h2>
+            <div id="inv-list" class="small"></div>
+            <details class="shop-dungeon">
+              <summary>地牢 <span id="dungeon-count"></span></summary>
+              <div id="dungeon-list" class="small"></div>
+            </details>
+          </section>
+        </div>
+        <section class="shop-storefront" aria-labelledby="shop-title">
+          <header class="shop-sign"><h2 id="shop-title">祭品商店</h2><span>今日入荷</span></header>
+          <div class="shop-keeper-scene">
+            <img src="img/shop-keeper.png?v=1" width="1536" height="1024" alt="穿著圍裙的店員站在木櫃檯後，微笑迎接你" decoding="async">
+          </div>
+          <p id="merchant-line" class="shop-merchant-line"></p>
+          <div class="shop-counter-edge" aria-hidden="true"></div>
+          <div class="shop-glass"><div id="shop-stock" aria-label="玻璃櫥窗商品"></div></div>
+          <footer class="shop-counter-base">每日補貨 · 點選商品下方購買</footer>
+        </section>
       </div>
     </section>
 
@@ -695,6 +705,6 @@
 <script src="content/room_desk.js?v=18"></script>
 <script src="content/test_room.js?v=39"></script>
 <script type="module" src="content/test_room_summon.js?v=440"></script>
-<script type="module" src="app.js?v=197"></script>
+<script type="module" src="app.js?v=198"></script>
 </body>
 </html>

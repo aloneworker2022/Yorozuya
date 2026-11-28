@@ -15190,6 +15190,17 @@ function swipeable(el, { up, down, left, right, dbl, triple, tap, hold, holdMs =
 }
 
 
+// Small display objects; these are visual labels, never product or price data.
+function shopItemArt(kind) {
+  const art = {
+    bouquet: '<path d="M22 31 32 56 44 31" fill="#d5be91"/><path d="m26 37 6 16 7-17" fill="#e9d8b2"/><path d="m32 39-9-18m9 18 9-21m-9 21V16" stroke="#667c58" stroke-width="3"/><g fill="#be7382" stroke="#f4c9c0" stroke-width="2"><circle cx="22" cy="22" r="7"/><circle cx="41" cy="21" r="7"/><circle cx="31" cy="14" r="8"/></g><path d="m26 43 12 1-4 6-7-2Z" fill="#7c657e"/>',
+    ring: '<path d="M12 32 32 23 52 32v21H12Z" fill="#63627a"/><path d="m12 32 20 8 20-8" fill="#aaa3ba"/><ellipse cx="32" cy="31" rx="10" ry="12" fill="none" stroke="#eac980" stroke-width="4"/><path d="m25 20 7-7 7 7-7 7Z" fill="#d9f0e9" stroke="#e8cc8b" stroke-width="2"/>',
+    virility: '<path d="M26 12h12v13l9 9v19H17V34l9-9Z" fill="#b5d5cb" stroke="#617d78" stroke-width="2"/><path d="M20 37h24v13H20Z" fill="#779a90"/><path d="M25 10h14v8H25Z" fill="#a47b54"/><path d="M25 32h14v16H25Z" fill="#eee3c2"/><path d="m33 34-5 7h5l-2 5 6-8h-5Z" fill="#a78045"/><path d="M21 32v12" stroke="#e2f4eb" stroke-width="2"/>',
+    offering: '<path d="M17 10h30v43H17Z" fill="#ecddba" stroke="#a68458" stroke-width="2"/><path d="M17 10h30v7H17Z" fill="#c7a97c"/><path d="M23 23h18M23 28h12" stroke="#b39a72" stroke-width="2"/><circle cx="33" cy="40" r="8" fill="#9b6573"/><path d="m33 35 2 3 3 2-3 1-2 4-1-4-4-1 4-2Z" fill="#e3b5a1"/>'
+  };
+  return `<svg viewBox="0 0 64 64" aria-hidden="true" focusable="false"><ellipse cx="32" cy="56" rx="22" ry="4" fill="#455f5b" opacity=".15"/>${art[kind] || art.offering}</svg>`;
+}
+
 function renderShop() {
   ensureShop();
   $("#merchant-line").textContent = "「" + state.shop.line + "」";
@@ -15199,19 +15210,21 @@ function renderShop() {
     ...(state.shop.specials || []).filter(it => !it.sold),
   ];
   if (!unsold.length) {
-    st.innerHTML = `<p class="dim small">今日售完。</p>`;
+    st.innerHTML = `<p class="shop-empty">今日商品已售完，明天再來看看。</p>`;
   } else {
     for (const it of unsold) {
       const d = document.createElement("div");
       d.className = "shop-item" + (it.kind ? " special" : "");
-      const tag = it.kind === "bouquet" ? " · 告白用"
-        : it.kind === "ring" ? " · 求婚用"
-        : it.kind === "virility" ? " · 喝下回精"
-        : "";
+      const tag = it.kind === "bouquet" ? "告白用"
+        : it.kind === "ring" ? "求婚用"
+        : it.kind === "virility" ? "喝下回精"
+        : "祭品";
       d.innerHTML = `
-        <span class="sname">${esc(it.name)}${tag}</span>
+        <div class="shop-object">${shopItemArt(it.kind)}</div>
+        <span class="sname">${esc(it.name)}</span>
+        <span class="shop-item-note">${tag}</span>
         <span class="sprice">${it.price} 金</span>
-        <button ${state.gold < it.price ? "disabled" : ""}>購買</button>`;
+        <button aria-label="購買${esc(it.name)}，${it.price}金" ${state.gold < it.price ? "disabled" : ""}>${state.gold < it.price ? "金幣不足" : "購買"}</button>`;
       d.querySelector("button").onclick = () => buy(it.id);
       st.appendChild(d);
     }
@@ -15233,10 +15246,10 @@ function renderInventory() {
   const b = state.inventory.bouquet | 0;
   const r = state.inventory.ring | 0;
   const tags = [];
-  if (b > 0) tags.push(`<span>花束${b > 1 ? " ×" + b : ""}</span>`);
-  if (r > 0) tags.push(`<span>戒指${r > 1 ? " ×" + r : ""}</span>`);
+  tags.push(`<span class="shop-inventory-slot${b ? "" : " empty"}">${shopItemArt("bouquet")}<span>花束 <b>×${b}</b></span></span>`);
+  tags.push(`<span class="shop-inventory-slot${r ? "" : " empty"}">${shopItemArt("ring")}<span>戒指 <b>×${r}</b></span></span>`);
   el.innerHTML = tags.join("");
-  if (panel) panel.hidden = tags.length === 0;
+  if (panel) panel.hidden = false;
 }
 
 // ===== v6 互動牌制：商店貨架／牌庫／創角／牌桌 =====
@@ -18857,9 +18870,10 @@ function renderPlayerAttrs() {
     ["調戲", `性奮額外 +${expLv("tease")}・失神每下 +${8 + expLv("tease") * 4}`],
   ];
   const lvs = Object.keys(EXPANSIONS).map(k => `${EXPANSIONS[k]} Lv${expLv(k)}`).join("、");
-  el.innerHTML =
-    derived.map(([a, b]) => `<div class="setting-row"><label>${a}</label><span>${b}</span></div>`).join("") +
-    `<div class="setting-row"><label>擴充等級</label><span class="dim" style="text-align:right">${lvs}</span></div>`;
+  const expanded = el.querySelector("details")?.open || false;
+  const row = ([a, b]) => `<div class="setting-row"><label>${a}</label><span>${b}</span></div>`;
+  el.innerHTML = `<div class="shop-stats-overview">${derived.slice(0, 3).map(row).join("")}</div>` +
+    `<details class="shop-stats-more"${expanded ? " open" : ""}><summary>全部屬性與擴充</summary>${derived.slice(3).map(row).join("")}<div class="setting-row"><label>擴充等級</label><span>${lvs}</span></div></details>`;
 }
 
 // 聊天插播層:蓋在所有分頁之上,只有「結束對話」能退出
