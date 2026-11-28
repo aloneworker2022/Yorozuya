@@ -47,6 +47,7 @@ import memos
 import sdtags
 import sim
 import summon_queue
+import shop_banner
 
 ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "game.db"
@@ -2263,6 +2264,10 @@ def _dest_for_image(opts: dict) -> tuple[Path, str, str]:
     card_id = _safe_token(opts.get("card_id"), 48)
     scene_kind = str(opts.get("scene_kind") or "").strip().lower()
     part = str(opts.get("part") or "").lower()
+    if scene_kind == "shop_banner":
+        dest = shop_banner.image_path(ASSETS_DIR, int(opts["shop_day"]))
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        return dest.parent, "/assets/shop", dest.name
     # 劇本／sex_strip 優先：就算誤帶 portrait shot 也不進 portraits/
     if scene_kind == "wifepay":
         WIFEPAY_OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -3274,6 +3279,44 @@ class ImgGenIn(BaseModel):
 
 
 GEN_WAKE = asyncio.Event()
+
+
+class ShopBannerIn(BaseModel):
+    day: int
+    comfy_url: str = ""
+    retry: bool = False
+
+
+SHOP_BANNER_LOCK = asyncio.Lock()
+
+
+@app.get("/api/shop-banner")
+def shop_banner_status(day: int):
+    if not 0 <= day <= 100000:
+        raise HTTPException(400, "Invalid game day")
+    with db() as conn:
+        return shop_banner.status(conn, ASSETS_DIR, day)
+
+
+@app.post("/api/shop-banner")
+async def shop_banner_submit(body: ShopBannerIn):
+    if not 0 <= body.day <= 100000:
+        raise HTTPException(400, "Invalid game day")
+    async with SHOP_BANNER_LOCK:
+        with db() as conn:
+            existing = shop_banner.status(conn, ASSETS_DIR, body.day)
+        if existing['status'] in ('done', 'pending', 'running') or (existing['status'] == 'error' and not body.retry):
+            return existing
+        try:
+            models = shop_banner.usable_models(await comfy.checkpoints(body.comfy_url), comfy.bad_ckpts())
+        except Exception:
+            models = []
+        if not models:
+            return {**existing, 'status': 'unavailable', 'error': 'ComfyUI 未連線或沒有可用模型'}
+        with db() as conn:
+            result = shop_banner.enqueue(conn, ASSETS_DIR, body.day, models, body.comfy_url, body.retry)
+        GEN_WAKE.set()
+        return result
 
 
 def _gen_endpoint_for(provider: str | None, endpoint: str) -> str:

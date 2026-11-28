@@ -1,4 +1,4 @@
-// Presentation only: rotating attendants never modify stock, gold or inventory.
+// Daily generated artwork uses the server's persistent generation queue.
 export const KEEPERS = [
   { id:'rustic', name:'小春', place:'鄰家雜貨店', lines:['早安，今天也慢慢挑就好。','門口那隻貓，又睡在進貨箱上了。','我剛擦過玻璃，現在能照到你的臉。','今天的風很舒服，差點忘了開店。','不買也沒關係，進來歇一下吧。'] },
   { id:'elegant', name:'紫苑', place:'華麗香氛店', lines:['歡迎。今天想替自己挑點什麼？','這瓶香氣讓我想到下過雨的花園。','整理緞帶比盤點還花時間呢。','窗邊的位置最好看，我每天都忍不住重擺。','偶爾給自己一份小禮物，也很好。'] },
@@ -7,76 +7,84 @@ export const KEEPERS = [
   { id:'wagashi', name:'千代', place:'花見和菓子店', lines:['歡迎！今天的櫥窗可是我親手排的。','糟糕，包裝紙又折歪了。假裝沒看到！','你說櫻花粉跟抹茶綠，是不是很搭？','剛數好的零錢，聊著聊著又忘了。','今天也辛苦了，給自己一點甜頭吧。'] },
 ];
 
-export function keeperForDay(day) {
-  const n = Number.isFinite(day) ? Math.trunc(day) : 0;
-  return KEEPERS[((n % KEEPERS.length) + KEEPERS.length) % KEEPERS.length];
-}
+export function validBannerUrl(url) { return typeof url==='string' && /^\/assets\/shop\/day-\d+\.png$/.test(url); }
 
 let controller;
 function createController() {
-  const scene = document.querySelector('.shop-keeper-scene');
-  const line = document.querySelector('#merchant-line');
-  if (!scene || !line) return null;
-  const store = document.querySelector('.shop-storefront');
-  const label = document.querySelector('#shop-keeper-name');
-  const fallback = scene.querySelector('img');
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)');
-  let active=false, visible=false, day=0, getDay=null, current=null, timer=null;
-  let lineIndex=0, nextLine=0, nextBlink=0, blinkEnd=0, generation=0, ready=false;
-  const layers = ['still','breath','blink'].map(type=>{
-    const el=document.createElement('span'); el.className=`shop-keeper-layer keeper-${type}`;
-    el.setAttribute('aria-hidden','true');scene.appendChild(el);return el;
-  });
-  const showLine=()=>{ if(current) { line.textContent=`「${current.lines[lineIndex]}」`;line.setAttribute('aria-label',`${current.name}：${current.lines[lineIndex]} 點一下再聊一句`); } };
-  function chatter() {
-    if(!current) return;
-    lineIndex=(lineIndex+1)%current.lines.length;showLine();nextLine=Date.now()+14000+Math.random()*8000;
-  }
-  function select() {
-    const selected=keeperForDay(day);
-    if(current?.id===selected.id) return;
-    current=selected;lineIndex=0;showLine();
-    label.textContent=`${selected.name} · ${selected.place}`;
-    store.dataset.keeper=selected.id;
-    scene.setAttribute('aria-label',`${selected.name}站在${selected.place}的櫃檯後`);
-    scene.classList.remove('keeper-ready','is-blinking');ready=false;
-    const token=++generation, img=new Image();
-    const url=new URL(`../img/shop-${selected.id}-blink.png`,import.meta.url).href;
+  const scene=document.querySelector('.shop-keeper-scene'), line=document.querySelector('#merchant-line');
+  if(!scene||!line)return null;
+  const photo=scene.querySelector('img'), label=document.querySelector('#shop-keeper-name');
+  const statusLabel=document.querySelector('#shop-banner-status'), retry=document.querySelector('#shop-banner-retry');
+  const store=document.querySelector('.shop-storefront'), reduce=matchMedia('(prefers-reduced-motion: reduce)');
+  const breath=document.createElement('span');breath.className='shop-keeper-layer keeper-breath';breath.setAttribute('aria-hidden','true');scene.appendChild(breath);
+  let active=false,visible=false,day=-1,getDay=null,settings={},timer=null,request=null,epoch=0;
+  let response=null,nextPoll=0,nextLine=0,lineIndex=0,profile=KEEPERS[0],displayedUrl='',loadingUrl='',imageToken=0;
+  function showLine(){line.textContent=`「${profile.lines[lineIndex]}」`;line.setAttribute('aria-label',`${profile.name}：${profile.lines[lineIndex]} 點一下再聊一句`);}
+  function chatter(){lineIndex=(lineIndex+1)%profile.lines.length;showLine();nextLine=Date.now()+14000+Math.random()*8000;}
+  showLine();label.textContent='櫃檯店員';
+  function setStatus(text){if(statusLabel.textContent!==text)statusLabel.textContent=text;}
+  function present(data){
+    if(!validBannerUrl(data?.url)||data.url===displayedUrl||data.url===loadingUrl)return;
+    const token=++imageToken, img=new Image();loadingUrl=data.url;
     img.onload=()=>{
-      if(token!==generation)return;
-      layers.forEach(el=>el.style.backgroundImage=`url("${url}")`);
-      scene.classList.add('keeper-ready');ready=true;
+      if(token!==imageToken)return;
+      loadingUrl='';displayedUrl=data.url;photo.src=data.url;photo.alt=`${data.name}站在${data.place}的櫃檯後`;
+      breath.style.backgroundImage=`url("${data.url}")`;scene.classList.add('keeper-ready');
+      scene.dataset.bannerDay=String(data.day);scene.setAttribute('aria-label',photo.alt);
+      const theme=KEEPERS.find(k=>k.id===data.theme)||KEEPERS[0];profile={...theme,name:data.name||theme.name};
+      store.dataset.keeper=theme.id;label.textContent=`${profile.name} · ${data.place||theme.place}`;
+      lineIndex=0;showLine();nextLine=Date.now()+14000;
+      if(data.day===day)setStatus('今日店員');
     };
-    img.onerror=()=>{if(token===generation){ready=false;scene.classList.remove('keeper-ready');}};
-    img.src=url;
-    nextBlink=Date.now()+2200+Math.random()*2600;nextLine=Date.now()+14000;
-    if(fallback)fallback.alt='櫃檯店員';
+    img.onerror=()=>{if(token===imageToken){loadingUrl='';setStatus('橫幅載入失敗');retry.hidden=false;}};
+    img.src=data.url;
   }
-  function tick() {
-    const now=Date.now();
-    if(getDay)day=getDay();
-    select();
-    if(!reduce.matches&&ready){
-      if(blinkEnd&&now>=blinkEnd){scene.classList.remove('is-blinking');blinkEnd=0;nextBlink=now+3000+Math.random()*3500;}
-      else if(!blinkEnd&&now>=nextBlink){scene.classList.add('is-blinking');blinkEnd=now+160;}
-    }
-    if(now>=nextLine)chatter();
+  function updateDay(n){
+    if(!Number.isFinite(n)||n===day)return;
+    day=n;epoch++;request?.abort();request=null;response=null;nextPoll=0;imageToken++;loadingUrl='';retry.hidden=true;
   }
-  function reconcile() {
+  async function load(force=false){
+    if(request||day<0)return;
+    const token=epoch,requestedDay=day,abort=new AbortController();request=abort;
+    const timeout=setTimeout(()=>abort.abort(),20000);
+    try{
+      const poll=!force&&['pending','running'].includes(response?.status);
+      const r=await fetch(poll?`/api/shop-banner?day=${day}`:'/api/shop-banner',poll?
+        {signal:abort.signal,cache:'no-store'}:
+        {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({day,comfy_url:settings.comfyUrl||'',retry:force}),signal:abort.signal});
+      if(!r.ok)throw Error(`HTTP ${r.status}`);
+      const data=await r.json();if(token!==epoch||requestedDay!==day)return;
+      if(data.day!==day||!['idle','pending','running','done','error','unavailable'].includes(data.status))throw Error('Invalid banner response');
+      response=data;retry.hidden=!['error','unavailable'].includes(data.status);
+      if(data.status==='done'&&validBannerUrl(data.url)){
+        present(data);nextPoll=Infinity;
+        if(displayedUrl===data.url)setStatus('今日店員');
+      }else{
+        if(data.fallback)present(data.fallback);
+        setStatus(data.status==='error'||data.status==='unavailable'?'今日橫幅暫未完成':'今日橫幅準備中…');
+        nextPoll=data.status==='error'?Infinity:Date.now()+(data.status==='unavailable'?60000:5000);
+      }
+    }catch(e){
+      if(token!==epoch)return;
+      setStatus('今日橫幅暫未完成');retry.hidden=false;nextPoll=Date.now()+60000;
+    }finally{clearTimeout(timeout);if(request===abort)request=null;}
+  }
+  function tick(){
+    if(getDay)updateDay(getDay());
+    if(Date.now()>=nextPoll)void load();
+    if(nextLine&&Date.now()>=nextLine)chatter();
+  }
+  function reconcile(){
     const running=active&&visible&&!document.hidden;
     scene.classList.toggle('keeper-running',running&&!reduce.matches);
-    if(timer){clearInterval(timer);timer=null;}
-    scene.classList.remove('is-blinking');blinkEnd=0;
-    if(running){tick();timer=setInterval(tick,reduce.matches?1000:80);}
+    clearInterval(timer);timer=null;
+    if(running){tick();timer=setInterval(tick,1000);}else{epoch++;request?.abort();request=null;}
   }
-  new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;reconcile();},{threshold:0.05}).observe(scene);
-  document.addEventListener('visibilitychange',reconcile);
-  reduce.addEventListener('change',reconcile);
+  new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;reconcile();},{threshold:.05}).observe(scene);
+  document.addEventListener('visibilitychange',reconcile);reduce.addEventListener('change',reconcile);
   line.addEventListener('click',()=>{if(active)chatter();});
-  return {
-    sync(n){day=n;if(active)select();},
-    active(value,provider){active=value;if(provider)getDay=provider;if(active&&getDay)day=getDay();reconcile();},
-  };
+  retry.addEventListener('click',()=>{if(active){nextPoll=0;void load(true);}});
+  return {sync(n,opts){settings=opts||settings;updateDay(n);},active(value,provider){active=value;if(provider)getDay=provider;reconcile();}};
 }
-export function syncShopKeeper(day) { controller ||= createController();controller?.sync(day); }
-export function setShopKeeperActive(active,getDay) { controller ||= createController();controller?.active(active,getDay); }
+export function syncShopKeeper(day,settings) {controller ||= createController();controller?.sync(day,settings);}
+export function setShopKeeperActive(active,getDay) {controller ||= createController();controller?.active(active,getDay);}

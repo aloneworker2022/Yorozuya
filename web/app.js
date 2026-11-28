@@ -3,7 +3,7 @@
 // M1:商店/地牢/召喚 + 名冊 + 情感需求 + NTR + 睡眠時鐘 + 看板娘罐頭反應
 // M2:Ollama 聊天/約會(galgame 式)+ PersonaBuilder 銜接口 + history 存檔
 import { savedOccupant, blocksSummon, roomFullText } from "./content/room_occupancy.js?v=2"; // 一間房一次一位
-import { syncShopKeeper, setShopKeeperActive } from "./content/shop_keeper.js?v=1";
+import { syncShopKeeper, setShopKeeperActive } from "./content/shop_keeper.js?v=2";
 import { canStartSex, sexBlockReason } from "./content/sex_thrust.js?v=8"; // 精液 0 以下不能做愛
 
 import { buildSystemPrompt, buildWatchPrompt, buildSacrificePrompt, buildOfferingPrompt, buildQuipPrompt, buildBubblePrompt, buildDiaryCommentPrompt, buildNoticePrompt, buildCardPlayPrompt, buildCardVisualPosePrompt, parseCardVisualPose, formatCardReactDisplay, buildMatingPrompt, buildSacScenePrompt, buildSacReactPrompt } from "./content/persona_builder.js";
@@ -15204,7 +15204,7 @@ function shopItemArt(kind) {
 
 function renderShop() {
   ensureShop();
-  syncShopKeeper(dayNum());
+  syncShopKeeper(dayNum(), { comfyUrl: state.settings.comfyUrl || "" });
   const st = $("#shop-stock"); st.innerHTML = "";
   const unsold = [
     ...(state.shop.stock || []).filter(it => !it.sold),
