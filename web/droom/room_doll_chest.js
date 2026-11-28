@@ -388,8 +388,9 @@
       const calf_r = 3.05 * wC * (1 + .08 * b.muscle);
       {   // 2026-10-31：膝蓋兩側鼓包高低不同（參考圖 Good 3）——內側（往中線）低、外側高
         const dl = Math.hypot(ax - kx, ay - ky, az - kz) || 1, d = [(ax - kx) / dl, (ay - ky) / dl, (az - kz) / dl];
-        sh.ell(BODY, [kx - side * 1.35 * fr ** .3 + d[0] * 1.1, ky + d[1] * 1.1 + .2, kz + d[2] * 1.1], [1.55, 1.6, 1.7]);
-        sh.ell(BODY, [kx + side * 1.4 * fr ** .3 - d[0] * .5, ky - d[1] * .5, kz - d[2] * .5], [1.35, 1.5, 1.6]);
+        // 2026-11-28 腿改成收細的連續輪廓後，鼓包往內收（原本內側伸到軸心外 2.9、膝蓋半徑 2.75 → 凸出一兩格，膝蓋內側一撇、外側一個階梯）
+        sh.ell(BODY, [kx - side * 1.05 * fr ** .3 + d[0] * 1.1, ky + d[1] * 1.1 + .2, kz + d[2] * 1.1], [1.5, 1.6, 1.7]);
+        sh.ell(BODY, [kx + side * 1.15 * fr ** .3 - d[0] * .5, ky - d[1] * .5, kz - d[2] * .5], [1.3, 1.5, 1.6]);
       }
       contour(knee, ankle, [[0,knee_r*.95],[.18,calf_r*.97],[.32,calf_r],[.5,calf_r*.84],[.73,calf_r*.61],[1,1.55*Math.min(wC,1.1)*fr**.5]], .30, .75);
       const [tx, ty, tz] = toe, fl = 6.4 * fr ** .7;   // pt34u 腳掌加大

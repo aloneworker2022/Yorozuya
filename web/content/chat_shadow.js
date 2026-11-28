@@ -9,7 +9,7 @@
    顯示：聊天先出現黑影（立繪藏起來）；長按黑影的頭 → 換成半身立繪；長按立繪 → 回到黑影（v8）。做愛對話（主圖是做愛步驟圖）、脫衣對話、房間場面不畫，立繪照原本的位置。 */
 (function () {
   'use strict';
-  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=38', (document.currentScript && document.currentScript.src) || location.href).href;
+  const DROOM_URL = new URL('../droom/room_doll_chest.js?v=39', (document.currentScript && document.currentScript.src) || location.href).href;
   const N = 16, NA_OF = { shirt: 22, bra: 36, panties: 32, peak: 24, r_breast: 8, r_groin: 8, r_waist: 8, ang_akimbo: 20, ang_cross: 13, laugh_bend: 23, laugh_back: 23, fg_r0: 12, fg_r1: 12, fg_r2: 12, fg_w0: 12, fg_w1: 12, fg_w2: 12, fg_rx: 8, fg_wx: 8, col_d: 10, col_s: 12, col_q: 8, col_cb: 8, col_cg: 8, col_yb: 8, col_yg: 8, col_f: 8, col_x: 8 }, FPS = { breathe: 4, talk: 7 };
   const REACTS = ['r_breast', 'r_groin', 'r_waist'];   // 被摸的反應（2026-11-20 使用者：摸她時她會反抗、遮擋）
   // 2026-11-25 使用者（調戲不帶感）：反應改跟「態度」走（tease_attitude.js）——拒絕＝stranger（推開、遮住、掙扎）、無奈拒絕＝friend（輕推遮住）、
@@ -313,11 +313,15 @@
     const armX = {};
     const lerp = (a, c, k) => a.map((v, i) => v + (c[i] - v) * k);
     const armPts = (part) => {
-      const arm = sh.prims.filter(p => p.part === part && p.a && !p.cloth);
-      if (arm.length < 2) return null;
+      // 2026-11-27 前臂多了肌肉的小段錐（同樣從手肘開始）：不能照零件順序抓——上臂＝第一段、前臂＝從手肘開始最長的那根、手腕＝前臂末端
+      const all = sh.prims.filter(p => p.part === part && p.a && !p.cloth);
+      if (all.length < 2) return null;
+      const el = all[1].a, same = (q) => Math.abs(q[0] - el[0]) + Math.abs(q[1] - el[1]) + Math.abs(q[2] - el[2]) < 1e-3;
+      const f1 = all.filter(p => p.ba && same(p.a)).sort((x, y) => (y.L2 || 0) - (x.L2 || 0))[0] || all[1];
+      const arm = [all[0], f1, ...all.filter(p => p !== all[0] && p !== f1)];
       const lz = lift * LIFT[part], e = SHRUG[part] || [0, 0, 0], pt = (p) => [p.a[0] + p.off[0] + e[0], p.a[1] + p.off[1] + e[1], p.a[2] + p.off[2] + lz + e[2]];
-      const f1 = arm[1], end = f1.ba ? [f1.a[0] + f1.ba[0] + f1.off[0] + e[0], f1.a[1] + f1.ba[1] + f1.off[1] + e[1], f1.a[2] + f1.ba[2] + f1.off[2] + lz + e[2]] : null;
-      const sp = pt(arm[0]), ep = pt(arm[1]), w0 = arm[2] ? pt(arm[2]) : end || [ep[0], ep[1], ep[2] - 10];   // 沒有手掌零件（插腰的拳頭）：手腕＝前臂圓錐的末端
+      const end = f1.ba ? [f1.a[0] + f1.ba[0] + f1.off[0] + e[0], f1.a[1] + f1.ba[1] + f1.off[1] + e[1], f1.a[2] + f1.ba[2] + f1.off[2] + lz + e[2]] : null;
+      const sp = pt(arm[0]), ep = pt(arm[1]), w0 = end || [ep[0], ep[1], ep[2] - 10];   // 手腕＝前臂圓錐的末端（手掌零件已經拿掉、改貼像素手）
       return { arm, sp, ep, w0 };
     };
     /** 兩節手臂 IK：手腕要到 T（到不了就伸直往那邊）；手肘往 pole 那邊彎。回傳 {up, fore, upper}。 */
@@ -738,11 +742,10 @@
         const X = ikArm(part, lerp(top, A.w0, k), [sd, .35, -.55]); if (X) armX[part] = X;
         continue;
       }
-      const arm = sh.prims.filter(p => p.part === part && p.a && !p.cloth);   // 照建立順序：上臂（a＝肩）、前臂（a＝手肘）、手（a＝手腕）——不能照高度排（手放在腿上時手腕比手肘高）
-      if (arm.length < 2) continue;
-      const sd = part === 'armL' ? -1 : 1, lz = lift * LIFT[part];
-      const pt = (p) => [p.a[0] + p.off[0], p.a[1] + p.off[1], p.a[2] + p.off[2] + lz];
-      const sp = pt(arm[0]), ep = pt(arm[1]), w0 = arm[2] ? pt(arm[2]) : [ep[0], ep[1], ep[2] - 10];
+      const AP = armPts(part);   // 上臂、前臂（從手肘開始最長那根）、手腕（前臂末端）——不照零件順序（前臂有肌肉小段）
+      if (!AP) continue;
+      const sd = part === 'armL' ? -1 : 1, lz = lift * LIFT[part], e0 = SHRUG[part] || [0, 0, 0], unE = (q) => [q[0] - e0[0], q[1] - e0[1], q[2] - e0[2]];
+      const arm = AP.arm, sp = unE(AP.sp), ep = unE(AP.ep), w0 = unE(AP.w0);
       let upT = null, foreT = null, w = 0;
       if (anim) {
         const u = anim.u;
@@ -1051,7 +1054,7 @@
     sh._hands = [];
     for (const [shJ, el, wr] of sh._arms || []) {
       const part = shJ[0] < 0 ? 'armL' : 'armR';
-      const fo = sh.prims.find(p => p.part === part && p.k === 1 && !p.cloth && Math.abs(p.a[0] - el[0]) + Math.abs(p.a[1] - el[1]) + Math.abs(p.a[2] - el[2]) < 1e-3);
+      const fo = sh.prims.filter(p => p.part === part && p.k === 1 && !p.cloth && Math.abs(p.a[0] - el[0]) + Math.abs(p.a[1] - el[1]) + Math.abs(p.a[2] - el[2]) < 1e-3).sort((x, y) => (y.L2 || 0) - (x.L2 || 0))[0];   // 從手肘開始最長那根（不是前臂肌肉的小段）
       if (!fo) continue;
       const Wq = (q) => { const v = [q[0] + fo.off[0], q[1] + fo.off[1], q[2] + fo.off[2]]; return fo.xf ? app(fo.xf, v) : v; };
       const w = Wq([fo.a[0] + fo.ba[0], fo.a[1] + fo.ba[1], fo.a[2] + fo.ba[2]]), e = Wq(fo.a);
