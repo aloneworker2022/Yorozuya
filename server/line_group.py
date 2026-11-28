@@ -10,6 +10,7 @@ import math
 import random
 import re
 import time
+import unicodedata
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -276,22 +277,41 @@ CANNED_REACT_COLD = {"agree": ["嗯。", "……還行。"], "chat": ["……然
 ACT_ZH = {"escort": "打工", "work": "打工", "stroll": "溜達", "browse": "上網", "sleep": "睡覺", "idle": "發呆", "tidy": "整理房間", "meal": "吃飯"}
 
 
-def canned(job: dict, girl: dict, rnd=random.random, store: dict | None = None) -> list[str]:
-    said = {m.get("text") for m in ((store or {}).get("feed") or [])[-40:] if m.get("girlId") == girl.get("id")}
+def message_key(text) -> str:
+    value = unicodedata.normalize('NFKC', str(text or '')).lower()
+    return ''.join(c for c in value if not c.isspace() and not unicodedata.category(c).startswith(('P', 'S'))) or value.strip()
+
+
+def fresh_lines(lines, girl_id, messages, now_ms=None):
+    own = [m for m in messages if m.get('girlId') == girl_id
+           and (now_ms is None or now_ms - float(m.get('t') or 0) < 6 * HOUR_MS)][-12:]
+    seen = {message_key(m.get('text')) for m in own}
+    out = []
+    for line in lines:
+        key = message_key(line)
+        if key and key not in seen:
+            seen.add(key)
+            out.append(line)
+    return out
+
+
+def canned(job: dict, girl: dict, rnd=random.random, store: dict | None = None, data: dict | None = None, now_ms=None) -> list[str]:
+    history = all_messages(data or {}, store or {})
+    stage = stage_of(girl)
 
     def pick(xs):
-        fresh = [x for x in xs if x not in said] or xs   # 最近說過的先不重複
-        return fresh[int(rnd() * len(fresh)) % len(fresh)]
-    stage = stage_of(girl)
+        rendered = [scrub_husband(x.replace('{act}', ACT_ZH.get(job.get('lastKind') or '', '發呆')),
+                                  stage, str(girl.get('playerPet') or '')) for x in xs]
+        fresh = fresh_lines(rendered, girl.get('id'), history, now_ms)
+        return [fresh[int(rnd() * len(fresh)) % len(fresh)]] if fresh else []
     if job["kind"] == "react":
         act = job.get("act") or "chat"
         pool = (CANNED_REACT_COLD.get(act) if family_of(girl) == "冷淡" else None) or CANNED_REACT.get(act, CANNED_REACT["chat"])
-        return [scrub_husband(pick(pool), stage, str(girl.get("playerPet") or ""))]
+        return pick(pool)
     if job.get("at") == "player":
         pool = CANNED_AT["wife"] if is_wife(stage) else CANNED_AT["dating"] if is_dating(stage) else CANNED_AT["low"]
-        return [scrub_husband(pick(pool), stage, str(girl.get("playerPet") or ""))]
-    text = pick(CANNED_POST.get(family_of(girl), CANNED_POST["溫柔"]))
-    return [text.replace("{act}", ACT_ZH.get(job.get("lastKind") or "", "發呆"))]
+        return pick(pool)
+    return pick(CANNED_POST.get(family_of(girl), CANNED_POST["溫柔"]))
 
 
 # ── 狀態 ──
@@ -479,6 +499,7 @@ def step(store: dict, data: dict, life: dict, now_ms: int, rnd=random.random) ->
 
 def commit(store: dict, job: dict, girl: dict, lines: list[str], data: dict, life: dict, now_ms: int, rnd=random.random) -> list:
     """寫進 feed、更新下次時間。回傳新訊息。"""
+    lines = fresh_lines(lines, girl['id'], all_messages(data, store), now_ms)
     msgs = []
     for i, text in enumerate(lines):
         meta = {"act": job.get("act") or "post", "target": job.get("target") or "", "depth": int(job.get("depth") or 0)}
@@ -491,7 +512,8 @@ def commit(store: dict, job: dict, girl: dict, lines: list[str], data: dict, lif
     store["feed"].extend(msgs)
     store["feed"] = store["feed"][-FEED_CAP:]
     gs = store["girls"].setdefault(girl["id"], {})
-    gs["lastPostAt"] = now_ms
+    if msgs:
+        gs["lastPostAt"] = now_ms
     if job["kind"] == "post":
         rec = ((life or {}).get("girls") or {}).get(girl["id"])
         gs["nextAt"] = now_ms + next_interval_ms(girl, rec, now_ms, rnd)
@@ -515,7 +537,11 @@ def merge_into_save(data: dict, store: dict, cap: int = 500) -> int:
         cleared = float(lg.get("clearedAt") or 0)
     except (TypeError, ValueError):
         cleared = 0.0
-    added = [dict(m) for m in store["feed"] if m.get("id") not in have and float(m.get("t") or 0) >= cleared]
+    added = []
+    for m in store['feed']:
+        if m.get('id') and m['id'] not in have and float(m.get('t') or 0) >= cleared:
+            have.add(m['id'])
+            added.append(dict(m))
     if added:
         msgs.extend(added)
         msgs.sort(key=lambda m: float(m.get("t") or 0))
@@ -592,7 +618,11 @@ def build_prompt(job: dict, data: dict, store: dict, life: dict, now_ms: int) ->
     sys.append("不要重複你自己最近在群裡說過的話（看下面的 [你自己]）。")
     sys.append(f"回 1～{n} 則短訊，每則一行、{cap} 字內。只寫訊息本身，不要名字前綴、不要動作旁白、不要 #。" if n > 1
                else f"只回一則短訊（{cap} 字內）。只寫訊息本身，不要名字前綴、不要旁白。")
-    recent = all_messages(data, store)[-10:]
+    history = all_messages(data, store)
+    own = [m for m in history if m.get('girlId') == g['id']][-8:]
+    if own:
+        sys.append('你最近已經說過（不要換幾個字再說一次；沒有新事情可以只回 #略過）：' + '／'.join(str(m.get('text') or '') for m in own))
+    recent = history[-10:]
     lines = []
     for m in recent:
         who = f"召喚師・{player}" if m.get("kind") == "player" else ("你自己" if m.get("girlId") == g["id"] else f"群友・{m.get('name')}")

@@ -1,15 +1,20 @@
 // node tests/line_social.test.mjs — 名冊群 LINE：間隔、合不合、稱呼、秘密、插話對象、合併去重、房間事件
 import assert from "node:assert/strict";
-import { fileURLToPath } from "node:url";
-
-const dir = fileURLToPath(new URL("../web/content/", import.meta.url));
-const L = await import(`${dir}line_social.js`);
-const V = await import(`${dir}girl_voice.js`);
+const L = await import(new URL('../web/content/line_social.js',import.meta.url));
+const V = await import(new URL('../web/content/girl_voice.js',import.meta.url));
 
 let pass = 0;
 const t = (name, fn) => { fn(); pass += 1; console.log("ok -", name); };
 const NOW = 1791100000000;
 const G = (id, archetype, extra = {}) => ({ id, name: id, archetype, roomStage: "friend", stats: { proactivity: 50, jealousy: 30 }, hobbies: [], likes: [], ...extra });
+
+t('重複長句與同批重複會排除；其他人、舊話與短確認仍保留',()=>{
+  const messages=[{girlId:'a',text:'今天也要記得吃飯喔。',t:NOW},{girlId:'a',text:'嗯。',t:NOW}];
+  assert.deepEqual(L.freshReplyLines(['今天也要記得吃飯喔！','嗯。','嗯！','新話題'],messages,'a',{now:NOW}),['嗯。','新話題']);
+  assert.equal(L.freshReplyLines(['嗯。'],messages,'a',{now:NOW,allowShortRepeat:false}).length,0);
+  assert.equal(L.freshReplyLines(['今天也要記得吃飯喔。'],messages,'b',{now:NOW}).length,1);
+  assert.equal(L.freshReplyLines(['今天也要記得吃飯喔。'],messages,'a',{now:NOW+7*3600e3}).length,1);
+});
 
 t("間隔：主動度 90→30 分、30→240 分、中間連續、夾在 15～360", () => {
   assert.equal(Math.round(L.baseIntervalMin(90)), 30);

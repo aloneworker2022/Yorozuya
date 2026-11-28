@@ -4942,18 +4942,22 @@ async def _line_once() -> None:
     if not girl:
         return
     lines: list[str] = []
+    skip = False
     if str((data.get("settings") or {}).get("model") or "").strip():
         msgs = line_group.build_prompt(job, data, store, life, now_ms)
-        lines = line_group.accept(await _life_say(data, msgs[0]["content"], msgs[1]["content"]), girl)
-    if not lines:
-        lines = line_group.canned(job, girl, store=store)
+        raw = await _life_say(data, msgs[0]["content"], msgs[1]["content"])
+        skip = bool(re.match(r'^\s*#\s*(?:已讀|略過)', str(raw or '')))
+        lines = [] if skip else line_group.accept(raw, girl)
+    if not lines and not skip:
+        lines = line_group.canned(job, girl, store=store, data=data, now_ms=now_ms)
     now2 = int(time.time() * 1000)
 
     def write(store2):
-        line_group.commit(store2, job, girl, lines, data, life, now2)
+        box['posted'] = line_group.commit(store2, job, girl, lines, data, life, now2)
 
     _line_mutate(write)
-    print(f"[LINE] {girl.get('name')}（{'主動' if job['kind'] == 'post' else job.get('act')}）：{' / '.join(lines)[:80]}", flush=True)
+    posted = ' / '.join(m['text'] for m in box.get('posted', [])) or '（略過：已讀、空回覆或最近重複）'
+    print(f"[LINE] {girl.get('name')}（{'主動' if job['kind'] == 'post' else job.get('act')}）：{posted[:80]}", flush=True)
 
 
 async def _line_loop():

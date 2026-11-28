@@ -194,4 +194,28 @@ def _():
     old = {"lineGroup": {"messages": []}}
     assert L.merge_into_save(old, store) == 2
 
+@t('備用句先替換活動再去重，句庫用完不強迫重播')
+def _():
+    g=G('a','文靜溫柔')
+    texts=['大家今天也辛苦了。','剛打工完，有點累呢。','記得吃飯喔。']
+    data={'lineGroup':{'messages':[{'id':str(i),'girlId':'a','text':x,'t':NOW} for i,x in enumerate(texts)]}}
+    assert L.canned({'kind':'post','lastKind':'work'},g,store=L.new_store(),data=data,now_ms=NOW)==[]
+    assert L.canned({'kind':'post','lastKind':'meal'},g,store=L.new_store(),data=data,now_ms=NOW)==['剛吃飯完，有點累呢。']
+
+@t('模型重複句不發，但仍排下次發文；同批重複只留一次')
+def _():
+    g=G('a','文靜溫柔');store=L.new_store();data={'succubi':[g]};job={'kind':'post','gid':'a'}
+    assert len(L.commit(store,job,g,['今天也要記得吃飯喔。','今天也要記得吃飯喔！'],data,life(),NOW))==1
+    assert L.commit(store,job,g,['今天也要記得吃飯喔～'],data,life(),NOW+MIN)==[]
+    assert store['girls']['a']['nextAt']>NOW+MIN
+    assert store['girls']['a']['lastPostAt']==NOW
+
+@t('群組很熱鬧仍會帶到自己的舊發言；同步同批 id 只加一次')
+def _():
+    g=G('a','文靜溫柔');data={'succubi':[g,G('b','活潑開朗')],'lineGroup':{'messages':[{'id':'old','girlId':'a','text':'我已經說過這件事','t':NOW-20}]}}
+    store=L.new_store();store['feed']=[{'id':f'b{i}','girlId':'b','text':'別人的話','t':NOW+i} for i in range(15)]
+    assert '我已經說過這件事' in L.build_prompt({'kind':'post','gid':'a'},data,store,life(),NOW)[0]['content']
+    store['feed']=[store['feed'][0],store['feed'][0]]
+    assert L.merge_into_save(data,store)==1
+
 print(f"\n{passed} passed")

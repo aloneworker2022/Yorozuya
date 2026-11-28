@@ -65,7 +65,7 @@ import * as Preg from "./content/pregnancy.js?v=1"; // 懷孕（2026-10-10）
 import { japanNow, taiwanNow } from "./content/japan_clock.js?v=2";
 import { rollSummonCost, paintLifeRow, applyLifeHunger, outsideMoodNow, moodStrengthWord, roommateOutLabel } from "./content/life_schedule.js?v=15";
 import { STAGE_ZH, familyStageLine, basePersonalityOf, familyOf, addressRule, scrubHusband, isWifeStage, isDatingPlus } from "./content/girl_voice.js?v=1";
-import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE } from "./content/line_social.js?v=1";
+import { replyCap, clipReply, secretLeak, warmTarget, planTurn, ACT_ASK, applyMsgEffects, mergeFeed, getAffinity, affinityWord, FLIRT_RE, freshReplyLines } from "./content/line_social.js?v=2";
 import { peekHunger } from "./content/hunger.js?v=3";
 import { BASE_OUTFIT, ownsOutfit, hasOwnedList } from "./content/outfit_pick.js?v=3";
 import * as Bujo from "./content/home_bujo.js?v=5";
@@ -13767,6 +13767,7 @@ function buildLineGroupMsgs(girl, utterance = "", plan = null) {
     "・你只看得到下方「你的閱讀窗」內的對話——那是你上次已讀／回覆之後到現在的片段，不是從頭全部。",
     "・閱讀窗標籤：`[你自己・…]`＝你先前在群裡傳過的話；`[群友・…]`＝其他妹子；`[召喚師・…]`＝玩家。不要搞混。",
     "・看到 `[你自己・…]` 就當成你已經說過，不要裝成第一次說、也不要否認那是你。",
+    `・你最近已說過：${ensureLineGroup().messages.filter(m=>m.girlId===girl.id).slice(-8).map(m=>m.text).join("／") || "（尚無）"}。先回應玩家這次的新內容，不要只換措辭重講舊話題；沒有要補充的就只已讀。`,
     ...lineVoiceLines(girl),
     ...lineSocialLines(girl, plan),
     "・若只已讀、不發言：只輸出 #已讀 （或 #略過），不要加其他字。",
@@ -13786,7 +13787,11 @@ const LINE_ACT_CANNED = {
   tease: ["又在講這個。", "妳很吵欸。", "……是喔。"],
 };
 function pickLineCanned(g, plan = null) {
-  if (plan && LINE_ACT_CANNED[plan.act]) return pick(LINE_ACT_CANNED[plan.act]);
+  const choose = pool => {
+    const fresh = freshReplyLines(pool.map(x=>scrubHusband(x,g.roomStage||g.stage||"stranger",g.playerPet)),ensureLineGroup().messages,g.id,{allowShortRepeat:false});
+    return fresh.length ? pick(fresh) : "#已讀";
+  };
+  if (plan && LINE_ACT_CANNED[plan.act]) return choose(LINE_ACT_CANNED[plan.act]);
   // 離線可測：約 40% 只已讀
   if (Math.random() < 0.4) return "#已讀";
   const name = noticeArchName(g);
@@ -13802,10 +13807,10 @@ function pickLineCanned(g, plan = null) {
     女王: ["准了。", "哼。", "報告收到。", "別讓我等太久。"],
   };
   for (const k of Object.keys(pool)) {
-    if (name.includes(k)) return pick(pool[k]);
+    if (name.includes(k)) return choose(pool[k]);
   }
   const stagePool = CHAT_LINES[g.stage] || CHAT_LINES.stranger;
-  return pick(stagePool) || "嗯。";
+  return choose(stagePool);
 }
 
 function parseLineReply(raw) {
@@ -13879,7 +13884,8 @@ async function lineGirlDecide(girl, playerMsgId, plan = null) {
   let parsed = clipReply(raw, stage);
   // 秘密不進群：模型漏出來就換成範本句
   if (!parsed.readOnly && parsed.lines.some(secretLeak)) parsed = clipReply(pickLineCanned(girl, plan), stage);
-  if (parsed.readOnly && plan && plan.act !== "reply") parsed = clipReply(pickLineCanned(girl, plan), stage);
+  parsed.lines = freshReplyLines(parsed.lines.map(line=>scrubHusband(line,stage,girl.playerPet)),ensureLineGroup().messages,girl.id);
+  parsed.readOnly = parsed.readOnly || parsed.lines.length === 0;
   if (parsed.readOnly) {
     markLineRead(playerMsgId, girl.id);
   } else {

@@ -120,6 +120,22 @@ export function replyCap(stageKey) {
 export const SECRET_RE = /做愛|上床|性交|外遇|出軌|偷情|偷吃|約炮|炮友|精液|內射|中出|被.{0,4}(?:幹|肏|上了)|光著身子|全裸|裸著|色狼|變態|露出狂|陌生男|搭訕.{0,6}(?:親|摸)/;
 export function secretLeak(text) { return SECRET_RE.test(String(text || "")); }
 
+export function lineTextKey(text) {
+  const value=String(text||'').normalize('NFKC').toLowerCase();
+  return value.replace(/[\p{P}\p{S}\s]/gu,'')||value.trim();
+}
+
+/** Stop repeated long replies; short acknowledgements remain valid on new turns. */
+export function freshReplyLines(lines,messages,girlId,{allowShortRepeat=true,now=Date.now()}={}) {
+  const own=(messages||[]).filter(m=>m.girlId===girlId&&now-Number(m.t||0)<6*3600e3).slice(-12);
+  const previous=new Set(own.map(m=>lineTextKey(m.text))),batch=new Set();
+  return lines.filter(text=>{
+    const key=lineTextKey(text);
+    if(!key||batch.has(key)||previous.has(key)&&(!allowShortRepeat||key.length>=6))return false;
+    batch.add(key);return true;
+  });
+}
+
 /** 拆模型回覆：#已讀 → readOnly；否則依階段取 1～3 行、每行截字。 */
 export function clipReply(raw, stageKey) {
   const t = String(raw || "").trim();
