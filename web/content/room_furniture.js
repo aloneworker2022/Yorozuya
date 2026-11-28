@@ -4,11 +4,11 @@
   'use strict';
   const directions = ['left','right','back-right','back-left'];
   const labels = {left:'左前 ↙',right:'右前 ↘','back-right':'右後 ↗','back-left':'左後 ↖'};
-  const wood=['#d5b080','#a57d54','#826044'], pale=['#f0dec0','#d2bc98','#ae9778'];
+  const wood=['#b89263','#896743','#684d36'], pale=['#eee5cd','#d0c4a7','#b3a185'];
   const green=['#b7c397','#8e9f77','#728763'], blue=['#a8bfcb','#819caa','#637f91'];
   const dark=['#987659','#76583f','#5d4635'], rose=['#d8ae9e','#b8897e','#946c67'];
   const definitions = {
-    chair: {name:'鼠尾草木椅',cols:1,rows:1,seats:[{u:.5,v:.5,height:35,direction:0}],draw(box) {
+    chair: {name:'若草木椅',cols:1,rows:1,seats:[{u:.5,v:.5,height:35,direction:0}],draw(box) {
     // Rear posts, side rails and front legs.
     for (const u of [.17,.73]) box(u,.18,.1,.1,0,66,'#d5ae7b','#99724f','#78573f');
     for (const u of [.17,.73]) {
@@ -27,19 +27,28 @@
     box(.17,.22,.66,.6,30,4,'#b7c397','#8e9f77','#728763');
     box(.23,.27,.52,.46,34,1,'#c1cba3','#a1b186','#8b9e75');
     }},
-    desk: {name:'橡木書桌',cols:2,rows:1,draw(b) {
+    desk: {name:'文机書桌',cols:2,rows:1,draw(b) {
       for(const u of [.12,1.72]) for(const v of [.12,.76]) b(u,v,.12,.12,0,37,...wood);
       b(.08,.08,1.82,.82,37,5,...wood);
       b(1.12,.2,.6,.6,25,12,...pale); b(1.34,.807,.15,.03,30,2,...dark);
       b(.25,.25,.4,.4,42,2,...blue);b(.29,.25,.32,.38,44,1,...pale);
+      // A closed indigo notebook, a tea cup and an andon reading lamp.
+      b(.27,.26,.34,.36,44,1,'#536c76','#405661','#354751');
+      b(.82,.32,.14,.14,42,5,...pale);b(.84,.34,.1,.1,47,1,'#7c8c63','#7c8c63','#7c8c63');
+      b(1.49,.24,.32,.32,42,2,...dark);
+      b(1.53,.28,.24,.24,44,19,'#fff0c6','#eed6a4','#d1b583');
+      for(const z of [44,49,55,61])b(1.52,.27,.26,.26,z,1,...wood);
+      b(1.50,.25,.30,.30,63,2,...wood);
     }},
     // kind:'lie' = lying spot on the mattress (sleep); plain seats are for sitting.
     // 2026-11-01：1×3 加長單人床（1×2 太短，她躺上去腳會穿出床尾；2×3 雙人床又太大）。
-    bed: {name:'雲朵單人床',cols:1,rows:3,seats:[{u:.72,v:1.9,height:29,direction:1},{u:.55,v:1.2,height:19,direction:3,kind:'lie'}],draw(b) {
-      b(.08,.06,.84,2.88,5,11,...wood); b(.08,.04,.84,.13,0,46,...pale);
-      b(.12,.2,.76,2.7,16,9,...pale);b(.15,1.05,.7,1.82,25,4,...blue);
+    bed: {name:'藍染日式低床',cols:1,rows:3,seats:[{u:.72,v:1.9,height:29,direction:1},{u:.55,v:1.2,height:19,direction:3,kind:'lie'}],draw(b) {
+      b(.08,.06,.84,2.88,5,11,...wood); b(.08,.04,.84,.13,0,34,...wood);
+      for(const z of [20,26,32])b(.12,.178,.76,.02,z,1,...pale);
+      b(.12,.2,.76,2.7,16,9,...pale);b(.15,1.05,.7,1.82,25,4,'#607988','#465d70','#34485a');
       b(.16,.28,.68,.4,25,6,'#fff0d9','#e6d8c0','#c9bca8');
-      b(.15,1.07,.7,.1,29,1,'#d3e0df','#bbcdcd','#97b1b8');
+      b(.15,1.07,.7,.22,29,1,...pale);
+      for(const v of [1.5,1.83,2.16,2.49])for(const u of [.26,.49,.72])b(u,v,.025,.09,29,1,'#b8c2bc','#b8c2bc','#b8c2bc');
     }},
     sofa: {name:'奶茶雙人沙發',cols:2,rows:1,seats:[{u:.61,v:.56,height:30,direction:0},{u:1.39,v:.56,height:30,direction:0}],draw(b) {
       for(const u of [.16,1.74])for(const v of [.2,.74])b(u,v,.1,.1,0,8,...dark);
@@ -48,16 +57,22 @@
       for(const u of [.1,1.72])b(u,.15,.18,.74,24,14,...rose);
       b(.32,.26,.42,.12,30,15,...green);
     }},
-    bookshelf: {name:'午後書櫃',cols:2,rows:1,draw(b) {
-      b(.08,.16,1.84,.12,0,86,...dark);
-      for(const u of [.08,1.8])b(u,.16,.12,.65,0,86,...wood);
-      for(const z of [4,29,55,83])b(.08,.16,1.84,.65,z,3,...wood);
+    bookshelf: {name:'木格文庫',cols:2,rows:1,draw(b) {
+      b(.08,.16,1.84,.12,0,65,...dark);
+      for(const u of [.08,1.8])b(u,.16,.12,.65,0,65,...wood);
+      for(const z of [3,23,43,63])b(.08,.16,1.84,.65,z,3,...wood);
+      for(const u of [.24,1.03]){b(u,.3,.72,.48,6,14,...pale);b(u+.29,.79,.14,.02,12,2,...dark);}
       const colors=[green,blue,rose,pale];
-      for(let row=0;row<3;row++) for(let n=0;n<7;n++) {
-        const u=.27+n*.2,z=[7,32,58][row],h=13+(n*7+row*3)%9;
+      for(let row=0;row<2;row++) for(let n=0;n<7;n++) {
+        const u=.27+n*.2,z=[26,46][row],h=11+(n*7+row*3)%6;
         b(u,.38,.13,.32,z,h,...colors[(n+row)%4]);
         b(u,.705,.13,.01,z+3,1,...pale);
       }
+      // A small ceramic bonsai planter on the cabinet, part of its sprite/depth map.
+      b(.38,.35,.48,.32,66,6,'#b4a38b','#887c6b','#6c655b');
+      b(.57,.46,.05,.05,72,10,...dark);
+      b(.37,.34,.34,.27,79,5,'#859b70','#647d59','#4e6548');
+      b(.62,.4,.29,.25,76,5,'#91a67a','#6e875c','#536b49');
     }},
     cabinet: {name:'奶油收納櫃',cols:1,rows:1,draw(b) {
       b(.1,.14,.8,.72,0,55,...pale);b(.06,.1,.88,.8,55,4,...wood);

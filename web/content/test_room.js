@@ -138,6 +138,61 @@
       ctx.fillRect(Math.round(a[0] + (b[0] - a[0]) * t), Math.round(a[1] + (b[1] - a[1]) * t), 1, 1);
     }
   }
+  // A miniature washitsu: all decoration uses the existing room projection.
+  // Furniture, walking cells and saved layouts remain in the same world coordinates.
+  function drawWashitsu() {
+    const left=(a,b,lo,hi,c)=>face([[0,a,lo],[0,b,lo],[0,b,hi],[0,a,hi]],c);
+    const back=(a,b,lo,hi,c)=>face([[a,0,lo],[b,0,lo],[b,0,hi],[a,0,hi]],c);
+    left(0,ROWS,0,wallHeight,'#d9d0b7'); back(0,COLS,0,wallHeight,'#efe5ce');
+    // Timber frame, cream plaster and exposed top beams.
+    face([[-.15,-.15,100],[0,0,100],[0,ROWS,100],[-.15,ROWS,100]],'#b68b5d');
+    face([[0,0,100],[COLS,0,100],[COLS,-.15,100],[-.15,-.15,100]],'#d3ad79');
+    face([[-.15,ROWS,0],[0,ROWS,0],[0,ROWS,100],[-.15,ROWS,100]],'#72563d');
+    face([[COLS,0,0],[COLS,-.15,0],[COLS,-.15,100],[COLS,0,100]],'#987249');
+    for(const [lo,hi] of [[0,7],[91,96]]){left(0,ROWS,lo,hi,'#826345');back(0,COLS,lo,hi,'#aa8358');}
+    for(const v of [0,3.7,5.88])left(v,Math.min(ROWS,v+.12),0,100,'#95734e');
+    for(const u of [0,3.88])back(u,u+.12,0,100,'#98734d');
+    // Rear shoji, with a clear central meeting stile and narrow kumiko lattice.
+    back(.17,3.83,15,88,'#70553d');
+    back(.24,3.76,20,84,'#fff3d5');
+    for(let u=.24;u<3.75;u+=.44){
+      back(u,u+.026,20,84,'#c4a77a');
+      back(u+.035,Math.min(u+.42,3.76),21,39,'#e7e5cf');
+    }
+    for(const z of [20,39,61,83])back(.24,3.76,z,z+1.3,'#b99a6c');
+    back(1.94,2.04,17,87,'#8e6c49');back(2.04,2.07,18,87,'#d7b581');
+    back(.17,3.83,13,16,'#cfb181');back(.17,3.83,10,12,'#795b40');
+    // Left wall alcove: indigo backing, hanging ink landscape and a low ledge.
+    left(1.95,3.55,25,87,'#c1b99f');left(2.03,3.48,29,84,'#ddd6be');
+    left(2.40,3.09,44,79,'#717f78');left(2.45,3.04,49,74,'#f2e8ce');
+    left(2.37,3.13,43,45,'#785b3c');left(2.37,3.13,78,80,'#785b3c');
+    face([[.01,2.48,55],[.01,2.63,65],[.01,2.8,58],[.01,2.94,67],[.01,3.02,55]],'#909d93');
+    face([[.02,2.48,54],[.02,2.68,61],[.02,2.88,54]],'#626f69');
+    left(2.55,2.69,68,72,'#bc7d61');
+    face([[0,2.03,27],[.20,2.03,27],[.20,3.48,27],[0,3.48,27]],'#b18a59');
+    // Narrow timber floor border around a woven tatami field.
+    face([[0,0],[COLS,0],[COLS,ROWS],[0,ROWS]],'#b68f60');
+    const mat=(u,v,w,h,i)=>{
+      face([[u,v],[u+w,v],[u+w,v+h],[u,v+h]],'#626f54');
+      const e=.055, a=u+e,b=v+e,c=u+w-e,d=v+h-e;
+      face([[a,b],[c,b],[c,d],[a,d]],i%2?'#c4c393':'#d1ce9e');
+      const long=w>h;
+      for(let t=(long?b:a)+.065;t<(long?d:c);t+=.09){
+        if(long)line([a,t],[c,t],'#b6b989');else line([t,b],[t,d],'#b5b88a');
+      }
+      line([a,b],[c,b],'#e1ddaf');line([a,b],[a,d],'#d6d7aa');
+    };
+    // Alternating two-mat blocks: the weave rotates with each mat.
+    for(let u=0;u<2;u++)for(let v=0;v<3;v++){
+      const x=.17+u*1.83,y=.17+v*1.88;
+      if((u+v)%2){mat(x,y,.915,1.88,u+v);mat(x+.915,y,.915,1.88,u+v+1);}
+      else{mat(x,y,1.83,.94,u+v);mat(x,y+.94,1.83,.94,u+v+1);}
+    }
+    line([0,ROWS],[COLS,ROWS],'#e0bd84');line([COLS,0],[COLS,ROWS],'#e4c38d');
+    // Thin timber rails along the floor, consistent with the window frame.
+    left(0,ROWS,0,5,'#856443');back(0,COLS,0,5,'#a58256');
+    line([0,0,5],[0,ROWS,5],'#d9b782');line([0,0,5],[COLS,0,5],'#e6c998');
+  }
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingEnabled = false;
@@ -148,39 +203,7 @@
     }), '#ded4c4');
     face([[0,ROWS,0],[COLS,ROWS,0],[COLS,ROWS,-12],[0,ROWS,-12]], '#aa8060');
     face([[COLS,0,0],[COLS,ROWS,0],[COLS,ROWS,-12],[COLS,0,-12]], '#89664f');
-    // Walls, with a small visible thickness and a wooden cap.
-    face([[-.15,-.15,wallHeight],[0,0,wallHeight],[0,ROWS,wallHeight],[-.15,ROWS,wallHeight]], '#fff4d8');
-    face([[0,0,wallHeight],[COLS,0,wallHeight],[COLS,-.15,wallHeight],[-.15,-.15,wallHeight]], '#fff7e4');
-    face([[0,0,0],[0,ROWS,0],[0,ROWS,wallHeight],[0,0,wallHeight]], '#e0cfad');
-    face([[0,0,0],[COLS,0,0],[COLS,0,wallHeight],[0,0,wallHeight]], '#f4e5c7');
-    face([[-.15,ROWS,0],[0,ROWS,0],[0,ROWS,wallHeight],[-.15,ROWS,wallHeight]], '#baa17e');
-    face([[COLS,0,0],[COLS,-.15,0],[COLS,-.15,wallHeight],[COLS,0,wallHeight]], '#cbb591');
-    for (const z of [28,30]) {
-      line([0,0,z],[0,ROWS,z], z === 28 ? '#c7b594' : '#eddec1');
-      line([0,0,z],[COLS,0,z], z === 28 ? '#dfccaa' : '#fff0d3');
-    }
-    for (let v = .5; v < ROWS; v += .5) line([0,v,4],[0,v,27],'#d3c19f');
-    for (let u = .5; u < COLS; u += .5) line([u,0,4],[u,0,27],'#e7d6b6');
-    // 24 cells, each containing subtle wooden boards.
-    const tones = ['#d9b588','#dfbc90','#d5af82','#e3c096'];
-    for (let u = 0; u < COLS; u++) for (let v = 0; v < ROWS; v++) {
-      face([[u,v],[u+1,v],[u+1,v+1],[u,v+1]], tones[(u * 3 + v * 7) % tones.length]);
-      for (let k = 0; k < 4; k++) {
-        const edge = v + k / 4;
-        line([u,edge],[u+1,edge],'#bf986e');
-        line([u,edge+.03],[u+1,edge+.03],'#e9cba1');
-        const start = u + .12 + ((v + k) % 3) * .12;
-        line([start,edge+.13],[Math.min(u+.9,start+.36),edge+.13], '#cda67b');
-      }
-      line([u,v],[u,v+1],'#c49d73');
-    }
-    // Skirting sits over the back edge of the floor.
-    face([[0,0,0],[0,ROWS,0],[0,ROWS,7],[0,0,7]], '#aa8663');
-    face([[0,0,0],[COLS,0,0],[COLS,0,7],[0,0,7]], '#c39f77');
-    line([0,0,7],[0,ROWS,7],'#f0d4a8');
-    line([0,0,7],[COLS,0,7],'#ffe3b9');
-    line([0,ROWS],[COLS,ROWS],'#f3d3a5');
-    line([COLS,0],[COLS,ROWS],'#f0cda0');
+    drawWashitsu();
     drawFrames();
     if (showGrid || (editing && placing)) {
       for (let u = 0; u <= COLS; u++) line([u,0],[u,ROWS],'#7c8061');
